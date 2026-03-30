@@ -41,7 +41,7 @@ I've created three reference documents:
    - Or can we work from CSVs with `SVMgs / sample_count` as our ENMO estimate?
    - **My current thinking**: Start from CSV, design interfaces so the ENMO source is swappable. Validate CSV-based results against GGIR's `.bin`-based output to quantify the calibration error.
 
-2. **Cut-point values**: Veerle references "validated cut-points specifically designed for children with data from wrist-worn GENEActiv accelerometers" (citation 7 in her protocol). I don't have the exact thresholds yet. Do you know them, or should I ask Veerle directly?
+2. **Cut-point values**: Veerle references "validated cut-points specifically designed for children with data from wrist-worn GENEActiv accelerometers" (citation 7 in her protocol). I don't have the exact thresholds yet.
 
 3. **Autocalibration algorithm**: GGIR fits stationary-period accelerometer readings to a sphere of radius 1g to estimate per-axis offset and gain corrections. This is essentially a least-squares sphere fit. Worth understanding the math — is this something you've encountered? Any pitfalls I should know about?
 
