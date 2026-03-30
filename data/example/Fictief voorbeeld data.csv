@@ -1,0 +1,103 @@
+﻿Device Type,GENEActiv
+Device Model,1.1
+Device Unique Serial Code,68006
+Device Firmware Version,Ver4.08a date14Jul14
+Calibration Date,2022-03-23 07:22:25:000
+Application name & version,GeneaLibrary
+
+
+
+
+Measurement Frequency,100.0 Hz
+Start Time,2026-02-05 12:22:19:500
+Last measurement,
+Device Location Code,left wrist
+Time Zone,GMT +01:00
+
+
+
+
+
+Subject Code,4001
+Date of Birth,01-01-00
+Sex,
+Height,
+Weight,
+Handedness Code,
+Subject Notes,
+
+
+
+Study Centre,
+Study Code,
+Investigator ID,
+Exercise Type,
+Config Operator ID,
+Config Time,2026-02-04 14:38:35:114
+Config Notes,
+Extract Operator ID,
+Extract Time,2026-02-17 11:50:43:998
+Extract Notes,
+
+
+
+
+
+
+
+
+
+
+Sensor type,MEMS accelerometer x-axis
+Range,-8 to 8
+Resolution,0.0039
+Units,g
+Additional information,
+Sensor type,MEMS accelerometer y-axis
+Range,-8 to 8
+Resolution,0.0039
+Units,g
+Additional information,
+Sensor type,MEMS accelerometer z-axis
+Range,-8 to 8
+Resolution,0.0039
+Units,g
+Additional information,
+Sensor type,Lux Photodiode 400nm - 1100nm
+Range,0 to 5000
+Resolution,5
+Units,lux
+Additional information,
+Sensor type,User button event marker
+Range,1 or 0
+Resolution,
+Units,
+Additional information,1=pressed
+Sensor type,Linear active thermistor
+Range,0 to 70
+Resolution,0.1
+Units,deg. C
+Additional information,
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+2026-02-05 12:22:24:000,0.7198,0.2603,-0.5787,41,0,23.1,5.88,0.1425,0.1551,0.0968,70
+2026-02-05 12:22:25:000,0.5624,0.3652,-0.6915,65,0,22.1,6.54,0.1745,0.1326,0.1435,247
+2026-02-05 12:22:26:000,0.1966,0.2316,-0.7956,159,0,22.1,14.79,0.3565,0.4266,0.1896,247

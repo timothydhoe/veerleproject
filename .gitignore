@@ -1,0 +1,27 @@
+# Pycharm
+.idea/
+
+# Python
+python/.venv/
+python/uv.lock
+**/__pycache__/
+**/*.pyc
+*.egg-info/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+
+# R
+r/renv/library/
+r/renv/staging/
+r/renv/sandbox/
+.Rhistory
+.RData
+.Rproj.user/
+
+# Data (GDPR)
+data/raw/
+data/processed/
+
+# OS
+.DS_Store
