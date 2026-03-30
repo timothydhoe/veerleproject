@@ -2,7 +2,7 @@
 # After running, renv.lock will pin all package versions for reproducibility.
 
 if (!requireNamespace("renv", quietly = TRUE)) {
-  install.packages("renv")
+  install.packages("renv", repos = "https://cloud.r-project.org")
 }
 
 renv::init(bare = TRUE)
