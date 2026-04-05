@@ -1,0 +1,66 @@
+# =============================================================================
+# SchoolMoves Pipeline — Configuration Parameters
+# =============================================================================
+# Edit these values to tune the pipeline. All modules read from this file.
+# Do NOT hardcode parameters in R or Python scripts.
+# =============================================================================
+
+# === Input/Output ===
+input_dir: "data/raw/"           # Path to raw .bin or .csv files
+output_dir: "data/processed/"    # Pipeline output destination
+log_dir: "logs/"                 # Conversion and pipeline logs
+
+# === ENMO cut-points (mg) — Hildebrand et al. wrist, children ===
+# These thresholds classify each 1-second epoch into an intensity level.
+# sedentary:  ENMO < threshold_lig
+# light:      threshold_lig <= ENMO < threshold_mod
+# moderate:   threshold_mod <= ENMO < threshold_vig
+# vigorous:   ENMO >= threshold_vig
+threshold_lig: 56.3              # Below this = sedentary behaviour
+threshold_mod: 191.6             # Below this = light physical activity
+threshold_vig: 695.8             # Below this = moderate; above = vigorous
+
+# === GGIR settings ===
+epoch_lengths: [1, 60]           # 1-second and 1-minute epoch windows
+do_calibration: true             # Auto-calibration via sphere-fitting
+sensor_location: "wrist"         # Device placement (wrist for GENEActiv)
+acc_metric: "ENMO"               # Acceleration metric (Euclidean Norm Minus One)
+
+# Non-wear detection
+# A block is classified as non-wear when std dev AND range of acceleration
+# fall below thresholds for a sustained window.
+nonwear_edge_min: 60             # Block size in minutes for edge detection
+nonwear_window_min: 15           # Assessment interval in minutes
+nonwear_std_mg: 13               # Std dev threshold (mg) — below = likely non-wear
+nonwear_range_mg: 50             # Range threshold (mg) — below = likely non-wear
+
+# Sleep detection (GGIR Part 3/4)
+# Based on sustained low arm-angle change (van Hees algorithm).
+sleep_angle_threshold_deg: 5     # Arm angle change threshold in degrees
+sleep_time_threshold_min: 5      # Sustained duration threshold in minutes
+sleep_ignore_nonwear: true       # Treat non-wear during night as missing, not sleep
+
+# === Validity criteria ===
+# A pupil must meet BOTH waking and sleep criteria to be included in analysis.
+# Waking analysis: minimum valid days with sufficient wear time.
+# Sleep analysis: minimum valid nights with sufficient data coverage.
+min_valid_days_waking: 4         # Minimum number of valid waking days
+min_valid_hours_per_day: 9       # Minimum waking wear hours per valid day
+min_valid_nights_sleep: 5        # Minimum number of valid nights for sleep analysis
+min_pct_night_valid: 50          # Percentage of night with valid data required
+
+# === Bout detection (per intensity level) ===
+# Minimum consecutive minutes at a given intensity to count as a "bout".
+# Bouts spanning context boundaries (e.g. class -> recess) are split.
+bout_min_minutes:
+  sedentary: 30                  # 30+ min sustained sedentary = prolonged sitting
+  light: 10                      # 10+ min sustained light activity
+  moderate: 5                    # 5+ min sustained moderate activity
+  vigorous: 5                    # 5+ min sustained vigorous activity
+
+# === Analysis settings ===
+attendance_arrival_window_min: 60  # Minutes before school start to check for arrival
+attendance_enmo_threshold_mg: 50   # ENMO threshold (mg) for detecting arrival burst
+
+# === Output ===
+output_format: "csv"             # "parquet" or "csv" — format for processed epoch data
