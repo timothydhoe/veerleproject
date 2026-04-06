@@ -22,6 +22,7 @@ r/renv/sandbox/
 # Data (GDPR)
 data/raw/
 data/processed/
+r/_examples
 
 # OS
 .DS_Store

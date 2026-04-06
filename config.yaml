@@ -1,0 +1,181 @@
+# SchoolMove Pipeline Configuration
+# ─────────────────────────────────────────────────────────────────────────────
+# This is the single file researchers should edit to adjust pipeline behaviour.
+# R scripts read these values at startup — you should not need to edit any
+# .R files to change parameters.
+#
+# Paths are relative to the r/ working directory (one level inside the repo).
+# ─────────────────────────────────────────────────────────────────────────────
+
+# ── Data paths ────────────────────────────────────────────────────────────────
+paths:
+  data_raw:       "../data/raw"              # Input CSV files (meting_1/ and meting_2/)
+  data_processed: "../data/processed/ggir"   # GGIR output destination
+  data_example:   "../data/example"          # Fictional test data (safe to commit)
+
+# ── GGIR parameters ───────────────────────────────────────────────────────────
+ggir:
+  parts: [1, 2, 3, 4, 5, 6]     # Run all six GGIR parts
+  overwrite: true               # Set to false once happy with output to skip re-processing
+  epoch_length_s: 1             # Epoch duration in seconds (1 s confirmed in protocol)
+
+  # Activity cut-points (ENMO in mg) — wrist-worn GENEActiv, Hildebrand et al. 2014
+  cut_points_mg:
+    sedentary_to_light:    56.3   # SB  | LPA boundary
+    light_to_moderate:    191.6   # LPA | MPA boundary
+    moderate_to_vigorous: 695.8   # MPA | VPA boundary
+
+  # Non-wear detection
+  nonwear_window_min: 15        # Rolling window length for non-wear scoring (minutes)
+
+# ── Validity criteria ─────────────────────────────────────────────────────────
+validity:
+  min_wear_hours_per_day: 16
+  min_valid_days: 3
+  require_weekend_day: true
+
+# ── Measurement windows ───────────────────────────────────────────────────────
+# Approximate dates when accelerometers were distributed and collected per school.
+# Source: Info_metingen.docx
+measurements:
+  school_1:
+    n_pupils: 70
+    meting_1: { start: "2026-02-23", end: "2026-03-02" }
+    meting_2: { start: "2026-06-01", end: "2026-06-08" }
+  school_2:
+    n_pupils: 80
+    meting_1: { start: "2026-03-03", end: "2026-03-10" }
+    meting_2: { start: "2026-05-26", end: "2026-06-02" }
+  school_3:
+    n_pupils: 60
+    meting_1: { start: "2026-01-19", end: "2026-01-26" }
+    meting_2: { start: "2026-04-20", end: "2026-04-27" }
+  school_4:
+    n_pupils: 65
+    meting_1: { start: "2026-02-05", end: "2026-02-12" }
+    meting_2: { start: "2026-05-21", end: "2026-05-28" }
+  school_5:
+    n_pupils: 55
+    meting_1: { start: "2026-01-09", end: "2026-01-16" }
+    meting_2: { start: "2026-03-11", end: "2026-03-18" }
+  school_6:
+    n_pupils: 70
+    meting_1: { start: "2026-03-02", end: "2026-03-09" }
+    meting_2: { start: "2026-05-04", end: "2026-05-11" }
+
+# ── School schedules ──────────────────────────────────────────────────────────
+# Used to assign a context label to every epoch: in_class, recess, lunch,
+# before_school, after_school, or weekend.
+#
+# Times are HH:MM in 24-hour format, Europe/Brussels timezone.
+# Schools marked  fallback: true  use an approximate schedule and update when
+# the confirmed timetable is received from Veerle.
+schedules:
+
+  school_1:
+    fallback: false
+    school_start: "08:25"
+    school_end:
+      mon_thu_fri: "15:40"
+      tuesday:     "16:30"
+      wednesday:   "11:55"
+    breaks:
+      mon_tue_thu_fri:
+        - { label: recess, start: "10:05", end: "10:20" }
+        - { label: lunch,  start: "12:00", end: "13:00" }
+        - { label: recess, start: "14:40", end: "14:50" }
+      wednesday:
+        - { label: recess, start: "10:05", end: "10:15" }
+
+  school_2:
+    fallback: false
+    school_start: "08:25"
+    school_end:
+      mon_tue_thu_fri: "15:35"
+      wednesday:       "12:00"
+    breaks:
+      mon_tue_thu_fri:
+        - { label: recess, start: "10:05", end: "10:20" }
+        - { label: lunch,  start: "12:00", end: "12:50" }
+        - { label: recess, start: "14:30", end: "14:45" }
+      wednesday:
+        - { label: recess, start: "10:05", end: "10:20" }
+
+  school_3:
+    # ⚠ FALLBACK — detailed timetable not yet available. Update when received.
+    fallback: true
+    school_start: "08:30"
+    school_end:
+      mon_tue_thu_fri: "15:30"
+      wednesday:       "12:00"
+    breaks:
+      mon_tue_thu_fri:
+        - { label: recess, start: "10:15", end: "10:30" }
+        - { label: lunch,  start: "12:00", end: "13:00" }
+      wednesday:
+        - { label: recess, start: "10:15", end: "10:30" }
+
+  school_4:
+    # ⚠ FALLBACK — timetable was image-only and could not be fully parsed. Update when received.
+    fallback: true
+    school_start: "08:30"
+    school_end:
+      mon_tue_thu_fri: "16:30"
+      wednesday:       "12:00"
+    breaks:
+      mon_tue_thu_fri:
+        - { label: recess, start: "10:15", end: "10:30" }
+        - { label: lunch,  start: "12:00", end: "13:30" }
+      wednesday:
+        - { label: recess, start: "10:15", end: "10:30" }
+
+  school_5:
+    fallback: false
+    school_start: "08:30"
+    school_end:
+      mon_tue_thu_fri: "15:55"
+      wednesday:       "12:05"    # Assumed end after 4th period
+    breaks:
+      mon_tue_thu_fri:
+        - { label: recess, start: "10:10", end: "10:25" }
+        - { label: lunch,  start: "12:05", end: "13:10" }
+        - { label: recess, start: "14:50", end: "15:05" }
+      wednesday: []               # No afternoon
+
+  school_6:
+    fallback: false
+    school_start: "08:30"
+    school_end:
+      mon_tue_thu_fri: "15:25"
+      wednesday:       "12:00"
+    breaks:
+      mon_tue_thu_fri:
+        - { label: recess, start: "11:00", end: "11:15" }
+        - { label: lunch,  start: "12:55", end: "13:45" }
+      wednesday:
+        - { label: recess, start: "10:10", end: "10:20" }
+
+# ── Developer / testing ───────────────────────────────────────────────────────
+dev:
+  # Set to true to run the pipeline on example/dummy data instead of data/raw/.
+  # Flip to false when processing real participant data.
+  example_mode: true
+
+  # GGIR non-wear algorithm override for 1 Hz dummy data.
+  # The 2023 default resamples to 5 Hz internally before non-wear detection —
+  # this collapses all variance in 1 Hz data and flags most of the recording
+  # as non-wear. The 2013 algorithm uses the signal as-is and works correctly
+  # with 1 Hz data.
+  # ⚠ Remove this override (or set to null) before running on real 100 Hz data;
+  # the 2023 algorithm is preferred for high-frequency recordings.
+  nonwear_approach: "2013"
+
+  # Relaxed GGIR validity thresholds for 1 Hz dummy data.
+  # ⚠ Reset to null (or remove) before running on real participant data.
+  includedaycrit: 5          # GGIR Part 2: min valid hours per day (production = 16)
+  includedaycrit_part5: 0.3  # GGIR Part 5: min fraction of waking day (production = 0.667)
+
+# ── Output settings ───────────────────────────────────────────────────────────
+output:
+  timezone: "Europe/Brussels"
+  locale:   "nl_BE"            # Belgian Dutch — used for date formatting in reports
