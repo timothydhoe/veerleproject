@@ -23,61 +23,48 @@ read_pipeline_params <- function(config_path = "config/pipeline_params.yaml") {
   params
 }
 
-#' Extract pupil ID from a file path based on detected format
+#' Read optional SPSS .sav metadata files
 #'
-#' @param filepath Path to the input file
-#' @param format_type One of "geneactiv_export", "tim_preprocessed", "raw_bin"
-#' @return Character string with the pupil ID
-extract_pupil_id <- function(filepath, format_type) {
-  fname <- basename(filepath)
-
-  if (format_type == "geneactiv_export") {
-    # Format A: pupil ID is in the file header, row 21 (Subject Code)
-    # This function only handles filename-based extraction;
-    # header-based extraction happens in 01_convert.R
-    return(NA_character_)
-
-  } else if (format_type == "tim_preprocessed") {
-    # Format B: first token of filename before underscore
-    # e.g. "610110_left wrist_035056_2018-07-14 21-49-44.csv" -> "610110"
-    id <- strsplit(fname, "_")[[1]][1]
-    return(id)
-
-  } else if (format_type == "raw_bin") {
-    # Format C: same convention as Tim's preprocessed
-    id <- strsplit(tools::file_path_sans_ext(fname), "_")[[1]][1]
-    return(id)
-
-  } else {
-    stop("Unknown format_type: ", format_type)
-  }
-}
-
-#' Load GGIR output files and bind into a single data.frame
+#' Looks for standard admin files in the specified directory:
+#'   - Dataset_Scholen.sav (school schedules)
+#'   - Dataset_Afwezigheden.sav (absences)
+#'   - Databestand_Slaap.sav (sleep times)
+#'   - Dataset_Leerlingen.sav (pupil non-wear)
 #'
-#' @param ggir_dir Path to GGIR output directory
-#' @return data.frame with all pupils, including a pupil_id column
-load_ggir_output <- function(ggir_dir) {
-  if (!dir.exists(ggir_dir)) {
-    stop("GGIR output directory not found: ", ggir_dir)
+#' @param sav_dir Path to directory containing .sav files
+#' @return Named list of data.frames, or NULL if haven is not installed
+read_sav_metadata <- function(sav_dir) {
+  if (!dir.exists(sav_dir)) {
+    log_step(paste("SAV metadata directory not found:", sav_dir))
+    return(NULL)
   }
 
-  csv_files <- list.files(ggir_dir, pattern = "\\.csv$", full.names = TRUE)
-  if (length(csv_files) == 0) {
-    stop("No CSV files found in GGIR output directory: ", ggir_dir)
+  if (!requireNamespace("haven", quietly = TRUE)) {
+    log_step("Package 'haven' not installed. Skipping .sav metadata.")
+    return(NULL)
   }
 
-  log_step(paste("Loading", length(csv_files), "GGIR output files from", ggir_dir))
+  sav_files <- list(
+    schools = "Dataset_Scholen.sav",
+    absences = "Dataset_Afwezigheden.sav",
+    sleep = "Databestand_Slaap.sav",
+    pupils = "Dataset_Leerlingen.sav"
+  )
 
-  all_data <- lapply(csv_files, function(f) {
-    df <- read.csv(f, stringsAsFactors = FALSE)
-    # Derive pupil_id from the filename
-    df$pupil_id <- tools::file_path_sans_ext(basename(f))
-    df
-  })
+  result <- list()
+  for (name in names(sav_files)) {
+    path <- file.path(sav_dir, sav_files[[name]])
+    if (file.exists(path)) {
+      result[[name]] <- as.data.frame(haven::read_spss(path))
+      log_step(paste("Loaded", name, "metadata:", nrow(result[[name]]), "rows"))
+    }
+  }
 
-  result <- do.call(rbind, all_data)
-  log_step(paste("Loaded", nrow(result), "rows for", length(csv_files), "pupils"))
+  if (length(result) == 0) {
+    log_step("No .sav files found in metadata directory")
+    return(NULL)
+  }
+
   result
 }
 

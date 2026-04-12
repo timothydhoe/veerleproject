@@ -1,0 +1,208 @@
+---
+title: "SchoolMoves — Pipeline Test: .bin File"
+author: "SchoolMoves Pipeline Validation"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    theme: flatly
+    code_folding: show
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE, warning = TRUE, message = TRUE,
+  fig.width = 10, fig.height = 6
+)
+knitr::opts_knit$set(root.dir = normalizePath(".."))
+```
+
+# 1. Overview
+
+This notebook runs the full GGIR pipeline (Parts 1-5) on the GENEActiv `.bin`
+test file and inspects the output at each stage.
+
+**Input**: `data/raw/bin/TESTfile.bin` (389 KB)
+
+**Note**: The test .bin file is very small (389 KB). GGIR requires a minimum
+file size for processing (default ~1 MB). If GGIR skips this file, we still
+validate the input preparation and format detection steps, and show how the
+pipeline handles the error gracefully. For a full pipeline test with .bin files,
+use a larger recording file.
+
+```{r load-packages}
+library(yaml)
+library(dplyr)
+library(ggplot2)
+
+# Source pipeline modules
+source("R/pipeline/utils.R")
+source("R/pipeline/01_prepare_input.R")
+source("R/pipeline/02_run_ggir.R")
+source("R/pipeline/03_read_ggir_output.R")
+source("R/pipeline/04_label_schedule.R")
+source("R/pipeline/05_filter_validity.R")
+```
+
+# 2. Prepare Input
+
+```{r prepare-input}
+input_dir <- file.path("..", "data", "raw", "bin")
+output_dir <- file.path("data", "processed", "test_bin")
+
+params <- read_pipeline_params("config/pipeline_params.yaml")
+
+# Scan and classify input files
+input_info <- prepare_input(input_dir, output_dir, overwrite = TRUE)
+print(input_info$manifest)
+```
+
+# 3. Run GGIR (Parts 1-5)
+
+```{r run-ggir, message=TRUE}
+ggir_output_dir <- file.path(output_dir, "ggir")
+
+tryCatch({
+  run_ggir(
+    input_dir = input_info$ggir_input_dir,
+    output_dir = ggir_output_dir,
+    params = params,
+    schedule_path = "config/school_schedules.yaml",
+    n_cores = 1
+  )
+  cat("GGIR completed successfully.\n")
+}, error = function(e) {
+  cat("GGIR error:", conditionMessage(e), "\n")
+  cat("This may be expected for very small test files.\n")
+})
+```
+
+# 4. Inspect GGIR Output
+
+## 4.1 Output directory structure
+
+```{r inspect-structure}
+if (dir.exists(ggir_output_dir)) {
+  all_files <- list.files(ggir_output_dir, recursive = TRUE, full.names = FALSE)
+  cat("GGIR output files:\n")
+  cat(paste(" ", all_files), sep = "\n")
+} else {
+  cat("No GGIR output directory found.\n")
+}
+```
+
+## 4.2 GGIR config.csv (reproducibility record)
+
+```{r read-config}
+ggir_data <- tryCatch(
+  load_all_ggir_output(ggir_output_dir),
+  error = function(e) {
+    cat("Could not load GGIR output:", e$message, "\n")
+    NULL
+  }
+)
+
+if (!is.null(ggir_data$config)) {
+  cat("GGIR parameters used:\n")
+  print(head(ggir_data$config, 20))
+}
+```
+
+## 4.3 Part 2: Daily Summaries
+
+```{r part2-summary}
+if (!is.null(ggir_data$part2_daysummary)) {
+  cat("Part 2 day summary dimensions:", dim(ggir_data$part2_daysummary), "\n")
+  cat("\nColumn names:\n")
+  cat(paste(" ", names(ggir_data$part2_daysummary)), sep = "\n")
+  cat("\nFirst rows:\n")
+  print(head(ggir_data$part2_daysummary))
+} else {
+  cat("No Part 2 output available.\n")
+}
+```
+
+## 4.4 Part 4: Sleep Detection
+
+```{r part4-sleep}
+if (!is.null(ggir_data$part4_sleep)) {
+  cat("Part 4 sleep summary dimensions:", dim(ggir_data$part4_sleep), "\n")
+  cat("\nColumn names:\n")
+  cat(paste(" ", names(ggir_data$part4_sleep)), sep = "\n")
+  cat("\nFirst rows:\n")
+  print(head(ggir_data$part4_sleep))
+} else {
+  cat("No Part 4 sleep output available.\n")
+}
+```
+
+## 4.5 Part 5: Time-Use Analysis
+
+```{r part5-timeuse}
+if (!is.null(ggir_data$part5_daysummary)) {
+  cat("Part 5 day summary dimensions:", dim(ggir_data$part5_daysummary), "\n")
+  cat("\nColumn names (first 30):\n")
+  cat(paste(" ", head(names(ggir_data$part5_daysummary), 30)), sep = "\n")
+  cat("\nFirst rows:\n")
+  print(head(ggir_data$part5_daysummary[, 1:min(10, ncol(ggir_data$part5_daysummary))]))
+} else {
+  cat("No Part 5 output available.\n")
+}
+```
+
+# 5. Visualisations
+
+## 5.1 ENMO Distribution (from Part 2)
+
+```{r plot-enmo, fig.cap="ENMO distribution from Part 2 day summary"}
+if (!is.null(ggir_data$part2_daysummary)) {
+  enmo_cols <- grep("ENMO|enmo|acceleration", names(ggir_data$part2_daysummary),
+                    value = TRUE, ignore.case = TRUE)
+  if (length(enmo_cols) > 0) {
+    enmo_vals <- as.numeric(ggir_data$part2_daysummary[[enmo_cols[1]]])
+    enmo_vals <- enmo_vals[!is.na(enmo_vals)]
+    if (length(enmo_vals) > 0) {
+      hist(enmo_vals, breaks = 30, main = "ENMO Distribution (Part 2)",
+           xlab = "ENMO (mg)", col = "steelblue", border = "white")
+      abline(v = c(56.3, 191.6, 695.8), col = c("green", "orange", "red"),
+             lwd = 2, lty = 2)
+      legend("topright", legend = c("SB/LPA (56.3)", "LPA/MPA (191.6)", "MPA/VPA (695.8)"),
+             col = c("green", "orange", "red"), lwd = 2, lty = 2)
+    }
+  } else {
+    cat("No ENMO columns found in Part 2 output.\n")
+  }
+}
+```
+
+## 5.2 Validity Summary
+
+```{r validity}
+if (!is.null(ggir_data$part2_daysummary)) {
+  validity <- tryCatch(
+    assess_validity_from_ggir(ggir_data$part2_daysummary, ggir_data$part4_sleep, params),
+    error = function(e) {
+      cat("Validity assessment error:", e$message, "\n")
+      NULL
+    }
+  )
+  if (!is.null(validity)) {
+    print(validity)
+  }
+}
+```
+
+# 6. Summary
+
+```{r summary}
+cat("=== .bin Pipeline Test Summary ===\n")
+cat("Input file: TESTfile.bin\n")
+cat("GGIR output available:", !is.null(ggir_data), "\n")
+if (!is.null(ggir_data)) {
+  cat("Part 2 (daily summary):", !is.null(ggir_data$part2_daysummary), "\n")
+  cat("Part 4 (sleep):", !is.null(ggir_data$part4_sleep), "\n")
+  cat("Part 5 (time-use):", !is.null(ggir_data$part5_daysummary), "\n")
+  cat("Epoch time series:", !is.null(ggir_data$part5_timeseries), "\n")
+}
+```

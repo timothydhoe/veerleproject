@@ -1,18 +1,14 @@
 # =============================================================================
 # SchoolMoves Pipeline — Step 6: Export
 # =============================================================================
-# Writes the final processed epoch dataset to the shared format
-# used by the analysis layer.
+# Writes processed data and GGIR summaries to the output directory.
 # =============================================================================
 
 source("R/pipeline/utils.R", local = TRUE)
 
-#' Export processed epoch data
+#' Export processed epoch data (per-pupil files)
 #'
-#' Writes one file per pupil to the output directory.
-#' Supported formats: "csv" (default) or "parquet" (requires the arrow package).
-#'
-#' @param epochs data.frame — full processed epoch dataset with all pipeline columns
+#' @param epochs data.frame — full processed epoch dataset
 #' @param output_dir Path to write output files (one per pupil)
 #' @param format One of "csv" or "parquet". Default "csv".
 #' @return Invisible character vector of output file paths
@@ -23,7 +19,6 @@ export_processed <- function(epochs, output_dir = "data/processed/", format = "c
   if (!format %in% c("csv", "parquet")) {
     stop("Unsupported output format: '", format, "'. Use 'csv' or 'parquet'.")
   }
-
   if (format == "parquet" && !requireNamespace("arrow", quietly = TRUE)) {
     message("Package 'arrow' not installed. Falling back to CSV format.")
     format <- "csv"
@@ -46,7 +41,6 @@ export_processed <- function(epochs, output_dir = "data/processed/", format = "c
     } else {
       write.csv(pupil_data, out_path, row.names = FALSE)
     }
-
     output_paths[i] <- out_path
   }
 
@@ -54,7 +48,7 @@ export_processed <- function(epochs, output_dir = "data/processed/", format = "c
   invisible(output_paths)
 }
 
-#' Export a summary table (non-epoch-level, e.g. validity or daily totals)
+#' Export a summary table
 #'
 #' @param df data.frame to export
 #' @param filepath Output file path (with extension)
@@ -74,4 +68,32 @@ export_summary <- function(df, filepath, format = NULL) {
 
   log_step(paste("Exported summary:", filepath))
   invisible(filepath)
+}
+
+#' Copy GGIR native output files to the export directory
+#'
+#' @param ggir_dir Path to GGIR output directory
+#' @param export_dir Path to write copies
+export_ggir_summaries <- function(ggir_dir, export_dir) {
+  dir.create(export_dir, showWarnings = FALSE, recursive = TRUE)
+
+  results_dir <- file.path(ggir_dir, "results")
+  if (!dir.exists(results_dir)) {
+    log_step("No GGIR results directory to export")
+    return(invisible(NULL))
+  }
+
+  csv_files <- list.files(results_dir, pattern = "\\.csv$", full.names = TRUE)
+  if (length(csv_files) > 0) {
+    file.copy(csv_files, file.path(export_dir, basename(csv_files)), overwrite = TRUE)
+    log_step(paste("Copied", length(csv_files), "GGIR summary files to", export_dir))
+  }
+
+  # Copy config.csv for reproducibility
+  config_csv <- file.path(ggir_dir, "config.csv")
+  if (file.exists(config_csv)) {
+    file.copy(config_csv, file.path(export_dir, "ggir_config.csv"), overwrite = TRUE)
+  }
+
+  invisible(export_dir)
 }

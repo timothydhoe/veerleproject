@@ -21,24 +21,35 @@ threshold_mod: 191.6             # Below this = light physical activity
 threshold_vig: 695.8             # Below this = moderate; above = vigorous
 
 # === GGIR settings ===
-epoch_lengths: [1, 60]           # 1-second and 1-minute epoch windows
+epoch_lengths: [5, 900, 3600]    # 5-second, 15-minute, 1-hour windows (GGIR default)
 do_calibration: true             # Auto-calibration via sphere-fitting
 sensor_location: "wrist"         # Device placement (wrist for GENEActiv)
 acc_metric: "ENMO"               # Acceleration metric (Euclidean Norm Minus One)
+desiredtz: "Europe/Brussels"     # Timezone for all timestamp operations
 
-# Non-wear detection
-# A block is classified as non-wear when std dev AND range of acceleration
-# fall below thresholds for a sustained window.
-nonwear_edge_min: 60             # Block size in minutes for edge detection
-nonwear_window_min: 15           # Assessment interval in minutes
-nonwear_std_mg: 13               # Std dev threshold (mg) — below = likely non-wear
-nonwear_range_mg: 50             # Range threshold (mg) — below = likely non-wear
+# GGIR Parts to run (1-5)
+ggir_mode: [1, 2, 3, 4, 5]      # Parts 1-5; Part 5 = time-use analysis
 
 # Sleep detection (GGIR Part 3/4)
-# Based on sustained low arm-angle change (van Hees algorithm).
-sleep_angle_threshold_deg: 5     # Arm angle change threshold in degrees
-sleep_time_threshold_min: 5      # Sustained duration threshold in minutes
-sleep_ignore_nonwear: true       # Treat non-wear during night as missing, not sleep
+sleep_algorithm: "HDCZA"         # HDCZA = Heuristic algorithm for sleep detection
+
+# GGIR Part 5 — time-use analysis
+save_ms5rawlevels: true          # Save epoch-level Part 5 output
+save_ms5raw_without_invalid: false
+part5_agg2_60seconds: true       # 60-second aggregated Part 5 time series
+
+# qwindow — day-segment boundaries for GGIR Part 2/5
+# "auto" = derive from school_schedules.yaml
+# or specify manually as decimal hours: [0, 8.5, 12, 15.5, 24]
+qwindow_strategy: "auto"
+
+# Bout detection (GGIR Part 5)
+boutdur_mvpa: [1, 5, 10]         # MVPA bout durations to report (minutes)
+boutdur_in: [10, 20, 30]         # Inactivity bout durations to report (minutes)
+boutdur_lig: [1, 5, 10]          # Light activity bout durations to report (minutes)
+
+# Reports to generate
+do_report: [2, 4, 5]             # Generate reports for Parts 2, 4, 5
 
 # === Validity criteria ===
 # A pupil must meet BOTH waking and sleep criteria to be included in analysis.
@@ -58,9 +69,10 @@ bout_min_minutes:
   moderate: 5                    # 5+ min sustained moderate activity
   vigorous: 5                    # 5+ min sustained vigorous activity
 
-# === Analysis settings ===
-attendance_arrival_window_min: 60  # Minutes before school start to check for arrival
-attendance_enmo_threshold_mg: 50   # ENMO threshold (mg) for detecting arrival burst
+# === Metadata ===
+# Optional SPSS .sav files for richer metadata (absences, observation periods, etc.)
+# Set to null or omit if not available — config.yaml schedules will be used instead
+sav_metadata_dir: null             # Path to directory with .sav admin files
 
 # === Output ===
 output_format: "csv"             # "parquet" or "csv" — format for processed epoch data

@@ -1,0 +1,445 @@
+---
+title: "SchoolMoves — Comparison: Old Program vs New GGIR Pipeline"
+author: "SchoolMoves Pipeline Validation"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    theme: flatly
+    code_folding: show
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE, warning = TRUE, message = TRUE,
+  fig.width = 10, fig.height = 6
+)
+knitr::opts_knit$set(root.dir = normalizePath(".."))
+```
+
+# 1. Purpose
+
+This notebook investigates **where** and **why** the old program
+(`data/raw/oud_programma/1_general.R`) and the new GGIR-based pipeline differ.
+
+The goal is NOT to force alignment but to document and understand the
+methodological differences, identify expected vs unexpected divergences,
+and assess whether the new pipeline's outputs are scientifically valid.
+
+```{r load-packages}
+library(dplyr)
+library(ggplot2)
+library(yaml)
+
+source("R/pipeline/utils.R")
+source("R/pipeline/03_read_ggir_output.R")
+source("R/pipeline/04_label_schedule.R")
+```
+
+# 2. Methodology Comparison
+
+## 2.1 High-Level Differences
+
+```{r methodology-table}
+comparison <- data.frame(
+  Dimension = c(
+    "Device", "Body location", "GGIR usage",
+    "Activity classification", "Epoch length",
+    "Sleep detection", "Non-wear detection",
+    "Bout detection", "School context source",
+    "Output granularity"
+  ),
+  Old_Program = c(
+    "Axivity", "Thigh", "Part 1 only (ENMO + nonwear)",
+    "Random Forest -> activity TYPE (Sit/Stand/Walk/Run/Cycle/Lie)",
+    "5 seconds", "External Axivity file + SPSS manual records",
+    "GGIR Part 1 + student-reported (from SPSS)",
+    "Custom sitting bouts, 30-sec interruption rule, 6 duration bins",
+    "SPSS .sav files (7 lessons per day)",
+    "5-second epochs, day-level aggregation, bout-level"
+  ),
+  New_Pipeline = c(
+    "GENEActiv", "Wrist", "Parts 1-5 (full pipeline)",
+    "ENMO cut-points -> intensity LEVEL (SB/LPA/MPA/VPA)",
+    "5 seconds (GGIR default windowsize)", "GGIR Part 4 HDCZA algorithm",
+    "GGIR Part 2 integrated (SD + range + duration)",
+    "GGIR boutdur params + custom context-split bouts",
+    "config.yaml (optional .sav support)",
+    "GGIR day-segment summaries, person summaries"
+  ),
+  stringsAsFactors = FALSE
+)
+
+knitr::kable(comparison, col.names = c("Dimension", "Old Program", "New Pipeline"),
+             caption = "Methodological comparison")
+```
+
+## 2.2 Why These Differences Exist
+
+### Device & Body Location
+
+The old program was designed for an **Axivity thigh-worn** accelerometer study.
+The current project uses **GENEActiv wrist-worn** devices. This is the most
+fundamental difference: wrist-worn acceleration patterns are qualitatively
+different from thigh-worn (more arm movement artifacts, different non-wear
+signatures, different cut-point thresholds).
+
+**Implication**: Cut-points, activity classification, and sleep detection
+algorithms are NOT interchangeable between body locations.
+
+### Activity Classification Approach
+
+| Old (Thigh) | New (Wrist) |
+|---|---|
+| Random Forest model | ENMO cut-points (Hildebrand 2014/2017) |
+| 6 activity TYPES: Sitting, Lying, Standing, Walking, Running, Cycling | 4 intensity LEVELS: SB, LPA, MPA, VPA |
+| Requires training data and pre-built model | Uses validated published thresholds |
+| Position-specific features (thigh angle) | Acceleration magnitude only |
+
+**Why different**: Thigh-worn devices can distinguish postures (sitting vs
+standing) via inclination angle, enabling activity TYPE classification.
+Wrist-worn devices cannot reliably distinguish postures, so intensity-based
+classification using ENMO thresholds is the standard approach.
+
+### GGIR Usage
+
+The old program used GGIR Part 1 **only** for ENMO extraction and nonwear
+scoring, then did everything else with custom code. The new pipeline uses GGIR
+Parts 1-5, getting validated implementations of:
+
+- Autocalibration (Part 1)
+- Non-wear detection (Part 2)
+- Cut-point classification (Part 2)
+- Sleep detection (Parts 3-4)
+- Time-use analysis with bout detection (Part 5)
+
+# 3. Output Structure Comparison
+
+## 3.1 Old Program Outputs
+
+```{r old-output-structure}
+old_outputs <- data.frame(
+  File = c("PA_per_5sec.csv", "activity_per_schoolday.Rds", "PA_per_bout.Rds"),
+  Level = c("5-second epoch", "Day-level", "Bout-level"),
+  Key_Columns = c(
+    "timestamp, pid, activity_type, ENMO, during_class_1..7, sitting, bout_nummer_sitting, nonwear_*",
+    "Sitting_total, Standing_total, Walking_total (+ per context), ENMO means, bout counts by duration bin",
+    "bout_nummer_sitting, bout_time_sitting, bout_time_sitting_exclusive_school/in_class/out_class"
+  ),
+  stringsAsFactors = FALSE
+)
+knitr::kable(old_outputs, caption = "Old program output files")
+```
+
+## 3.2 New Pipeline Outputs
+
+```{r new-output-structure}
+new_outputs <- data.frame(
+  File = c(
+    "part2_daysummary.csv", "part4_nightsummary_sleep_cleaned.csv",
+    "part5_daysummary_*.csv", "part5_personsummary_*.csv",
+    "validity_report.csv", "analysis/activity_totals.csv",
+    "analysis/sleep_summary.csv"
+  ),
+  Level = c("Day-level", "Night-level", "Day-segment-level",
+            "Person-level", "Person-level", "Day-context-level", "Night-level"),
+  Source = c("GGIR Part 2", "GGIR Part 4", "GGIR Part 5",
+             "GGIR Part 5", "Custom", "Custom (from GGIR)", "Custom (from GGIR)"),
+  stringsAsFactors = FALSE
+)
+knitr::kable(new_outputs, caption = "New pipeline output files")
+```
+
+## 3.3 Column Mapping
+
+```{r column-mapping}
+col_map <- data.frame(
+  Concept = c(
+    "Activity intensity", "School context", "Non-wear flag",
+    "Sleep period", "Bout duration", "ENMO metric",
+    "Observation period", "Absence"
+  ),
+  Old_Column = c(
+    "activity_type (Sitting/Lying/Standing/Walking/Running/Cycling)",
+    "during_class_1..7, at_school_activity, in_class_activity",
+    "nonwear_detected, nonwear_reported, nonwear_unique",
+    "sleep_axivity (from SPSS)",
+    "bout_time_sitting, bout_time_sitting_exclusive_*",
+    "ENMO (from GGIR Part 1, per minute)",
+    "during_observation (from SPSS admin)",
+    "absent (from SPSS admin)"
+  ),
+  New_Column = c(
+    "GGIR Part 2 intensity flags (dur_day_IN_*, dur_day_LIG_*, etc.)",
+    "qwindow segments mapped to context via config.yaml",
+    "GGIR Part 2 integrated non-wear (N valid hours)",
+    "GGIR Part 4 sleeponset/wakeup",
+    "GGIR Part 5 boutdur.in/boutdur.mvpa columns",
+    "GGIR Part 2 ENMO (per epoch, calibrated)",
+    "Full recording period (no explicit observation window)",
+    "Not available (requires .sav metadata)"
+  ),
+  stringsAsFactors = FALSE
+)
+knitr::kable(col_map, caption = "Column mapping between old and new")
+```
+
+# 4. Data-Level Comparison
+
+This section loads actual pipeline output (if available) and compares
+distributions and values.
+
+## 4.1 Load New Pipeline Output
+
+```{r load-new-output}
+# Try loading from the CSV test run
+csv_output_dir <- file.path("data", "processed", "test_csv", "ggir")
+bin_output_dir <- file.path("data", "processed", "test_bin", "ggir")
+
+new_data <- list()
+
+for (dir_name in c("csv" = csv_output_dir, "bin" = bin_output_dir)) {
+  label <- names(which(c(csv_output_dir, bin_output_dir) == dir_name))
+  tryCatch({
+    data <- load_all_ggir_output(dir_name)
+    new_data[[label]] <- data
+    cat("Loaded", label, "output\n")
+  }, error = function(e) {
+    cat("Could not load", label, "output:", e$message, "\n")
+  })
+}
+```
+
+## 4.2 Read Old Program Code Structure
+
+```{r parse-old-program}
+old_script_path <- file.path("..", "data", "raw", "oud_programma", "1_general.R")
+
+if (file.exists(old_script_path)) {
+  old_code <- readLines(old_script_path, warn = FALSE)
+  cat("Old program: ", length(old_code), "lines of R code\n\n")
+
+  # Extract key function calls
+  ggir_calls <- grep("GGIR|g\\.part", old_code, value = TRUE)
+  cat("GGIR-related lines:\n")
+  cat(paste("  ", trimws(ggir_calls)), sep = "\n")
+
+  # Extract data sources
+  data_sources <- grep("read_rds|read_spss|read_csv", old_code, value = TRUE)
+  cat("\n\nData source lines:\n")
+  cat(paste("  ", trimws(head(data_sources, 10))), sep = "\n")
+} else {
+  cat("Old program script not found at:", old_script_path, "\n")
+}
+```
+
+# 5. Key Difference Analysis
+
+## 5.1 Activity Classification: TYPE vs INTENSITY
+
+```{r classification-comparison}
+cat("=== Activity Classification Comparison ===\n\n")
+cat("OLD PROGRAM (Thigh-worn, Random Forest):\n")
+cat("  Classes: Sitting, Lying, Standing, Walking, Running, Cycling\n")
+cat("  Method: Random Forest model trained on labelled thigh-accelerometer data\n")
+cat("  Granularity: Activity TYPE (what are you doing?)\n")
+cat("  Epoch: 5 seconds\n\n")
+
+cat("NEW PIPELINE (Wrist-worn, Cut-points):\n")
+cat("  Classes: Sedentary (<56.3 mg), Light (56.3-191.6), Moderate (191.6-695.8), Vigorous (>695.8)\n")
+cat("  Method: Hildebrand et al. 2014/2017 wrist-worn children cut-points\n")
+cat("  Granularity: Activity INTENSITY (how hard are you moving?)\n")
+cat("  Epoch: 5 seconds (GGIR default)\n\n")
+
+cat("EXPECTED DIFFERENCE: These are fundamentally different classification\n")
+cat("approaches. They cannot be directly compared numerically.\n")
+cat("However, we can compare the PROPORTIONS:\n")
+cat("  Old 'Sitting + Lying' ~ New 'Sedentary'\n")
+cat("  Old 'Standing' ~ New 'Light' (approximately)\n")
+cat("  Old 'Walking' ~ New 'Light/Moderate'\n")
+cat("  Old 'Running + Cycling' ~ New 'Moderate/Vigorous'\n")
+```
+
+## 5.2 Bout Detection
+
+```{r bout-comparison}
+cat("=== Bout Detection Comparison ===\n\n")
+
+cat("OLD PROGRAM:\n")
+cat("  Target: Sitting/Lying bouts (posture-based)\n")
+cat("  Interruption rule: Non-sitting episode < 30 seconds = part of sitting bout\n")
+cat("  Duration bins: 0-1, 1-4, 5-9, 10-19, 20-29, 30+ minutes\n")
+cat("  Context split: Bouts split at school context boundaries\n")
+cat("  Context types: at_school, in_class, out_class, elsewhere\n\n")
+
+cat("NEW PIPELINE:\n")
+cat("  Target: Inactivity bouts (ENMO-based, <56.3 mg)\n")
+cat("  Interruption rule: GGIR's boutcriter parameter (default 80% of bout)\n")
+cat("  Duration bins: 10, 20, 30 minutes (configurable via boutdur.in)\n")
+cat("  Context split: Custom context-split bouts available (our value-add)\n")
+cat("  Context types: in_class, recess, lunch, before_school, after_school, weekend\n\n")
+
+cat("KEY DIFFERENCE: Old program detects SITTING bouts (posture), new pipeline\n")
+cat("detects SEDENTARY bouts (low acceleration). A child standing still would\n")
+cat("be 'Standing' in old program but 'Sedentary' in new pipeline.\n")
+```
+
+## 5.3 Sleep Detection
+
+```{r sleep-comparison}
+cat("=== Sleep Detection Comparison ===\n\n")
+
+cat("OLD PROGRAM:\n")
+cat("  Source: Axivity device sleep detection (external)\n")
+cat("  Stored in: SPSS .sav file (Databestand_Slaap.sav)\n")
+cat("  Method: Likely angle-based detection from thigh accelerometer\n")
+cat("  Override: Sets activity_type = 'Sleeping' during detected sleep\n\n")
+
+cat("NEW PIPELINE:\n")
+cat("  Source: GGIR Part 4 (HDCZA algorithm)\n")
+cat("  Method: Heuristic algorithm using sustained inactivity bouts (Part 3)\n")
+cat("    + arm angle change detection from wrist accelerometer\n")
+cat("  Output: sleeponset, wakeup, SleepDuration per night\n\n")
+
+cat("KEY DIFFERENCE: Different devices, different body locations, different\n")
+cat("algorithms. Wrist-based sleep detection (HDCZA) is well-validated for\n")
+cat("population-level studies. Exact onset/offset times may differ by 15-30 min.\n")
+```
+
+## 5.4 Non-Wear Detection
+
+```{r nonwear-comparison}
+cat("=== Non-Wear Detection Comparison ===\n\n")
+
+cat("OLD PROGRAM:\n")
+cat("  Sources (3):\n")
+cat("    1. GGIR Part 1 nonwear score (automated, per minute)\n")
+cat("    2. Student-reported non-wear times (from SPSS Dataset_Leerlingen.sav)\n")
+cat("    3. Union of both: nonwear_unique = max(detected, reported)\n\n")
+
+cat("NEW PIPELINE:\n")
+cat("  Source: GGIR Part 2 integrated non-wear detection\n")
+cat("  Method: SD < threshold AND range < threshold on >= 2 of 3 axes\n")
+cat("    over 60-min blocks assessed every 15 min\n")
+cat("  No student-reported data (unless .sav metadata provided)\n\n")
+
+cat("KEY DIFFERENCE: Old program had richer non-wear data (student self-report).\n")
+cat("New pipeline relies solely on algorithmic detection unless .sav files are\n")
+cat("provided. This may slightly overestimate wear time.\n")
+```
+
+# 6. Comparison Visualisations
+
+## 6.1 Pipeline Flow Comparison
+
+```{r pipeline-flow, fig.height=8, fig.cap="Pipeline flow comparison"}
+# Text-based flow diagram
+cat("
+OLD PROGRAM FLOW:                    NEW PIPELINE FLOW:
+========================             ========================
+Raw .cwa files (Axivity)             Raw .bin/.csv (GENEActiv)
+         |                                    |
+  GGIR g.part1() ONLY               GGIR Parts 1-5
+  (ENMO + nonwear)                   (calibration, ENMO, nonwear,
+         |                            sleep, time-use, bouts)
+  Random Forest features                      |
+  (5-sec epoch features)             Part 2: daily summaries
+         |                           Part 4: sleep per night
+  RF Activity Type prediction        Part 5: time-use per segment
+  (Sit/Stand/Walk/Run/Cycle)                  |
+         |                           School context labelling
+  SPSS admin data merge              (config.yaml qwindow mapping)
+  (schedules, absences, sleep)                |
+         |                           Validity assessment
+  Custom bout detection              (GGIR validity flags)
+  (sitting bouts, 30-sec rule)                |
+         |                           Export
+  Day-level aggregation              (GGIR CSVs + analysis CSVs)
+  (activity min per context)
+         |
+  Export (Rds, sav, csv)
+")
+```
+
+## 6.2 School Context Resolution
+
+```{r context-resolution}
+# Compare school context approaches
+schedules <- load_school_schedules("config/school_schedules.yaml")
+
+cat("=== School Context Resolution ===\n\n")
+cat("OLD PROGRAM: 7 individual lesson flags (during_class_1 .. during_class_7)\n")
+cat("  Each lesson has explicit start/end from SPSS admin data\n")
+cat("  Combined into: at_school, in_class, out_class, out_school\n\n")
+
+cat("NEW PIPELINE: Named context blocks from config.yaml\n")
+for (sch in schedules[1:2]) {
+  cat(sprintf("\n  School %d (%s):\n", sch$school_id, sch$schedule_source))
+  for (block in sch$blocks) {
+    cat(sprintf("    %s - %s: %s\n", block$start, block$end, block$context))
+  }
+}
+
+cat("\n\nMapping between old and new:\n")
+cat("  OLD 'during_class_1..7'  -> NEW 'in_class'\n")
+cat("  OLD 'during_school_hours & !during_class'  -> NEW 'recess' or 'lunch'\n")
+cat("  OLD '!during_school_hours'  -> NEW 'before_school' or 'after_school'\n")
+cat("  OLD 'weekend flag (via wday)'  -> NEW 'weekend'\n")
+```
+
+# 7. Expected vs Unexpected Differences
+
+```{r expected-differences}
+cat("=== EXPECTED DIFFERENCES (methodologically justified) ===\n\n")
+cat("1. Activity classification outputs are INCOMPARABLE\n")
+cat("   (TYPE vs INTENSITY, thigh vs wrist)\n\n")
+cat("2. Bout definitions differ\n")
+cat("   (sitting bouts vs sedentary bouts, different interruption rules)\n\n")
+cat("3. Sleep onset/offset will differ by 15-30 min\n")
+cat("   (different algorithms, different body locations)\n\n")
+cat("4. Non-wear estimates may differ\n")
+cat("   (old has student self-report, new is algorithmic only)\n\n")
+cat("5. ENMO values will differ\n")
+cat("   (wrist movement >> thigh movement during sedentary tasks)\n\n")
+cat("6. School context granularity differs\n")
+cat("   (old: 7 lesson flags, new: named context blocks)\n\n")
+
+cat("\n=== POTENTIALLY UNEXPECTED DIFFERENCES (investigate if found) ===\n\n")
+cat("1. Very different wear-time totals for same participant\n")
+cat("   -> Check non-wear algorithm sensitivity\n\n")
+cat("2. Total school-hours activity time differs by >30 min/day\n")
+cat("   -> Check schedule alignment\n\n")
+cat("3. No sleep detected for a participant where old program found sleep\n")
+cat("   -> Check HDCZA sensitivity parameters\n\n")
+cat("4. GGIR fails to process files that old program handled\n")
+cat("   -> Check file format compatibility\n")
+```
+
+# 8. Recommendations
+
+```{r recommendations}
+cat("=== RECOMMENDATIONS FOR INTERPRETATION ===\n\n")
+
+cat("1. DO NOT directly compare intensity minutes between old and new pipelines.\n")
+cat("   They measure different things (activity type vs intensity level).\n\n")
+
+cat("2. DO compare structural patterns:\n")
+cat("   - Are the same participants flagged as invalid?\n")
+cat("   - Do school-hour activity patterns show similar temporal structure?\n")
+cat("   - Are sedentary bout counts in the same order of magnitude?\n\n")
+
+cat("3. For publication, report the new pipeline's methods (GGIR Parts 1-5,\n")
+cat("   Hildebrand cut-points, HDCZA sleep detection) and cite:\n")
+cat("   - van Hees et al. (GGIR methods papers)\n")
+cat("   - Hildebrand et al. 2014, 2017 (cut-points)\n\n")
+
+cat("4. Consider running a small subsample through both pipelines on the SAME\n")
+cat("   device data to quantify the impact of algorithm choice vs device choice.\n")
+```
+
+# 9. Session Info
+
+```{r session-info}
+sessionInfo()
+```

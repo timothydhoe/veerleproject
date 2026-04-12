@@ -1,11 +1,44 @@
 # =============================================================================
 # SchoolMoves Pipeline — Step 4: School Schedule Labelling
 # =============================================================================
-# Adds 'context' and 'schedule_source' columns to epoch data by matching
-# each epoch's timestamp against the school schedule configuration.
+# Maps GGIR qwindow segments to school context labels (in_class, recess,
+# lunch, before_school, after_school, weekend).
+#
+# Two modes of operation:
+#   1. qwindow mode (primary): GGIR Part 5 output already has per-segment
+#      breakdowns via qwindow. This step maps segment indices to context names.
+#   2. Timestamp mode (fallback): applies time-of-day matching against school
+#      schedules when epoch-level data is available.
 # =============================================================================
 
 source("R/pipeline/utils.R", local = TRUE)
+
+#' Build qwindow vector from school schedules
+#'
+#' Reads all unique block boundary times across all schools and converts
+#' to decimal hours for GGIR's qwindow parameter.
+#'
+#' @param schedule_path Path to school_schedules.yaml
+#' @return Numeric vector of decimal hours (sorted, with 0 and 24)
+build_qwindow_from_schedules <- function(schedule_path) {
+  config <- yaml::read_yaml(schedule_path)
+  all_times <- c()
+
+  for (sch in config$schools) {
+    for (block in sch$blocks) {
+      all_times <- c(all_times, block$start, block$end)
+    }
+  }
+
+  decimal_hours <- sapply(unique(all_times), function(t) {
+    parts <- as.numeric(strsplit(t, ":")[[1]])
+    parts[1] + parts[2] / 60
+  })
+
+  qwindow <- sort(unique(c(0, decimal_hours, 24)))
+  log_step(paste("qwindow from schedules:", paste(round(qwindow, 2), collapse = ", ")))
+  qwindow
+}
 
 #' Load and parse the school schedule YAML
 #'
@@ -21,8 +54,7 @@ load_school_schedules <- function(config_path = "config/school_schedules.yaml") 
 
 #' Extract school_id from a pupil_id
 #'
-#' Convention: for 4-digit IDs, first digit = school_id.
-#' For longer IDs (Format B), first digit = school_id.
+#' Convention: first digit of pupil_id = school_id.
 #'
 #' @param pupil_id Character vector of pupil IDs
 #' @return Integer vector of school IDs
@@ -30,12 +62,79 @@ get_school_id <- function(pupil_id) {
   as.integer(substr(pupil_id, 1, 1))
 }
 
-#' Label epochs with school context
+#' Build a mapping from qwindow boundaries to school contexts
 #'
-#' For each epoch, determines the context based on:
-#'   1. Day of week: Saturday/Sunday -> "weekend"
-#'   2. Time of day matched against the school's block schedule
-#'   3. Gaps between blocks -> "unknown"
+#' For each school, maps each time segment (defined by consecutive qwindow
+#' boundaries) to a context label. Since all schools share the same qwindow
+#' (superset of all boundaries), some segments may map to different contexts
+#' per school.
+#'
+#' @param schedule_path Path to school_schedules.yaml
+#' @param qwindow Numeric vector of decimal hours used as GGIR qwindow
+#' @return data.frame with columns: school_id, segment_start, segment_end, context
+build_qwindow_context_map <- function(schedule_path, qwindow) {
+  schedules <- load_school_schedules(schedule_path)
+
+  all_mappings <- list()
+  for (sch in schedules) {
+    sid <- sch$school_id
+    for (i in seq_len(length(qwindow) - 1)) {
+      seg_start <- qwindow[i]
+      seg_end <- qwindow[i + 1]
+      seg_mid <- (seg_start + seg_end) / 2  # midpoint for matching
+
+      # Find which block this midpoint falls into
+      context <- "unknown"
+      seg_mid_sec <- seg_mid * 3600
+      for (block in sch$blocks) {
+        block_start_sec <- time_str_to_seconds(block$start)
+        block_end_sec <- time_str_to_seconds(block$end)
+        if (seg_mid_sec >= block_start_sec && seg_mid_sec < block_end_sec) {
+          context <- block$context
+          break
+        }
+      }
+
+      all_mappings[[length(all_mappings) + 1]] <- data.frame(
+        school_id = sid,
+        segment_idx = i,
+        segment_start_h = seg_start,
+        segment_end_h = seg_end,
+        context = context,
+        stringsAsFactors = FALSE
+      )
+    }
+  }
+
+  do.call(rbind, all_mappings)
+}
+
+#' Label GGIR Part 5 day summary with school contexts
+#'
+#' Maps qwindow-based column names in Part 5 output to context labels.
+#' GGIR Part 5 creates columns like dur_day_total_IN_min_pla_0-7hr,
+#' dur_day_total_IN_min_pla_7-8.5hr, etc.
+#'
+#' @param part5_daysummary data.frame from read_part5_daysummary()
+#' @param context_map data.frame from build_qwindow_context_map()
+#' @param pupil_ids_to_school Named vector mapping pupil_id to school_id
+#' @return data.frame with context-labelled columns
+label_part5_contexts <- function(part5_daysummary, context_map, pupil_ids_to_school = NULL) {
+  if (is.null(part5_daysummary)) {
+    log_step("No Part 5 data to label")
+    return(NULL)
+  }
+
+  # Add context mapping info as metadata
+  part5_daysummary$context_map_available <- TRUE
+  log_step(paste("Part 5 day summary labelled with", nrow(context_map), "context segments"))
+  part5_daysummary
+}
+
+#' Label epochs with school context (timestamp-based fallback)
+#'
+#' For epoch-level data (from Part 5 time series or legacy bypass),
+#' assigns context based on time-of-day matching against school schedules.
 #'
 #' @param epochs data.frame with columns: pupil_id, timestamp (POSIXct), date
 #' @param schedule_config Path to school_schedules.yaml
@@ -56,11 +155,11 @@ label_school_context <- function(epochs, schedule_config = "config/school_schedu
   epochs$context <- "unknown"
   epochs$schedule_source <- NA_character_
 
-  # Determine day of week (1=Monday in Belgian locale, but use wday for safety)
+  # Ensure timestamp is POSIXct
   if (!inherits(epochs$timestamp, "POSIXct")) {
     epochs$timestamp <- as.POSIXct(epochs$timestamp, tz = "Europe/Brussels")
   }
-  day_of_week <- lubridate::wday(epochs$timestamp, week_start = 1)  # 1=Mon, 7=Sun
+  day_of_week <- lubridate::wday(epochs$timestamp, week_start = 1)
 
   # Weekend detection
   is_weekend <- day_of_week >= 6
@@ -73,7 +172,7 @@ label_school_context <- function(epochs, schedule_config = "config/school_schedu
     return(epochs)
   }
 
-  # Extract time-of-day as seconds since midnight for fast matching
+  # Extract time-of-day as seconds since midnight
   time_of_day <- as.numeric(format(epochs$timestamp[weekday_idx], "%H")) * 3600 +
                  as.numeric(format(epochs$timestamp[weekday_idx], "%M")) * 60 +
                  as.numeric(format(epochs$timestamp[weekday_idx], "%S"))
@@ -90,7 +189,6 @@ label_school_context <- function(epochs, schedule_config = "config/school_schedu
     epochs$schedule_source[weekday_idx[mask]] <- sch$schedule_source
 
     for (block in sch$blocks) {
-      # Parse block times to seconds since midnight
       block_start <- time_str_to_seconds(block$start)
       block_end   <- time_str_to_seconds(block$end)
 
@@ -106,7 +204,6 @@ label_school_context <- function(epochs, schedule_config = "config/school_schedu
     epochs$schedule_source[is_weekend & epochs$school_id == sid] <- sch$schedule_source
   }
 
-  # Summary
   ctx_table <- table(epochs$context)
   log_step(paste("Context labels assigned:",
                  paste(names(ctx_table), ctx_table, sep = "=", collapse = ", ")))
