@@ -7,8 +7,7 @@ this repository.
 
 **SchoolMove** is a data pipeline for processing wrist-worn GENEActiv accelerometer data
 from ~400 Belgian schoolchildren across 6 schools, analyzing physical activity patterns
-in school contexts. Client: Veerle Van Oeckel (UGent). Currently in planning/early
-implementation phase.
+in school contexts. Client: Veerle Van Oeckel (UGent).
 
 ## Environment Setup
 
@@ -17,7 +16,7 @@ implementation phase.
 - **Python**: Deferred — only to be introduced if R/Shiny cannot meet a specific need.
   Do not build Python components unless explicitly asked.
 
-There is no build/test infrastructure yet. `renv.lock` is planned but not yet created.
+`renv.lock` is committed and pins all package versions for reproducibility.
 
 ## Architecture
 
@@ -30,46 +29,69 @@ There is no build/test infrastructure yet. `renv.lock` is planned but not yet cr
 
 | Layer | Tool | Notes |
 |-------|------|-------|
-| Accelerometer processing | GGIR (R package) | Parts 1–6; canonical pipeline |
+| Accelerometer processing | GGIR (R package) | Parts 1–5; canonical pipeline |
+| School context labeling | R (data.table) | Custom post-GGIR segment assignment |
 | QC & output | R Shiny | Dashboard for Veerle and academic colleagues |
-| Config | `config.yaml` (see below) | Researcher-editable, read by R |
+| Config | `config.yaml` (repo root) | Researcher-editable, read by R |
 | Python | — | Deferred; do not introduce unless asked |
 
 ### Researcher config file
 
-A central `config.yaml` at the repo root (or `r/config.yaml`) is the **single place
-researchers tweak the pipeline** without touching code. Veerle and her colleagues should
-never need to edit an `.R` file to change a parameter. The config covers:
+`config.yaml` at the repo root is the **single place researchers tweak the pipeline**
+without touching code. Veerle should never need to edit an `.R` file to change a
+parameter. The config covers:
 
 - GGIR parameters (epoch length, cut-points, non-wear thresholds, sleep algorithm)
 - School schedules and day-segment definitions
 - Validity criteria (min wear hours, min valid days, weekend requirement)
-- Output preferences (which reports to generate, file formats)
 - Measurement metadata (school IDs, meting dates)
+- Developer/testing overrides (example_mode, relaxed thresholds for dummy data)
 
-R code reads this file at startup (e.g. via the `yaml` package) and passes values into
-GGIR and Shiny. When adding new configurable parameters, always route them through
-`config.yaml`, not as hardcoded values in scripts.
+R code reads this file at startup via the `yaml` package and passes values into GGIR,
+the segment labeler, and Shiny. When adding new configurable parameters, always route
+them through `config.yaml`, not as hardcoded values in scripts.
 
 ### Directory Layout
 
 ```
 r/
-  SchoolMove.Rproj        # Open this in RStudio to start working
-  install.R               # Run once to install packages
+  SchoolMove.Rproj        # Open in RStudio to start working
+  install.R               # Run once: renv::restore(), then installs packages
+  .Rprofile               # renv auto-activation
+  renv/ + renv.lock       # Package environment (do not edit)
+
   pipeline/
-    01_run_ggir.R         # GGIR pipeline runner (reads config.yaml)
+    run_all.R             # ← Researcher entry point: sources 01, 02, 03 in sequence
+    01_run_ggir.R         # GGIR parts 1–5 for both metingen (reads config.yaml)
+    02_label_segments.R   # Apply school schedule context to GGIR output
+    03_build_summaries.R  # Build analysis-ready tables + validity flags
+
+  qc/
+    qc_01_ggir.R          # Verify GGIR outputs after step 01
+    qc_02_segments.R      # Verify segment coverage after step 02
+    qc_03_summaries.R     # Verify validity counts + distributions after step 03
+
   shiny/
-    global.R              # Shared setup for the dashboard
-    ui.R                  # Dashboard layout and tabs
-    server.R              # Dashboard logic
-  validation/
-    check_outputs.R       # Sanity checks after running the pipeline
+    global.R              # Load config + all processed data + shared helpers
+    ui.R                  # Dashboard layout (bslib, 6 tabs)
+    server.R              # Reactive logic
+
 config.yaml               # Researcher-facing config — all tunable parameters here
 data/
   raw/                    # Input .csv files (GDPR — not in repo)
-  processed/              # GGIR output (milestone .RData + summary CSVs)
+    meting_1/             # Pupil CSV files for wave 1
+    meting_2/             # Pupil CSV files for wave 2
+  processed/
+    ggir/
+      meting_1/           # GGIR output for wave 1
+      meting_2/           # GGIR output for wave 2
+    segment_summary.csv   # Output of 02_label_segments.R
+    analysis_ready.csv    # Output of 03_build_summaries.R
+    validity_summary.csv  # Output of 03_build_summaries.R
   example/                # Fictional test data (safe to commit)
+    dummy_data/
+      meting_1/
+      meting_2/
 docs/                     # Detailed reference documents — read before implementing
 .claude/
   settings.json           # Hooks configuration (see Claude Code Tooling below)
@@ -77,44 +99,58 @@ docs/                     # Detailed reference documents — read before impleme
   commands/               # Custom slash commands for Claude Code
 ```
 
-> **Note on Python directory**: A `python/` directory exists in the repo from an earlier
-> plan. It is vestigial — ignore it unless Python work is explicitly requested.
+> **Note on Python directory**: A `python/` directory may exist in the repo from an
+> earlier plan. It is vestigial — ignore it unless Python work is explicitly requested.
 
-### Pipeline Phases (GGIR-centric)
+### Pipeline Steps
 
-| Phase | GGIR Part | What happens | Key output |
-|-------|-----------|--------------|------------|
-| **1** | Part 1 | Load CSV data, ENMO + anglez derivation, epoch aggregation | `.RData` milestone files |
-| **2** | Part 2 | Non-wear detection, clipping, cut-point classification, day/segment summaries | `part2_daysummary.csv` |
-| **3** | Part 3 | Rest period estimation (feeds sleep detection) | `.RData` |
-| **4** | Part 4 | Sleep detection (L5 / HDCZA) | `part4_nightsummary.csv` |
-| **5** | Part 5 | Full behavioral timeline, bouts, fragmentation, day-segment analysis | `part5_daysummary.csv` |
-| **6** | Part 6 | Cross-record analyses (meting 1 vs meting 2 comparisons, school-level) | Summary CSVs |
-| **7** | Shiny | QC dashboard, schedule overlays, export-ready tables for Veerle | Interactive app |
+| Step | Script | What happens | Key output |
+|------|--------|--------------|------------|
+| **01** | `01_run_ggir.R` | GGIR Parts 1–5: load CSVs, ENMO, non-wear, cut-point classification, sleep detection, day summaries | `part2_daysummary.csv`, `part4_nightsummary.csv`, `part5_daysummary_WW_*.csv` |
+| **QC 01** | `qc/qc_01_ggir.R` | Verify GGIR outputs: required files present, correct columns, participant counts | Console report |
+| **02** | `02_label_segments.R` | Apply school schedule labels to GGIR output: for each participant × day, distribute per-qwindow GGIR columns across school context segments (in_class / recess / lunch / before_school / after_school). Falls back to proportional day-level approximation if qwindow columns are not present. | `segment_summary.csv` |
+| **QC 02** | `qc/qc_02_segments.R` | Verify segment coverage: all pupils labeled, no missing school day windows, fallback school warnings | Console report |
+| **03** | `03_build_summaries.R` | Join all outputs into analysis-ready wide table; compute validity flags per participant | `analysis_ready.csv`, `validity_summary.csv` |
+| **QC 03** | `qc/qc_03_summaries.R` | Verify inclusion/exclusion counts, check MVPA distributions, confirm cut-points match config | Console report |
+| **Shiny** | `shiny/` | Dashboard: Overzicht, Deelnemers, Schooldag, Slaap, Vergelijking, Export (6 tabs) | Interactive app |
+
+Run the full pipeline at once with `r/pipeline/run_all.R` (source in RStudio or
+`Rscript --vanilla r/pipeline/run_all.R` in terminal).
+
+### GGIR internals (Parts 1–5)
+
+| GGIR Part | What happens | Key output |
+|-----------|--------------|------------|
+| Part 1 | Load CSV data, ENMO + anglez derivation, epoch aggregation | `.RData` milestone files |
+| Part 2 | Non-wear detection, clipping, cut-point classification, day/segment summaries | `part2_daysummary.csv` |
+| Part 3 | Rest period estimation (feeds sleep detection) | `.RData` |
+| Part 4 | Sleep detection (HDCZA algorithm) | `part4_nightsummary.csv` |
+| Part 5 | Full behavioral timeline, bouts, fragmentation, day-segment analysis | `part5_daysummary_WW_*.csv`, `part5_personsummary_WW_*.csv` |
 
 GGIR persists all parameters in a `config.csv` per output directory, enabling
 reproducible re-runs. Our `config.yaml` feeds into this.
 
 ### Input format
 
-**CSV files only for now.** Raw `.bin` files are not in scope at this stage. Note that
-this means GGIR autocalibration (Part 1 sphere-fitting) cannot be applied — ENMO values
-will be based on the pre-converted CSV data rather than autocalibrated raw samples. This
-is an accepted trade-off for the current phase; revisit if Veerle provides `.bin` files.
+**CSV files only for now.** Raw `.bin` files are not in scope at this stage. This means
+GGIR autocalibration (Part 1 sphere-fitting) cannot be applied — ENMO values will be
+based on the pre-converted CSV data. This is an accepted trade-off; revisit if Veerle
+provides `.bin` files.
 
 ## Key Domain Concepts
 
-| Term                   | Definition                                                                                                                                                              |
-|------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| **ENMO**               | Euclidean Norm Minus One — primary acceleration metric (gravity-subtracted). Must be computed from raw x/y/z samples, not from epoch means (Jensen's inequality issue). |
-| **SVMgs**              | Pre-computed per-epoch ENMO sum already in the CSV files — NOT identical to GGIR's recalculated ENMO due to autocalibration.                                            |
-| **Epoch**              | Fixed time window (1 second in this study) for aggregating raw samples.                                                                                                 |
-| **Cut-points**         | ENMO thresholds classifying activity intensity. Confirmed values (Hildebrand 2014/2017, wrist-worn, children): SB < 56.3 mg, LPA 56.3–191.6 mg, MPA 191.6–695.8 mg, VPA > 695.8 mg. |
-| **Autocalibration**    | Corrects sensor drift via sphere-fitting on stationary periods. GGIR applies this in Part 1 on raw data. **Not applicable when using pre-converted CSVs.**               |
-| **Non-wear detection** | Identifies device-off-wrist periods: SD < 13 mg and range < 50 mg on ≥2 of 3 axes, over 60-min blocks assessed every 15 min. |
-| **Validity criteria**  | Sedentary analysis: ≥9 valid waking hours on ≥4 days. Sleep analysis: ≥50% valid sleep data on ≥5 nights. |
-| **GGIR**               | R package implementing the canonical 6-part accelerometer pipeline. All 6 parts are in scope for this study.                                                            |
-| **Meting**             | Dutch for "measurement". Meting 1 and meting 2 are the two measurement waves per school.                                                                                |
+| Term | Definition |
+|------|-----------|
+| **ENMO** | Euclidean Norm Minus One — primary acceleration metric (gravity-subtracted). Computed from raw x/y/z samples. |
+| **SVMgs** | Pre-computed per-epoch ENMO sum in CSV files — NOT identical to GGIR's ENMO (no autocalibration). |
+| **Epoch** | Fixed time window (1 second in this study) for aggregating raw samples. |
+| **Cut-points** | ENMO thresholds classifying activity intensity. Hildebrand 2014/2017, wrist, children: SB < 56.3 mg, LPA 56.3–191.6 mg, MPA 191.6–695.8 mg, VPA > 695.8 mg. |
+| **Autocalibration** | Corrects sensor drift via sphere-fitting on stationary periods. **Not applicable with pre-converted CSVs.** |
+| **Non-wear detection** | SD < 13 mg and range < 50 mg on ≥2 of 3 axes, over 60-min blocks assessed every 15 min. |
+| **Validity criteria** | Sedentary analysis: ≥16 valid waking hours on ≥3 days (≥1 weekend). Sleep: ≥50% valid sleep on ≥5 nights. |
+| **GGIR** | R package for the canonical 6-part accelerometer pipeline. Parts 1–5 are in scope. |
+| **Meting** | Dutch for "measurement". Meting 1 and meting 2 are the two measurement waves per school. |
+| **Segment** | School day context label: `before_school`, `in_class`, `recess`, `lunch`, `after_school`, `weekend`. |
 
 ## Data Format
 
@@ -123,7 +159,7 @@ Input files are GENEActiv CSVs. Key characteristics (full spec in
 
 - **File naming**: 4-digit code — first digit = school ID (1–6), remaining 3 digits = pupil
   ID (001–...). Example: `2063` = pupil 063 at school 2. Meting 1 and meting 2 files share
-  the same name and are separated into different folders.
+  the same name and are in separate folders.
 - **Header**: 100-row metadata block before data rows
 - **Data columns**: timestamp, x, y, z, light, button, temperature, SVMgs, x_std, y_std,
   z_std, peak_lux
@@ -131,23 +167,23 @@ Input files are GENEActiv CSVs. Key characteristics (full spec in
 
 ## Open Blockers
 
-Before implementing classification logic, these must be resolved with the research team:
-
 1. **GGIR config** — Full parameter set from Veerle's original GGIR runs (she may have a
-   `config.csv` from a previous run)
-2. **School schedules** — Schools 3 and 4 timetables still missing
-3. **Day-segment definitions** — Final time windows for lessons, recess, lunch, PE, etc.
+   `config.csv` from a previous run). Needed to ensure new results stay comparable.
+2. **School schedules — schools 3 and 4** — Current config has fallback approximations
+   (`fallback: true`). School 3 schedule not yet received; school 4 timetable was
+   image-only and could not be fully parsed. Confirmed timetables needed from Veerle
+   before results for these schools can be trusted.
+3. **Re-run `01_run_ggir.R`** — `qwindow` has now been added to `config.yaml` and the
+   GGIR call. Existing GGIR output was generated without it, so `part2_daysummary.csv`
+   does not yet contain per-window columns. Step 02 will fall back to proportional
+   approximation until the pipeline is re-run on real (or dummy) data.
 
 ## MCP Servers
 
 - **context7** (`https://mcp.context7.com/mcp`) — Use for library documentation lookups.
-  - GGIR docs: query with library ID `ggir` or similar
-  - **R Shiny docs**: query with library ID `shiny_posit_co`
+  - GGIR docs: library ID `/wadpac/ggir`
+  - R Shiny docs: library ID `shiny_posit_co`
     (source: `https://context7.com/websites/shiny_posit_co`)
-
-  > context7 is a single MCP server that serves docs for many libraries dynamically.
-  > There is no separate Shiny MCP server to configure — use the existing context7 server
-  > with the library ID above.
 
 ## Claude Code Tooling
 
@@ -157,11 +193,11 @@ Configured in `.claude/settings.json`. Fire without any invocation.
 
 | Hook | Trigger | What it does |
 |------|---------|--------------|
-| **GDPR guard** | Before any `git commit` | Aborts the commit if any file from `data/raw/` or `data/processed/` is staged. Prints the offending files and how to unstage them. |
-| **Config guard** | After saving `config.yaml` | Validates YAML syntax (via R's `yaml` package). Warns about missing sections, fallback schedules, and unset cut-points. |
+| **GDPR guard** | Before any `git commit` | Aborts the commit if any file from `data/raw/` or `data/processed/` is staged. |
+| **Config guard** | After saving `config.yaml` | Validates YAML syntax. Warns about missing sections, fallback schedules, unset cut-points. |
 | **R syntax check** | After saving any `.R` file | Runs `Rscript --vanilla -e "parse(file = '...')"` and surfaces errors immediately. |
 
-Hook scripts live in `.claude/hooks/` and are plain Python — edit them there if behaviour needs to change.
+Hook scripts live in `.claude/hooks/` — edit them there if behaviour needs to change.
 
 ### Commands (invoke with `/`)
 
@@ -169,22 +205,21 @@ Defined as markdown prompts in `.claude/commands/`. Each becomes a slash command
 
 | Command | Use it when... |
 |---------|----------------|
-| `/validate-config` | Before running the pipeline — get a plain-language readiness report on `config.yaml` |
-| `/pipeline-status` | Checking what GGIR has already processed and what's still missing |
+| `/validate-config` | Before running the pipeline — plain-language readiness report on `config.yaml` |
+| `/pipeline-status` | Checking which pipeline steps have completed and what output exists |
+| `/run-qc` | After running a pipeline step — interprets QC script output in plain language |
 | `/add-schedule` | A school timetable arrives — describe it in plain text and Claude writes the YAML |
-| `/blocker-check` | Before a meeting with Veerle — produces a one-page briefing on open questions |
-| `/shiny-plan` | Before adding any new feature to the dashboard — produces a full plan before any code is written |
+| `/blocker-check` | Before a meeting with Veerle — one-page briefing on open questions |
+| `/shiny-plan` | Before adding any new Shiny feature — produces a full plan before any code is written |
 
 ---
 
 ## Reference Documentation
 
-All files in `docs/` are detailed and should be read before implementing any pipeline
-component:
+All files in `docs/` should be read before implementing any pipeline component:
 
 - `step1_data_format_reference.md` — CSV format specification
 - `step2_ggir_pipeline_reference.md` — GGIR pipeline internals
-- `step3_action_plan_and_strategy.md` — Earlier action plan (written when Python was
-  primary — **partially outdated**, but useful for domain context and output requirements)
-- `meeting-notes/monday_meeting_prep.md` — Open questions and context from client
-  meetings
+- `step3_action_plan_and_strategy.md` — Earlier action plan (partially outdated but useful for domain context)
+- `planning/plan_of_attack_v2.md` — Current project vision and phased plan
+- `meeting-notes/monday_meeting_prep.md` — Open questions and context from client meetings

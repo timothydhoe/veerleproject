@@ -1,0 +1,37 @@
+# SchoolMove — Configuration Profile
+# ─────────────────────────────────────────────────────────────────────────────
+# This profile captures the researcher-tunable parameters for a named analysis.
+# It is loaded by the Shiny app (Tab 7 "Instellingen") and merged over the
+# base values in config.yaml. The pipeline uses these values when running.
+#
+# To create a new profile: open Tab 7, adjust parameters, click "Opslaan als".
+# To activate a profile for the pipeline: click "Activeer" in Tab 7.
+# ─────────────────────────────────────────────────────────────────────────────
+
+profile_name: "Standaard"
+created_at:   "2026-04-14"
+notes:        "Standaard parameters — identiek aan de waarden in config.yaml."
+
+# Geldigheidsparameters (Validity)
+validity:
+  min_wear_hours_per_day:  16
+  min_valid_days:           3
+  require_weekend_day:   true
+  min_valid_nights_sleep:   5
+  min_pct_night_valid:     50
+
+# Activiteitsdrempels (Cut-points, ENMO in mg)
+# Hildebrand et al. 2014/2017, pols, kinderen
+ggir:
+  cut_points_mg:
+    sedentary_to_light:    56.3
+    light_to_moderate:    191.6
+    moderate_to_vigorous: 695.8
+
+# Bouten (Bouts)
+bouts:
+  sedentary_min:               30
+  light_min:                   10
+  moderate_min:                 5
+  vigorous_min:                 5
+  split_at_context_boundary: true

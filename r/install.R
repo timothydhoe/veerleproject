@@ -24,8 +24,13 @@ renv::install(c(
 
   # Visualisation
   "ggplot2",
+  "ggrepel",     # Non-overlapping text labels in ggplot2
+  "plotly",      # Interactive charts
   "scales",
-  "patchwork"    # Combine ggplot panels
+  "patchwork",   # Combine ggplot panels
+
+  # Testing
+  "testthat"     # Unit testing framework
 ))
 
 renv::snapshot()

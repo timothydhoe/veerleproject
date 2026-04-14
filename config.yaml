@@ -15,9 +15,9 @@ paths:
 
 # ── GGIR parameters ───────────────────────────────────────────────────────────
 ggir:
-  parts: [1, 2, 3, 4, 5, 6]     # Run all six GGIR parts
-  overwrite: true               # Set to false once happy with output to skip re-processing
-  epoch_length_s: 1             # Epoch duration in seconds (1 s confirmed in protocol)
+  parts: [1, 2, 3, 4, 5]        # documentation only — script hardcodes mode=1:5
+  overwrite: false              # Set to true to force re-processing of existing output
+  epoch_length_s: 1             # documentation only — not passed to GGIR (CSVs are pre-epoched)
 
   # Activity cut-points (ENMO in mg) — wrist-worn GENEActiv, Hildebrand et al. 2014
   cut_points_mg:
@@ -26,17 +26,58 @@ ggir:
     moderate_to_vigorous: 695.8   # MPA | VPA boundary
 
   # Non-wear detection
-  nonwear_window_min: 15        # Rolling window length for non-wear scoring (minutes)
+  nonwear_window_min: 15        # documentation only — not passed to GGIR (uses GGIR defaults)
+
+  # Parallel processing: number of CPU cores GGIR may use.
+  # 1 = single-core (safe for laptops). Set to 4–8 on a server or workstation.
+  maxNcores: 1
+
+  # qwindow strategy:
+  #   "manual" — use the qwindow list below (current behaviour, safe default).
+  #   "auto"   — derive breakpoints from all schools' bell times in schedules:
+  #              produces a finer-grained qwindow that aligns exactly with each
+  #              school's schedule. IMPORTANT: switching to "auto" requires
+  #              re-running Step 01 (GGIR) — this takes hours on a full dataset.
+  qwindow_strategy: "manual"
+
+  # Time-of-day segment boundaries (decimal hours, 24-h clock).
+  # Used when qwindow_strategy is "manual". GGIR Part 2 produces separate
+  # activity columns for each window, e.g. dur_day_total_IN_min_8.5.10.
+  # 02_label_segments.R maps these windows onto school-specific context labels.
+  # Values are a compromise across all school schedules; adjust if needed.
+  #   08:30 – schools start (08:25–08:30)
+  #   10:00 – just before first recess (10:05–10:15 across schools)
+  #   12:00 – lunch start
+  #   13:00 – approx. end of lunch (ranges 12:50–13:30)
+  #   15:30 – covers most end-of-day times (15:25–15:55; school 4 ends 16:30)
+  qwindow: [0, 8.5, 10.0, 12.0, 13.0, 15.5, 24]
+
+# ── Bout detection parameters ─────────────────────────────────────────────────
+# Used by utils_bouts.R when epoch-level data is available.
+# split_at_context_boundary: true means a sedentary bout is reset when the
+# school context changes (e.g. a 35-min sit that spans a recess is counted
+# as two separate bouts, not one).
+bouts:
+  sedentary_min: 30              # minimum consecutive minutes to count as a SB bout
+  light_min: 10                  # documentation only — not yet used by pipeline
+  moderate_min: 5                # documentation only — not yet used by pipeline
+  vigorous_min: 5                # documentation only — not yet used by pipeline
+  split_at_context_boundary: true  # not yet active — pending methodological decision
 
 # ── Validity criteria ─────────────────────────────────────────────────────────
 validity:
+  # Sedentary analysis criteria
   min_wear_hours_per_day: 16
   min_valid_days: 3
   require_weekend_day: true
+  # Sleep analysis criteria
+  min_valid_nights_sleep: 5    # min nights with valid sleep to include in sleep analysis
+  min_pct_night_valid: 50      # min sleep efficiency % to count a night as valid
 
 # ── Measurement windows ───────────────────────────────────────────────────────
 # Approximate dates when accelerometers were distributed and collected per school.
 # Source: Info_metingen.docx
+# Note: this section is documentation only — no R script reads these values.
 measurements:
   school_1:
     n_pupils: 70
@@ -175,7 +216,25 @@ dev:
   includedaycrit: 5          # GGIR Part 2: min valid hours per day (production = 16)
   includedaycrit_part5: 0.3  # GGIR Part 5: min fraction of waking day (production = 0.667)
 
+# ── Reproducibility tracking ──────────────────────────────────────────────────
+# These actions always run unconditionally in run_all.R — the flags below are
+# documentation only and are not checked at runtime.
+reproducibility:
+  save_ggir_config:      true   # copy GGIR config.csv to logs/ after Step 01
+  write_input_manifest:  true   # write logs/input_manifest.csv at pipeline start
+  write_run_log:         true   # append to logs/pipeline_runs.csv at pipeline end
+
+# ── Configuration profiles ────────────────────────────────────────────────────
+# Profiles let Veerle save and restore named parameter sets (validity thresholds,
+# cut-points, bout durations) without editing this file directly.
+# The active profile is loaded by the Shiny app at startup and merged over the
+# base values in this file.
+# Profiles are managed through Tab 7 "Instellingen" in the Shiny dashboard.
+profiles:
+  active:    "default"
+  directory: "profiles/"    # relative to r/ working directory
+
 # ── Output settings ───────────────────────────────────────────────────────────
 output:
-  timezone: "Europe/Brussels"
-  locale:   "nl_BE"            # Belgian Dutch — used for date formatting in reports
+  timezone: "Europe/Brussels"   # read by: 01_run_ggir.R (desiredtz), shiny/global.R
+  locale:   "nl_BE"             # documentation only — not applied by any script
