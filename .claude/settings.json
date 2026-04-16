@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 .claude/hooks/gdpr_guard.py"
+            "command": "python3 /Users/timothydhoe/Code/veerleproject/.claude/hooks/gdpr_guard.py"
           }
         ]
       }
@@ -17,11 +17,11 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 .claude/hooks/config_guard.py"
+            "command": "python3 /Users/timothydhoe/Code/veerleproject/.claude/hooks/config_guard.py"
           },
           {
             "type": "command",
-            "command": "python3 .claude/hooks/r_syntax_check.py"
+            "command": "python3 /Users/timothydhoe/Code/veerleproject/.claude/hooks/r_syntax_check.py"
           }
         ]
       }

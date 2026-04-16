@@ -29,3 +29,6 @@ r/_examples
 
 # VSCode
 .vscode
+
+# Claude Code / Playwright MCP (auto-generated browser artifacts)
+r/.playwright-mcp

@@ -1,0 +1,31 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__playwright__browser_navigate",
+      "mcp__playwright__browser_take_screenshot",
+      "mcp__playwright__browser_click",
+      "mcp__playwright__browser_snapshot",
+      "Bash(Rscript -e \"shiny::runApp\\('shiny', port=3838, launch.browser=FALSE\\)\")",
+      "Bash(echo \"PID: $!\")",
+      "Bash(Rscript --vanilla -e \"parse\\(file='pipeline/utils_input.R'\\); cat\\('OK\\\\n'\\)\")",
+      "Bash(Rscript --vanilla -e \"parse\\(file='pipeline/utils_ggir.R'\\); cat\\('OK\\\\n'\\)\")",
+      "Bash(Rscript --vanilla -e \"parse\\(file='pipeline/utils_bouts.R'\\); cat\\('OK\\\\n'\\)\")",
+      "Bash(Rscript --vanilla -e \"parse\\(file='pipeline/run_all.R'\\); cat\\('run_all OK\\\\n'\\)\")",
+      "Bash(Rscript --vanilla -e \"parse\\(file='pipeline/01_run_ggir.R'\\); cat\\('01 OK\\\\n'\\)\")",
+      "Bash(Rscript --vanilla -e \"parse\\(file='pipeline/02_label_segments.R'\\); cat\\('02 OK\\\\n'\\)\")",
+      "Bash(Rscript --vanilla -e \"parse\\(file='pipeline/03_build_summaries.R'\\); cat\\('03 OK\\\\n'\\)\")",
+      "Bash(Rscript --vanilla -e \"parse\\(file='shiny/global.R'\\); cat\\('global OK\\\\n'\\)\")",
+      "Bash(Rscript --vanilla -e \"parse\\(file='shiny/ui.R'\\); cat\\('ui OK\\\\n'\\)\")",
+      "Bash(Rscript --vanilla -e \"parse\\(file='shiny/server.R'\\); cat\\('server OK\\\\n'\\)\")",
+      "Bash(Rscript --vanilla -e \"parse\\(file='shiny/server.R'\\)\")",
+      "Bash(Rscript:*)",
+      "Bash(curl -s http://127.0.0.1:3838/)",
+      "mcp__playwright__browser_evaluate",
+      "Read(//private/tmp/**)"
+    ]
+  },
+  "enableAllProjectMcpServers": true,
+  "enabledMcpjsonServers": [
+    "context7"
+  ]
+}

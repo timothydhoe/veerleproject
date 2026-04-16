@@ -106,14 +106,8 @@ epochs for the signal itself, 15-minute windows for checking non-wear, and 60-mi
 blocks for confirming it.
 
 **Part 2** is where quality control happens. GGIR detects non-wear periods using a
-rolling window approach: if at least 2 of 3 axes show a standard deviation below 13 mg
-and a range below 50 mg over a 60-minute block (checked every 15 minutes), that period
-is flagged as non-wear. It also flags clipping artefacts and produces the first
-day-level summaries. Validity in this study is split by analysis type: for sedentary
-behaviour, pupils need at least 9 valid waking hours on 4 days; for sleep, at least 50%
-valid sleep data on 5 nights. This is also where school schedule segments get wired in:
-the `qwindow` parameter defines time boundaries for a typical school day, and GGIR will
-compute activity summaries separately for each segment.
+rolling window approach: if at least 2 of 3 axes show a standard deviation below 13 mg and a range below 50 mg over a 60-minute block (checked every 15 minutes), that period is flagged as non-wear. It also flags clipping artefacts and produces the first day-level summaries. Validity in this study is split by analysis type: for sedentary behaviour, pupils need at least 9 valid waking hours on 4 days; for sleep, at least 50% valid sleep data on 5 nights. This is also where school schedule segments get wired in:
+the `qwindow` parameter defines time boundaries for a typical school day, and GGIR will compute activity summaries separately for each segment.
 
 **Parts 3 and 4** handle sleep detection. Part 3 identifies periods of sustained
 stillness using the angle of the wrist relative to gravity (anglez). If the arm angle
