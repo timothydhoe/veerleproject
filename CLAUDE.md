@@ -73,7 +73,7 @@ r/
 
   shiny/
     global.R              # Load config + all processed data + shared helpers
-    ui.R                  # Dashboard layout (bslib, 6 tabs)
+    ui.R                  # Dashboard layout (bslib, 7 tabs)
     server.R              # Reactive logic
 
 config.yaml               # Researcher-facing config — all tunable parameters here
@@ -112,7 +112,7 @@ docs/                     # Detailed reference documents — read before impleme
 | **QC 02** | `qc/qc_02_segments.R` | Verify segment coverage: all pupils labeled, no missing school day windows, fallback school warnings | Console report |
 | **03** | `03_build_summaries.R` | Join all outputs into analysis-ready wide table; compute validity flags per participant | `analysis_ready.csv`, `validity_summary.csv` |
 | **QC 03** | `qc/qc_03_summaries.R` | Verify inclusion/exclusion counts, check MVPA distributions, confirm cut-points match config | Console report |
-| **Shiny** | `shiny/` | Dashboard: Overzicht, Deelnemers, Schooldag, Slaap, Vergelijking, Export (6 tabs) | Interactive app |
+| **Shiny** | `shiny/` | Dashboard: Overzicht, Deelnemers, Schooldag, Slaap, Meting 1 vs 2, Export, Instellingen (7 tabs) | Interactive app |
 
 Run the full pipeline at once with `r/pipeline/run_all.R` (source in RStudio or
 `Rscript --vanilla r/pipeline/run_all.R` in terminal).

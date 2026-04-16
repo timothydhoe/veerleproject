@@ -8,6 +8,7 @@ what's built, and all the tools available to you.
 
 ---
 
+
 ## Mental model
 
 The project has one job: take accelerometer CSV files → run GGIR → label school context
@@ -384,6 +385,20 @@ frequency.
 The GENEActiv CSV also contains `sdx`, `sdy`, `sdz` columns — within-epoch standard
 deviations from the device firmware. These are **not mapped** in the `rmc.*` parameters
 and are ignored by GGIR. GGIR computes its own variance metrics from x/y/z directly.
+
+### ENMO vs SVMgs
+
+ENMO is **not computed anywhere in this repo's R code**. Two separate ENMO-like values exist:
+
+| Value | Origin | Used by |
+|-------|--------|---------|
+| `SVMgs` | Pre-computed by GENEActiv device firmware, stored in the CSV | Not used — GGIR ignores this column |
+| GGIR ENMO | Computed internally by GGIR Part 1 from raw x/y/z (√(x²+y²+z²) − 1g) | All downstream pipeline steps (cut-point classification, non-wear, sleep) |
+
+`SVMgs` and GGIR's ENMO are **not identical**: GGIR recomputes from the raw signal and
+(when `.bin` files are available) applies autocalibration to correct sensor drift. With
+pre-converted CSVs, `do.cal=FALSE` so autocalibration is skipped — ENMO values will have
+uncorrected drift. This is an accepted trade-off; revisit if Veerle provides `.bin` files.
 
 ---
 

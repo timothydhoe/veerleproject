@@ -81,29 +81,74 @@ Het dashboard opent in je browser. Je kunt ook klikken op de **Run App**-knop di
 
 ## 4. Tabbladen uitleg
 
+Het dashboard heeft een navigatiebalk bovenaan met globale filters (school en meting) die op alle tabbladen van toepassing zijn.
+
 ### Overzicht
-Toont hoeveel deelnemers geldig zijn (voldoen aan de draagcriteria), verdeeld per school en meting. Bevat een draaguren-heatmap per deelnemer.
+Startscherm met vijf klikbare KPI-kaarten (klikken navigeert naar het bijbehorende tabblad):
+- **Deelnemers** — totaal aantal verwerkte deelnemers
+- **Geldig voor analyse** — % dat voldoet aan de draagcriteria
+- **Gem. MVPA** — gemiddelde matig-tot-intensieve beweging per dag
+- **WHO-richtlijn gehaald** — % deelnemers met ≥60 min MVPA/dag
+- **Gem. slaap** — geschatte slaapduur per nacht (SPT)
+
+Eronder: een grafiek met de MVPA-verandering per school (M1 → M2) en een schooloverzichttabel. Onderaan staat een automatisch gegenereerde **samenvatting voor rapport** die je kunt kopiëren.
+
+Bovenaan staat ook een **Pipeline uitvoeren**-knop om de pipeline direct vanuit het dashboard te starten.
 
 ### Deelnemers
-Detailtabel per deelnemer: geldige dagen, gemiddelde draaguren, of er een weekenddag is, geldigheidscriterium gehaald (ja/nee).
+Individuele deelnemerverkenner. Selecteer een deelnemer via het dropdown-menu of door op een rij in de inclusietabel te klikken. Toont:
+- MVPA per dag (tijdlijn)
+- Activiteit per schoolsegment, M1 vs M2 (staafgrafiek)
+- Draagduuroverzicht (heatmap per dag: groen = geldig, rood = onvoldoende)
+- Inclusie/exclusie-tabel met filtermogelijkheid (alle / inbegrepen / uitgesloten)
 
 ### Schooldag
-Gemiddelde MVPA-minuten per schoolsegment (voor school, les, speeltijd, middagpauze, na school). Filter op school en meting. Gebruik dit tabblad voor de schoolcontextanalyse.
+Analyse van activiteit per schooldagsegment (voor school, les, speeltijd, middagpauze, na school). Bevat:
+- **Hoofdgrafiek** — schakelaar tussen "Één zone" (kies SB / LPA / MVPA) of "Alle zones" (volledig activiteitsbudget gestapeld)
+- **MVPA tijdens pauze** per school
+- **Weekdag activiteitsprofiel** — gemiddelde MVPA per dag met schakelaar schooldagen vs. weekend
+- **Sedentaire bouten** — gemiddeld aantal aaneengesloten sedentaire perioden (≥30 min) per dag
+- **Detailtabel** per segment
+
+> Scholen met een geschat rooster tonen een gele waarschuwingsbanner bovenaan.
 
 ### Slaap
-Gemiddelde slaapduur en slaapefficiëntie per school, op basis van de GGIR Part 4 nacht-samenvatting (HDCZA-algoritme).
+Drie KPI-kaarten (gem. slaap, Δ M1→M2, % onder 8 uur per nacht) gevolgd door:
+- **Slaapverdeling per school** — vioolplot met mediaan, te wisselen tussen slaapduur en slaapefficiëntie
+- **Bland-Altman M1 vs M2** — meet de overeenstemming tussen de twee metingen; bias ≈ 0 en meeste punten binnen de rode stippellijnen betekent goede reproduceerbaarheid
 
-### Vergelijking
-Vergelijkt meting 1 en meting 2 op deelnemersniveau (scatter- of boxplots). Handig voor het bekijken van veranderingen tussen de twee meetmomenten.
+### Meting 1 vs 2
+Vergelijkt de twee meetmomenten op twee sub-tabbladen:
+
+**Longitudinaal**
+- Slopegraph: individuele deelnemers als punten, schoolgemiddelde als pijl (interactief, hover = ID + waarden)
+- Statistisch overzicht: Wilcoxon signed-rank test per school met Δ, 95%-BI en rang-biseriële effectgrootte (r)
+- Effectgrootte-grafiek per school
+
+**Correlaties**
+- Correlatiescatter (x-as kiesbaar: MVPA / SB / SB-bouts; y-as = slaapduur) met Pearson r
+- Schoolvergelijkingstabel
+- Deelnemersvergelijkingstabel M1 vs M2 (sorteerbaar op verandering, met CSV-download)
 
 ### Export
-Download knoppen voor de uitvoerbestanden:
+Downloadknoppen voor alle verwerkte uitvoerbestanden:
 - `analysis_ready.csv` — brede tabel, één rij per deelnemer × meting
 - `validity_summary.csv` — geldigheidsflags per deelnemer
 - `segment_summary.csv` — activiteit per schoolsegment
 
 ### Instellingen
-Beheer configuratieprofielen (zie sectie 5).
+Beheer configuratieprofielen en pas parameters aan zonder `config.yaml` te bewerken. Drie secties:
+
+**Profielbeheer** — laad, sla op, en activeer benoemde parametersets (zie sectie 5).
+
+**Geldigheidsparameters** — pas aan wanneer een dag/nacht/meting als geldig telt:
+- Min. draaguren per dag (standaard: 16)
+- Min. geldige dagen per meting (standaard: 3)
+- Weekenddag vereist (aan/uit)
+- Min. geldige nachten voor slaapanalyse (standaard: 5)
+- Min. % geldige slaap per nacht (standaard: 50%)
+
+**Activiteitsdrempels (ENMO, mg)** — ENMO-grenswaarden voor SB/LPA/MPA/VPA en boutinstellingen. Pas alleen aan als je de wetenschappelijke referentie hebt gecontroleerd (standaard: Hildebrand et al. 2014/2017).
 
 ---
 
@@ -112,8 +157,8 @@ Beheer configuratieprofielen (zie sectie 5).
 Het tabblad **Instellingen** laat je de validiteitsdrempels, ENMO-grenswaarden en boutduur aanpassen zonder `config.yaml` handmatig te bewerken.
 
 **Werkwijze:**
-1. Pas de schuifregelaars en velden aan naar wens
-2. Klik **Opslaan als profiel** en geef het een naam (bijv. `gevoeligheidsanalyse_1`)
+1. Pas de velden aan naar wens
+2. Klik **Opslaan als…** en geef het een naam (bijv. `gevoeligheidsanalyse_1`)
 3. Selecteer het profiel in het dropdown-menu en klik **Activeer**
 4. Herstart de pipeline (`run_all.R`) om de nieuwe instellingen toe te passen
 

@@ -231,7 +231,7 @@ reproducibility:
 # base values in this file.
 # Profiles are managed through Tab 7 "Instellingen" in the Shiny dashboard.
 profiles:
-  active:    "test_save"
+  active:    "default"
   directory: "profiles/"    # relative to r/ working directory
 
 # ── Output settings ───────────────────────────────────────────────────────────

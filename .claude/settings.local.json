@@ -1,36 +1,17 @@
 {
   "permissions": {
     "allow": [
-      "Bash(Rscript --vanilla -e \"parse\\(file='r/pipeline/run_all.R'\\)\")",
-      "Bash(Rscript --vanilla -e \"parse\\(file='r/pipeline/01_run_ggir.R'\\)\")",
-      "Bash(Rscript --vanilla -e \"parse\\(file='r/pipeline/02_label_segments.R'\\)\")",
-      "Bash(Rscript --vanilla -e \"parse\\(file='r/pipeline/03_build_summaries.R'\\)\")",
-      "Bash(Rscript --vanilla -e \"parse\\(file='r/shiny/global.R'\\)\")",
-      "Bash(Rscript --vanilla -e \"parse\\(file='r/shiny/ui.R'\\)\")",
-      "Bash(Rscript --vanilla -e \"parse\\(file='r/shiny/server.R'\\)\")",
-      "Bash(Rscript --vanilla -e \"parse\\(file='r/qc/qc_01_ggir.R'\\)\")",
-      "Bash(Rscript --vanilla -e \"parse\\(file='r/qc/qc_02_segments.R'\\)\")",
-      "Bash(python3:*)",
-      "Bash(Rscript --vanilla -e \"parse\\(file='r/shiny/global.R'\\); cat\\('global OK\\\\n'\\)\")",
-      "Bash(Rscript --vanilla -e \"parse\\(file='r/shiny/ui.R'\\); cat\\('ui OK\\\\n'\\)\")",
-      "Bash(Rscript --vanilla -e \"parse\\(file='r/shiny/server.R'\\); cat\\('server OK\\\\n'\\)\")",
-      "Bash(Rscript --vanilla -e \"shiny::runApp\\('r/shiny', port=7654, launch.browser=FALSE\\)\")",
-      "Bash(echo \"PID: $!\")",
-      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://127.0.0.1:7654)",
+      "Bash(Rscript:*)",
+      "Bash(curl:*)",
       "mcp__playwright__browser_navigate",
       "mcp__playwright__browser_take_screenshot",
       "mcp__playwright__browser_snapshot",
       "mcp__playwright__browser_click",
-      "WebFetch(domain:atlassian.design)",
-      "WebSearch",
-      "WebFetch(domain:www.atlassian.com)",
-      "WebFetch(domain:developer.atlassian.com)",
-      "Bash(Rscript:*)",
       "mcp__playwright__browser_wait_for",
-      "Bash(curl:*)",
-      "Bash(find . -maxdepth 3 -not -path './.git/*' -not -path './r/*' -not -path './project_1/*' -exec stat -f \"%Sm %z %N\" -t \"%Y-%m-%d\" {} \\\\;)",
-      "Bash(find ./data/example/dummy_data -maxdepth 2 -exec stat -f \"%Sm %z %N\" -t \"%Y-%m-%d\" {} \\\\;)",
-      "Bash(sort find:*)"
+      "WebSearch",
+      "WebFetch(domain:atlassian.design)",
+      "WebFetch(domain:www.atlassian.com)",
+      "WebFetch(domain:developer.atlassian.com)"
     ]
   },
   "enabledMcpjsonServers": [
