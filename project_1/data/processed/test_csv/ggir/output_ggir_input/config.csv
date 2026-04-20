@@ -1,4 +1,5 @@
 argument,value,context
+config_file_in_outputdir,data/processed/test_csv/ggir/output_ggir_input/config.csv,not applicable
 datadir,data/processed/test_csv/ggir_input,not applicable
 do.report,"c(2,4,5)",not applicable
 f0,1,not applicable
