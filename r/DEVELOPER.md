@@ -1,6 +1,6 @@
 # Developer Guide — SchoolMove
 
-Your personal reference for working on this project. Covers the day-to-day workflow,
+The Developer's Guide for working on this project. Covers the workflow,
 what's built, and all the tools available to you.
 
 > **Location note:** This file lives in `r/`. Paths below are relative to `r/` unless
@@ -12,35 +12,34 @@ what's built, and all the tools available to you.
 ## Mental model
 
 The project has one job: take accelerometer CSV files → run GGIR → label school context
-→ show results in Shiny. Everything else (config, QC, hooks, commands) supports that loop.
+→ show results in Shiny. Everything else (config, QC) supports that loop.
 
 ```
-../config.yaml            ← all parameters live here
+../config.yaml                          ← all parameters live here
         ↓
-pipeline/01_run_ggir.R    ← GGIR Parts 1–5 for each meting
+pipeline/01_run_ggir.R                  ← GGIR Parts 1–5 for each meting
         ↓
 ../data/processed/ggir/
-  meting_1/output_meting_1/results/   ← Part 2, 4, 5 CSVs
+  meting_1/output_meting_1/results/     ← Part 2, 4, 5 CSVs
   meting_2/output_meting_2/results/
         ↓
-pipeline/02_label_segments.R          ← map GGIR output to school-day segments
+pipeline/02_label_segments.R            ← map GGIR output to school-day segments
         ↓
 ../data/processed/segment_summary.csv
         ↓
-pipeline/03_build_summaries.R         ← join all outputs, compute validity flags
+pipeline/03_build_summaries.R           ← join all outputs, compute validity flags
         ↓
 ../data/processed/analysis_ready.csv
 ../data/processed/validity_summary.csv
         ↓
-shiny/                    ← dashboard Veerle actually uses
+shiny/                                  ← Dashboard
 ```
 
-The Shiny dashboard is the deliverable. Everything upstream is infrastructure to get
-her good data. Orchestrate the full pipeline with `pipeline/run_all.R`.
+Orchestrate the full pipeline with `pipeline/run_all.R`.
 
 ---
 
-## Day-to-day workflow
+## Workflow
 
 ### Starting a session
 
