@@ -58,7 +58,7 @@ if (qwindow_strategy == "auto") {
   qwindow_val <- build_qwindow_from_schedules(cfg$schedules)
   message("Using AUTO qwindow derived from school schedules.")
 } else {
-  qwindow_val <- cfg$ggir$qwindow
+  qwindow_val <- as.numeric(cfg$ggir$qwindow)
   message("Using MANUAL qwindow from config.")
 }
 
@@ -93,9 +93,9 @@ for (meting in c("meting_1", "meting_2")) {
     next
   }
 
-  n_files <- length(list.files(data_dir, pattern = "\\.csv$", ignore.case = TRUE))
+  n_files <- length(list.files(data_dir, pattern = "\\.(csv|bin|cwa)$", ignore.case = TRUE))
   if (n_files == 0) {
-    message("Skipping ", meting, " — no CSV files found in: ", data_dir)
+    message("Skipping ", meting, " — no data files found in: ", data_dir)
     next
   }
 
@@ -105,63 +105,72 @@ for (meting in c("meting_1", "meting_2")) {
   message("   input:  ", data_dir)
   message("   output: ", output_dir)
 
-  GGIR(
-    # ── Scope ─────────────────────────────────────────────────────────────────
-    mode      = 1:5,           # Parts 1–5 (Part 6 is out of scope for this study)
+  # ── Detect input format ───────────────────────────────────────────────────
+  # .bin and .cwa files use GGIR's native reader (with autocalibration).
+  # .csv files need rmc.* parameters for read.myacc.csv (no autocalibration).
+  has_native <- length(list.files(data_dir, pattern = "\\.(bin|cwa)$", ignore.case = TRUE)) > 0
+
+  # ── Shared GGIR arguments (all formats) ─────────────────────────────────
+  shared_args <- list(
+    mode      = 1:5,
     datadir   = data_dir,
     outputdir = output_dir,
     overwrite = isTRUE(cfg$ggir$overwrite),
+    epochvalues2csv = TRUE,
 
-    # ── Part 1: CSV reading ────────────────────────────────────────────────────
-    # GENEActiv native CSV reading was deprecated in GGIR 2.6-4. We use
-    # read.myacc.csv with explicit column mappings for the GENEActiv CSV format.
-    # do.cal = FALSE: autocalibration requires raw .bin files.
-    do.cal            = FALSE,
-    epochvalues2csv   = TRUE,
-    rmc.firstrow.acc  = 101,                    # 100-row metadata header
-    rmc.col.acc       = 2:4,                    # x, y, z columns
-    rmc.col.time      = 1,                      # timestamp column
-    rmc.col.temp      = 7,                      # temperature column
-    rmc.unit.acc      = "g",
-    rmc.unit.time     = "POSIX",
-    rmc.format.time   = "%Y-%m-%d %H:%M:%OS",  # e.g. "2026-02-22 17:00:00:000"
-    rmc.unit.temp     = "C",
-    rmc.sf            = 1,                      # 1 Hz: CSV stores 1-second epoch means
-
-    # ── Parts 3–4: Sleep detection ─────────────────────────────────────────────
-    # HDCZA is the wrist-validated algorithm for children (van Hees 2015).
-    # anglethreshold/timethreshold come from Veerle's protocol.
+    # Parts 3–4: Sleep detection (HDCZA, wrist-validated for children)
     HASPT.algo     = "HDCZA",
-    anglethreshold = 5,   # arm angle change < 5 degrees = sustained stillness
-    timethreshold  = 5,   # must hold ≥ 5 min to count as sleep candidate
+    anglethreshold = 5,
+    timethreshold  = 5,
 
-    # ── Part 5: Activity cut-points ────────────────────────────────────────────
-    # Hildebrand et al. 2014/2017, wrist-worn GENEActiv, children.
-    threshold.lig = cp$sedentary_to_light,    #  56.3 mg
-    threshold.mod = cp$light_to_moderate,     # 191.6 mg
-    threshold.vig = cp$moderate_to_vigorous,  # 695.8 mg
+    # Part 5: Activity cut-points (Hildebrand et al. 2014/2017, wrist, children)
+    threshold.lig = cp$sedentary_to_light,
+    threshold.mod = cp$light_to_moderate,
+    threshold.vig = cp$moderate_to_vigorous,
+    boutdur.in    = c(10, 20, 30),
 
-    # Sedentary bout lengths to extract separately (minutes).
-    boutdur.in = c(10, 20, 30),
-
-    # ── Part 2: Time-of-day segment windows ───────────────────────────────────
-    # GGIR splits each day into these windows and produces separate activity
-    # columns per window in part2_daysummary (e.g. dur_day_total_IN_min_8.5.10).
-    # 02_label_segments.R maps these windows onto school-specific context labels.
+    # Part 2: Time-of-day segment windows
     qwindow = qwindow_val,
 
-    # ── Non-wear & validity ────────────────────────────────────────────────────
+    # Non-wear & validity
     nonwear_approach     = nonwear_approach,
     includedaycrit       = includedaycrit,
     includedaycrit.part5 = includedaycrit_part5,
 
-    # ── General ───────────────────────────────────────────────────────────────
-    idloc      = 2,                        # ID = full filename (4-digit pupil code)
-    desiredtz  = cfg$output$timezone,      # "Europe/Brussels"
-    do.report  = c(2, 5),
+    # General
+    idloc       = 2,
+    desiredtz   = cfg$output$timezone,
+    do.report   = c(2, 5),
     do.parallel = max_cores > 1,
     maxNcores   = max_cores
   )
+
+  if (has_native) {
+    # ── Native path (.bin / .cwa) ────────────────────────────────────────────
+    # GGIR auto-detects format per file via GGIRread. Autocalibration enabled
+    # because raw multi-Hz data supports sphere-fitting.
+    message("   format: native (.bin/.cwa) — autocalibration ON")
+    ggir_args <- c(shared_args, list(do.cal = TRUE))
+  } else {
+    # ── CSV path (GENEActiv 100-row header) ──────────────────────────────────
+    # Autocalibration disabled: CSV is pre-epoched at 1 Hz.
+    message("   format: GENEActiv CSV — using rmc.* parameters, autocalibration OFF")
+    csv_args <- list(
+      do.cal           = FALSE,
+      rmc.firstrow.acc = 101,
+      rmc.col.acc      = 2:4,
+      rmc.col.time     = 1,
+      rmc.col.temp     = 7,
+      rmc.unit.acc     = "g",
+      rmc.unit.time    = "POSIX",
+      rmc.format.time  = "%Y-%m-%d %H:%M:%OS",
+      rmc.unit.temp    = "C",
+      rmc.sf           = 1
+    )
+    ggir_args <- c(shared_args, csv_args)
+  }
+
+  do.call(GGIR, ggir_args)
 
   message("── Done: ", meting, " ───────────────────────────────────────────────\n")
 }

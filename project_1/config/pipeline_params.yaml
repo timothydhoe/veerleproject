@@ -6,8 +6,8 @@
 # =============================================================================
 
 # === Input/Output ===
-input_dir: "data/raw/"           # Path to raw .bin or .csv files
-output_dir: "data/processed/"    # Pipeline output destination
+input_dir: "../data/raw/veerle_testdata/meting_1/"  # ⚠ TEST: Veerle's test data
+output_dir: "../data/veerle_processed/project_1/"  # ⚠ TEST: separate output folder
 log_dir: "logs/"                 # Conversion and pipeline logs
 
 # === ENMO cut-points (mg) — Hildebrand et al. wrist, children ===
@@ -55,9 +55,11 @@ do_report: [2, 4, 5]             # Generate reports for Parts 2, 4, 5
 # A pupil must meet BOTH waking and sleep criteria to be included in analysis.
 # Waking analysis: minimum valid days with sufficient wear time.
 # Sleep analysis: minimum valid nights with sufficient data coverage.
-min_valid_days_waking: 4         # Minimum number of valid waking days
-min_valid_hours_per_day: 9       # Minimum waking wear hours per valid day
-min_valid_nights_sleep: 5        # Minimum number of valid nights for sleep analysis
+# ⚠ RELAXED for 24h test data — restore before real data runs:
+#   min_valid_days_waking: 4, min_valid_hours_per_day: 9, min_valid_nights_sleep: 5
+min_valid_days_waking: 1         # Minimum number of valid waking days
+min_valid_hours_per_day: 6       # Minimum waking wear hours per valid day
+min_valid_nights_sleep: 1        # Minimum number of valid nights for sleep analysis
 min_pct_night_valid: 50          # Percentage of night with valid data required
 
 # === Bout detection (per intensity level) ===

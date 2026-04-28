@@ -48,6 +48,7 @@ run_ggir <- function(input_dir, output_dir, params, schedule_path = NULL, n_core
   # .csv files use read.myacc.csv with rmc.* parameters
   input_files <- list.files(input_dir, full.names = TRUE)
   has_bin <- any(grepl("\\.bin$", input_files, ignore.case = TRUE))
+  has_cwa <- any(grepl("\\.cwa$", input_files, ignore.case = TRUE))
   has_csv <- any(grepl("\\.csv$", input_files, ignore.case = TRUE))
 
   # Base GGIR arguments
@@ -93,7 +94,7 @@ run_ggir <- function(input_dir, output_dir, params, schedule_path = NULL, n_core
   # For CSV files: add rmc.* parameters so GGIR reads them via read.myacc.csv
   # GENEActiv CSV format: 100-row header, then epoch data
   # Columns: timestamp, x, y, z, light, button, temperature, SVMgs, x_std, y_std, z_std, peak_lux
-  if (has_csv && !has_bin) {
+  if (has_csv && !has_bin && !has_cwa) {
     log_step("CSV input detected: configuring rmc.* parameters for read.myacc.csv")
     csv_args <- list(
       rmc.firstrow.acc    = 101,      # Data starts at row 101 (after 100-row header)

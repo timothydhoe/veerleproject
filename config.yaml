@@ -9,9 +9,10 @@
 
 # ── Data paths ────────────────────────────────────────────────────────────────
 paths:
-  data_raw:       "../data/raw"              # Input CSV files (meting_1/ and meting_2/)
-  data_processed: "../data/processed/ggir"   # GGIR output destination
-  data_example:   "../data/example"          # Fictional test data (safe to commit)
+  # ⚠ CHANGED for test data — restore to "../data/raw" before real data runs
+  data_raw:       "../data/raw/veerle_testdata"  # Test data (.bin + .cwa)
+  data_processed: "../data/veerle_processed/r"    # ⚠ TEST: separate output folder
+  data_example:   "../data/example"              # Fictional test data (safe to commit)
 
 # ── GGIR parameters ───────────────────────────────────────────────────────────
 ggir:
@@ -67,11 +68,14 @@ bouts:
 # ── Validity criteria ─────────────────────────────────────────────────────────
 validity:
   # Sedentary analysis criteria
-  min_wear_hours_per_day: 16
-  min_valid_days: 3
-  require_weekend_day: true
+  # ⚠ RELAXED for 24h test data — restore before real data runs:
+  #   min_wear_hours_per_day: 16, min_valid_days: 3, require_weekend_day: true,
+  #   min_valid_nights_sleep: 5
+  min_wear_hours_per_day: 10
+  min_valid_days: 1
+  require_weekend_day: false
   # Sleep analysis criteria
-  min_valid_nights_sleep: 5    # min nights with valid sleep to include in sleep analysis
+  min_valid_nights_sleep: 1    # min nights with valid sleep to include in sleep analysis
   min_pct_night_valid: 50      # min sleep efficiency % to count a night as valid
 
 # ── Measurement windows ───────────────────────────────────────────────────────
@@ -200,20 +204,17 @@ schedules:
 dev:
   # Set to true to run the pipeline on example/dummy data instead of data/raw/.
   # Flip to false when processing real participant data.
-  example_mode: true
+  example_mode: false
 
-  # GGIR non-wear algorithm override for 1 Hz dummy data.
-  # The 2023 default resamples to 5 Hz internally before non-wear detection —
-  # this collapses all variance in 1 Hz data and flags most of the recording
-  # as non-wear. The 2013 algorithm uses the signal as-is and works correctly
-  # with 1 Hz data.
-  # ⚠ Remove this override (or set to null) before running on real 100 Hz data;
-  # the 2023 algorithm is preferred for high-frequency recordings.
-  nonwear_approach: "2013"
+  # GGIR non-wear algorithm override.
+  # For raw .bin/.cwa data (100 Hz) the 2023 algorithm is preferred.
+  # For 1 Hz dummy CSV data, use "2013" (2023 collapses variance at 1 Hz).
+  # ⚠ Set to "2013" when running on dummy CSV data.
+  nonwear_approach: "2023"
 
-  # Relaxed GGIR validity thresholds for 1 Hz dummy data.
+  # Relaxed GGIR validity thresholds for 24h test data.
   # ⚠ Reset to null (or remove) before running on real participant data.
-  includedaycrit: 5          # GGIR Part 2: min valid hours per day (production = 16)
+  includedaycrit: 10         # GGIR Part 2: min valid hours per day (production = 16)
   includedaycrit_part5: 0.3  # GGIR Part 5: min fraction of waking day (production = 0.667)
 
 # ── Reproducibility tracking ──────────────────────────────────────────────────

@@ -23,9 +23,13 @@ detect_format <- function(filepath) {
     return("geneactiv_bin")
   }
 
+  if (ext == "cwa") {
+    return("axivity_cwa")
+  }
+
   if (ext != "csv") {
     stop("Unsupported file extension: .", ext,
-         "\n  Expected .csv or .bin, got: ", basename(filepath))
+         "\n  Expected .csv, .bin, or .cwa, got: ", basename(filepath))
   }
 
   first_line <- readLines(filepath, n = 1, warn = FALSE)
@@ -91,11 +95,11 @@ write_input_manifest <- function(data_dirs, logs_dir = "logs") {
       next
     }
 
-    files <- list.files(dir_path, pattern = "\\.(csv|bin)$",
+    files <- list.files(dir_path, pattern = "\\.(csv|bin|cwa)$",
                         full.names = TRUE, ignore.case = TRUE, recursive = FALSE)
 
     if (length(files) == 0) {
-      message("[input] No .csv or .bin files in: ", dir_path)
+      message("[input] No .csv, .bin, or .cwa files in: ", dir_path)
       next
     }
 
@@ -111,7 +115,7 @@ write_input_manifest <- function(data_dirs, logs_dir = "logs") {
         format           = fmt,
         pupil_id         = pid,
         school_id        = sid,
-        ggir_compatible  = fmt %in% c("geneactiv_csv", "geneactiv_bin"),
+        ggir_compatible  = fmt %in% c("geneactiv_csv", "geneactiv_bin", "axivity_cwa"),
         stringsAsFactors = FALSE
       )
     }

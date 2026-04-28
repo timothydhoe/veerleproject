@@ -213,13 +213,14 @@ if (nrow(part4) > 0) {
   ]
 
 } else if (nrow(part5) > 0 && length(sleep5_col) > 0) {
-  # Fall back to SPT sleep estimate from part5 personsummary
+  # Fall back to SPT sleep estimate from part5 personsummary.
+  # Aggregate across windows to avoid cartesian product on merge.
   sleep_summary <- part5[
     , .(
         sleep_nights         = NA_integer_,
-        sleep_duration_h     = round(get(sleep5_col[1]) / 60, 2),
+        sleep_duration_h     = round(mean(get(sleep5_col[1]), na.rm = TRUE) / 60, 2),
         sleep_efficiency_pct = if (length(sleff5_col) > 0)
-          round(get(sleff5_col[1]), 1)
+          round(mean(get(sleff5_col[1]), na.rm = TRUE), 1)
         else NA_real_
       ),
     by = .(ID, school, meting)
@@ -305,22 +306,26 @@ if (nrow(sleep_summary) > 0) {
 }
 
 # Join part5 MVPA + SB + LPA + bouts
+# part5 personsummary may have multiple rows per ID (one per qwindow segment).
+# Aggregate across windows before merging to avoid cartesian product.
 if (nrow(part5) > 0) {
-  p5_cols <- c("ID", "school", "meting")
+  val_cols <- character()
+  if (exists("mvpa_col") && length(mvpa_col) > 0) val_cols <- c(val_cols, mvpa_col[1])
+  if (exists("sb_col")   && length(sb_col)   > 0) val_cols <- c(val_cols, sb_col[1])
+  if (exists("lpa_col")  && length(lpa_col)  > 0) val_cols <- c(val_cols, lpa_col[1])
+  if (exists("bts30_col") && length(bts30_col) > 0) val_cols <- c(val_cols, bts30_col[1])
+  if (exists("bts10_col") && length(bts10_col) > 0) val_cols <- c(val_cols, bts10_col[1])
 
-  if (exists("mvpa_col") && length(mvpa_col) > 0)
-    p5_cols <- c(p5_cols, mvpa_col[1])
-  if (exists("sb_col")   && length(sb_col)   > 0)
-    p5_cols <- c(p5_cols, sb_col[1])
-  if (exists("lpa_col")  && length(lpa_col)  > 0)
-    p5_cols <- c(p5_cols, lpa_col[1])
-  if (exists("bts30_col") && length(bts30_col) > 0)
-    p5_cols <- c(p5_cols, bts30_col[1])
-  if (exists("bts10_col") && length(bts10_col) > 0)
-    p5_cols <- c(p5_cols, bts10_col[1])
-
-  p5_cols <- intersect(p5_cols, names(part5))
-  part5_merge <- part5[, p5_cols, with = FALSE]
+  val_cols <- intersect(val_cols, names(part5))
+  if (length(val_cols) > 0) {
+    part5_merge <- part5[,
+      lapply(.SD, mean, na.rm = TRUE),
+      by = .(ID, school, meting),
+      .SDcols = val_cols
+    ]
+  } else {
+    part5_merge <- unique(part5[, .(ID, school, meting)])
+  }
 
   rename_map <- c()
   if (exists("mvpa_col") && length(mvpa_col) > 0 && mvpa_col[1] %in% names(part5_merge))

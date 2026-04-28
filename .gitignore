@@ -19,9 +19,10 @@ r/renv/sandbox/
 .RData
 .Rproj.user/
 
-# Data (GDPR)
+# Data (GDPR + processed output)
 data/raw/
 data/processed/
+data/veerle_processed/
 r/_examples
 
 # OS
