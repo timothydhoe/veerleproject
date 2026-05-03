@@ -9,10 +9,10 @@
 
 # ── Data paths ────────────────────────────────────────────────────────────────
 paths:
-  # ⚠ CHANGED for test data — restore to "../data/raw" before real data runs
-  data_raw:       "../data/raw/veerle_testdata"  # Test data (.bin + .cwa)
-  data_processed: "../data/veerle_processed/r"    # ⚠ TEST: separate output folder
+  data_raw:       "../data/raw"
+  data_processed: "../data/processed"
   data_example:   "../data/example"              # Fictional test data (safe to commit)
+  absences:       "../data/absences.csv"         # Researcher-maintained absence registry
 
 # ── GGIR parameters ───────────────────────────────────────────────────────────
 ggir:
@@ -147,18 +147,34 @@ schedules:
         - { label: recess, start: "10:05", end: "10:20" }
 
   school_3:
-    # ⚠ FALLBACK — detailed timetable not yet available. Update when received.
-    fallback: true
-    school_start: "08:30"
+    fallback: false
+    school_start: "08:25"
     school_end:
-      mon_tue_thu_fri: "15:30"
+      mon_tue_thu_fri: "15:35"
       wednesday:       "12:00"
     breaks:
       mon_tue_thu_fri:
-        - { label: recess, start: "10:15", end: "10:30" }
-        - { label: lunch,  start: "12:00", end: "13:00" }
+        - { label: recess, start: "10:05", end: "10:20" }
+        - { label: lunch,  start: "12:00", end: "12:50" }
+        - { label: recess, start: "14:30", end: "14:45" }
       wednesday:
-        - { label: recess, start: "10:15", end: "10:30" }
+        - { label: recess, start: "10:05", end: "10:20" }
+    # Per-class overrides: 2nd-year pupils have an 8th lesson (→ 16:25) on specific days.
+    # Source: Veerle Van Oeckel email + Info_metingen.docx
+    # ⚠ Pupil 3027 in class 2Aa may be a typo for 2027 in the source doc — confirm with Veerle.
+    class_overrides:
+      2Aa:
+        pupils: [3025, 3026, 3027]
+        school_end_override: { monday: "16:25", thursday: "16:25" }
+      2Ab:
+        pupils: [3024, 3028, 3029, 3030, 3032, 3034, 3041, 3042]
+        school_end_override: { thursday: "16:25" }
+      2Ba:
+        pupils: [3040]
+        school_end_override: { tuesday: "16:25", thursday: "16:25" }
+      2Bb:
+        pupils: [3031]
+        school_end_override: { thursday: "16:25" }
 
   school_4:
     # ⚠ FALLBACK — timetable was image-only and could not be fully parsed. Update when received.

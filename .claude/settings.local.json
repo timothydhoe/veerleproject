@@ -11,10 +11,17 @@
       "WebSearch",
       "WebFetch(domain:atlassian.design)",
       "WebFetch(domain:www.atlassian.com)",
-      "WebFetch(domain:developer.atlassian.com)"
+      "WebFetch(domain:developer.atlassian.com)",
+      "Bash(python3 *)",
+      "Bash(/Users/timothydhoe/Syntra/.venv/bin/python3 *)",
+      "WebFetch(domain:styleguide.ugent.be)",
+      "Bash(grep *)",
+      "mcp__playwright__browser_evaluate"
     ]
   },
+  "enableAllProjectMcpServers": true,
   "enabledMcpjsonServers": [
-    "context7"
+    "context7",
+    "playwright"
   ]
 }

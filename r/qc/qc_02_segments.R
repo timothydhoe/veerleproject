@@ -107,6 +107,26 @@ if ("in_class" %in% seg$segment) {
   }
 }
 
+# ── 8. Absence rows ───────────────────────────────────────────────────────────
+if ("absent" %in% seg$segment) {
+  absent_rows <- seg[segment == "absent"]
+  n_combos    <- uniqueN(paste(absent_rows$ID, absent_rows$date))
+  schools_abs <- paste(sort(unique(absent_rows$school)), collapse = ", ")
+  pass(sprintf("%d absent (pupil × date) combinations registered — schools: %s",
+               n_combos, schools_abs))
+} else {
+  abs_path <- file.path(cfg$paths$data_processed, "..", "..", "data", "absences.csv")
+  if (file.exists(abs_path)) {
+    abs_dt <- tryCatch(fread(abs_path), error = function(e) NULL)
+    if (!is.null(abs_dt) && nrow(abs_dt) > 0)
+      warn("absences.csv has rows but no 'absent' segments found — re-run step 02")
+    else
+      pass("No absences registered (absences.csv is empty)")
+  } else {
+    pass("No absences registered")
+  }
+}
+
 # ── Summary ───────────────────────────────────────────────────────────────────
 cat("\n── QC 02 Summary ────────────────────────────────────────────────\n")
 cat("  Next step: run pipeline/03_build_summaries.R\n")

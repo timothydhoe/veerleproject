@@ -1,3 +1,3 @@
 "meting","filename","original_path","format","pupil_id","school_id","ggir_compatible"
-"meting_1","1001_left wrist_109488_2026-04-27 11-10-01.bin","../data/raw/veerle_testdata/meting_1/1001_left wrist_109488_2026-04-27 11-10-01.bin","geneactiv_bin","1001",1,TRUE
-"meting_1","73044_0000001002.cwa","../data/raw/veerle_testdata/meting_1/73044_0000001002.cwa","axivity_cwa","73044",7,TRUE
+"meting_1","1001.bin","../data/raw/meting_1/1001.bin","geneactiv_bin","1001",1,TRUE
+"meting_2","1002.cwa","../data/raw/meting_2/1002.cwa","axivity_cwa","1002",1,TRUE

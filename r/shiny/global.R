@@ -15,6 +15,10 @@ library(plotly)
 library(data.table)
 library(yaml)
 
+# ── Utilities (pure functions, no reactive context) ───────────────────────────
+source("../utils/util_plots.R",   local = TRUE)
+source("../utils/util_filters.R", local = TRUE)
+
 # ── Config ────────────────────────────────────────────────────────────────────
 source("../pipeline/validate_config.R", local = TRUE)
 
@@ -75,11 +79,7 @@ FALLBACK_SCHOOLS <- names(Filter(function(s) isTRUE(s$fallback), cfg$schedules))
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 source("../pipeline/utils_ggir.R", local = TRUE)
-
-extract_school_id <- function(id) {
-  code <- suppressWarnings(as.integer(sub("\\.csv$", "", basename(as.character(id)))))
-  paste0("school_", code %/% 1000L)
-}
+# extract_school_id() is defined in ../utils/util_filters.R (sourced above)
 
 # Wrapper that calls load_ggir_file() with the school ID extractor injected.
 load_ggir <- function(meting, filename = NULL, pattern = NULL) {
@@ -150,38 +150,9 @@ if (file.exists(seg_path)) {
 WHO_MVPA_MIN   <- 60   # WHO recommendation: ≥60 min/day MVPA for children (5–17 yr)
 WHO_SLEEP_MIN_H <- 8   # WHO/AAP minimum sleep: ≥8h/night for children 6–12 yr
 
-# ── Activity intensity zone colours ───────────────────────────────────────────
-# Atlassian-inspired: SB de-emphasised (grey), LPA cyan, MVPA bold blue (hero)
-ZONE_COLORS <- c(
-  SB   = "#DFE1E6",   # neutral grey  — sedentary / inactivity (de-emphasised)
-  LPA  = "#79E2F2",   # light cyan    — light physical activity
-  MVPA = "#1E64C8"    # UGent Blue    — moderate-to-vigorous (hero metric)
-)
+# ZONE_COLORS and theme_schoolmove() live in ../utils/util_plots.R (sourced above)
 
-# ── Shared plot theme (Atlassian neutrals) ────────────────────────────────────
-theme_schoolmove <- function(legend_pos = "bottom") {
-  theme_minimal(base_size = 12) +
-    theme(
-      plot.title       = element_text(face = "bold", size = 13, colour = "#202020",
-                                      margin = margin(b = 2)),
-      plot.subtitle    = element_text(colour = "#6B778C", size = 10.5,
-                                      margin = margin(b = 8)),
-      plot.background  = element_rect(fill = "white", colour = NA),
-      plot.margin      = margin(10, 14, 10, 14),
-      panel.grid.major = element_line(colour = "#F4F5F7", linewidth = 0.8),
-      panel.grid.minor = element_blank(),
-      axis.title       = element_text(size = 10, colour = "#6B778C"),
-      axis.text        = element_text(colour = "#5E6C84", size = 9.5),
-      axis.ticks       = element_blank(),
-      legend.position  = legend_pos,
-      legend.title     = element_blank(),
-      legend.text      = element_text(size = 10, colour = "#5E6C84"),
-      strip.text       = element_text(face = "bold", size = 10.5, colour = "#202020"),
-      strip.background = element_rect(fill = "#e9f0fa", colour = NA)
-    )
-}
-
-# Atlassian categorical palette — 6 distinct, accessible schools
+# Atlassian categorical palette — 6 distinct, accessible schools (config-derived)
 SCHOOL_COLORS <- setNames(
   c("#2684FF", "#00B8D9", "#36B37E", "#FF991F", "#6554C0", "#FF5630")[seq_along(schools)],
   SCHOOL_LABELS

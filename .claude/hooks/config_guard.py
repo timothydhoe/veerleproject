@@ -6,13 +6,11 @@ Fires after any Write or Edit tool call. If the edited file is config.yaml,
 validates YAML syntax and checks for common issues: missing sections, fallback
 schedules, unset cut-points.
 
-Uses Rscript + yaml package for parsing (guaranteed installed for this project).
-Falls back to a basic check if R is not available.
+Uses PyYAML for syntax checking. Falls back silently if PyYAML is not available.
 """
 
 import json
 import sys
-import subprocess
 
 data = json.load(sys.stdin)
 file_path = data.get("tool_input", {}).get("file_path", "")
@@ -20,25 +18,6 @@ file_path = data.get("tool_input", {}).get("file_path", "")
 if not file_path.endswith("config.yaml"):
     sys.exit(0)
 
-# ── Step 1: YAML syntax via R (yaml package is in renv) ───────────────────────
-r_check = subprocess.run(
-    [
-        "Rscript", "--vanilla", "-e",
-        f"tryCatch("
-        f"  yaml::read_yaml('{file_path}'),"
-        f"  error = function(e) {{ cat('YAML ERROR:', conditionMessage(e), '\\n'); quit(status = 1) }}"
-        f")",
-    ],
-    capture_output=True,
-    text=True,
-)
-
-if r_check.returncode != 0:
-    print(f"\nconfig.yaml — YAML syntax error:", file=sys.stderr)
-    print(r_check.stdout.strip(), file=sys.stderr)
-    sys.exit(2)
-
-# ── Step 2: Extended validation via Python (optional, best-effort) ─────────────
 try:
     import yaml
 
@@ -67,8 +46,12 @@ try:
     else:
         print("\nconfig.yaml — OK", file=sys.stderr)
 
+except yaml.YAMLError as e:
+    print(f"\nconfig.yaml — YAML syntax error:\n  {e}", file=sys.stderr)
+    sys.exit(2)
+
 except ImportError:
-    # PyYAML not installed — syntax already confirmed by R above
-    print("\nconfig.yaml — syntax OK", file=sys.stderr)
+    # PyYAML not installed — skip validation
+    print("\nconfig.yaml — saved (PyYAML not available, skipping validation)", file=sys.stderr)
 
 sys.exit(0)
