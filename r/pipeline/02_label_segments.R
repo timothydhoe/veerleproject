@@ -156,8 +156,12 @@ if (length(wday_col) == 0) {
   # Try to derive from calendar date
   date_col <- intersect(c("calendar_date", "Date", "date"), names(part2))
   if (length(date_col) > 0) {
-    part2[, weekday := weekdays(as.Date(get(date_col[1])))]
+    part2[, weekday := weekdays(as.Date(get(date_col[1]), tz = tz))]
     wday_col <- "weekday"
+    n_na_wday <- sum(is.na(part2$weekday))
+    if (n_na_wday > 0)
+      warning(sprintf("[02] %d rows have unparseable calendar_date — those days will be assigned 'outside_school'",
+                      n_na_wday))
   } else {
     warning("No weekday column found — segment labeling will default to Mon–Fri schedule")
     part2[, weekday := "Monday"]
@@ -248,6 +252,27 @@ distribute_qwindow_cols <- function(seg_row, row, start_h, end_h) {
 
 message("\nBuilding segment schedule lookup...")
 
+# ── Build pupil → class override map ─────────────────────────────────────────
+# For schools with class_overrides: maps pupil_id (character) to a list with
+#   $class     — class name (e.g. "2Aa")
+#   $overrides — named list: weekday_lower → override school_end (e.g. "16:25")
+pupil_override_map <- list()
+for (school_id in names(cfg$schedules)) {
+  class_overrides <- cfg$schedules[[school_id]]$class_overrides
+  if (is.null(class_overrides)) next
+  for (class_name in names(class_overrides)) {
+    co <- class_overrides[[class_name]]
+    for (pupil in as.character(co$pupils)) {
+      pupil_override_map[[pupil]] <- list(
+        class     = class_name,
+        overrides = co$school_end_override
+      )
+    }
+  }
+}
+if (length(pupil_override_map) > 0)
+  message("Class overrides loaded for ", length(pupil_override_map), " pupils")
+
 # Build all schedule lookups for all schools × weekdays
 weekdays_list <- c("Monday", "Tuesday", "Wednesday", "Thursday", "Friday")
 schedule_cache <- list()
@@ -263,6 +288,34 @@ for (school_id in names(cfg$schedules)) {
       }
     )
     if (!is.null(sched)) schedule_cache[[key]] <- sched
+  }
+
+  # ── Class-variant cache entries ───────────────────────────────────────────
+  # For each (school, class, weekday) with a school_end_override, build a
+  # modified schedule where that day's school_end is replaced by the override.
+  class_overrides <- cfg$schedules[[school_id]]$class_overrides
+  if (is.null(class_overrides)) next
+  for (class_name in names(class_overrides)) {
+    co <- class_overrides[[class_name]]
+    for (wday_lower in names(co$school_end_override)) {
+      override_end <- co$school_end_override[[wday_lower]]
+      wday_name    <- paste0(toupper(substring(wday_lower, 1, 1)),
+                             substring(wday_lower, 2))
+      # Build a copy of the school config with the override injected
+      sch_mod <- cfg$schedules[[school_id]]
+      sch_mod$school_end[[wday_lower]] <- override_end
+      sch_mod$class_overrides          <- NULL  # avoid recursion
+      cache_key <- paste(school_id, class_name, wday_lower, sep = "_")
+      sched <- tryCatch(
+        get_schedule(school_id, wday_name, setNames(list(sch_mod), school_id)),
+        error = function(e) {
+          warning(sprintf("Could not build class schedule for %s %s %s: %s",
+                          school_id, class_name, wday_lower, e$message))
+          NULL
+        }
+      )
+      if (!is.null(sched)) schedule_cache[[cache_key]] <- sched
+    }
   }
 }
 
@@ -299,8 +352,18 @@ for (i in seq_len(nrow(part2))) {
     next
   }
 
-  # School day: look up schedule
-  cache_key <- paste(school, wday, sep = "_")
+  # School day: look up schedule (with per-pupil class override if applicable)
+  cache_key  <- paste(school, wday, sep = "_")
+  pupil_info <- pupil_override_map[[as.character(row$ID)]]
+  if (!is.null(pupil_info)) {
+    wday_lower   <- tolower(wday)
+    override_end <- pupil_info$overrides[[wday_lower]]
+    if (!is.null(override_end)) {
+      class_key <- paste(school, pupil_info$class, wday_lower, sep = "_")
+      if (class_key %in% names(schedule_cache))
+        cache_key <- class_key
+    }
+  }
   sched     <- schedule_cache[[cache_key]]
 
   if (is.null(sched)) {
@@ -362,6 +425,39 @@ for (i in seq_len(nrow(part2))) {
 }
 
 segment_summary <- rbindlist(rows, fill = TRUE)
+
+# ── Apply absence overlay ─────────────────────────────────────────────────────
+# If data/absences.csv exists and has rows, mark school-context segments for
+# absent pupils on those dates as "absent" and NA out activity values.
+# Absence data is entered by the researcher via the Shiny dashboard.
+absences_path <- cfg$paths$absences %||% "../data/absences.csv"
+if (file.exists(absences_path)) {
+  abs_dt <- tryCatch(
+    fread(absences_path,
+          colClasses = c(pupil_id = "character", date = "character")),
+    error = function(e) { message("[absences] Could not read absences.csv: ", e$message); NULL }
+  )
+  if (!is.null(abs_dt) && nrow(abs_dt) > 0) {
+    abs_keys    <- paste(abs_dt$pupil_id, abs_dt$date)
+    school_segs <- c("in_class", "recess", "lunch")
+    rows_before <- nrow(segment_summary[segment == "absent"])
+    segment_summary[
+      !is.na(ID) & !is.na(date) &
+        paste(ID, date) %in% abs_keys & segment %in% school_segs,
+      `:=`(segment = "absent", n_valid_hours = NA_real_)
+    ]
+    for (col in intensity_cols) {
+      if (col %in% names(segment_summary))
+        segment_summary[segment == "absent", (col) := NA_real_]
+    }
+    n_marked <- nrow(segment_summary[segment == "absent"]) - rows_before
+    message(sprintf("[absences] %d absence records — %d segment rows marked as absent",
+                    nrow(abs_dt), n_marked))
+    if (n_marked == 0 && nrow(abs_dt) > 0)
+      warning("[absences] No rows were marked absent despite ", nrow(abs_dt),
+              " records in absences.csv — check that ID and date formats match.")
+  }
+}
 
 # ── Flag fallback schools ──────────────────────────────────────────────────────
 fallback_schools <- names(Filter(function(s) isTRUE(s$fallback), cfg$schedules))

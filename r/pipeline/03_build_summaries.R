@@ -83,7 +83,7 @@ if ("N hours"       %in% names(part2)) setnames(part2, "N hours",       "n_hours
 
 # Derive weekday if needed
 if (!"weekday" %in% names(part2) && "calendar_date" %in% names(part2)) {
-  part2[, weekday := weekdays(as.Date(calendar_date))]
+  part2[, weekday := weekdays(as.Date(calendar_date, tz = cfg$output$timezone %||% "Europe/Brussels"))]
 }
 
 # ── Load segment summary ──────────────────────────────────────────────────────
@@ -136,7 +136,10 @@ if (nrow(part4) > 0) {
   if (length(seff_col) > 0) {
     # Efficiency reported as 0–1 fraction in some GGIR versions, 0–100 in others
     eff_vals <- part4[[seff_col[1]]]
-    scale    <- if (max(eff_vals, na.rm = TRUE) <= 1) 100 else 1
+    scale    <- if (all(is.na(eff_vals))) {
+      message("[sleep] All efficiency values are NA — scale detection skipped, defaulting to 1.")
+      1
+    } else if (max(eff_vals, na.rm = TRUE) <= 1) 100 else 1
     sleep_nights_valid <- part4[
       !is.na(get(seff_col[1])) & get(seff_col[1]) * scale >= min_pct_valid,
       .(n_valid_nights = .N),
@@ -202,9 +205,14 @@ if (nrow(part4) > 0) {
   sleep_summary <- part4[
     , .(
         sleep_nights          = .N,
-        sleep_duration_h      = if (length(dur_col) > 0)
-          round(mean(get(dur_col[1]), na.rm = TRUE) / 60, 2)
-        else NA_real_,
+        sleep_duration_h      = if (length(dur_col) > 0) {
+          raw_val <- mean(get(dur_col[1]), na.rm = TRUE)
+          if (is.na(raw_val)) NA_real_
+          else if (raw_val > 24) round(raw_val / 60, 2)   # minutes → hours
+          else if (raw_val >= 1) round(raw_val, 2)          # already hours
+          else { message("[sleep] Unexpected duration value: ", raw_val,
+                         " in ", dur_col[1], " — set to NA"); NA_real_ }
+        } else NA_real_,
         sleep_efficiency_pct  = if (length(eff_col) > 0)
           round(mean(get(eff_col[1]), na.rm = TRUE), 1)
         else NA_real_
@@ -218,7 +226,13 @@ if (nrow(part4) > 0) {
   sleep_summary <- part5[
     , .(
         sleep_nights         = NA_integer_,
-        sleep_duration_h     = round(mean(get(sleep5_col[1]), na.rm = TRUE) / 60, 2),
+        sleep_duration_h     = {
+          raw_val <- mean(get(sleep5_col[1]), na.rm = TRUE)
+          if (is.na(raw_val)) NA_real_
+          else if (raw_val > 24) round(raw_val / 60, 2)
+          else if (raw_val >= 1) round(raw_val, 2)
+          else NA_real_
+        },
         sleep_efficiency_pct = if (length(sleff5_col) > 0)
           round(mean(get(sleff5_col[1]), na.rm = TRUE), 1)
         else NA_real_
@@ -235,13 +249,24 @@ if (nrow(part4) > 0) {
 
 # ── Segment averages (from segment_summary) ───────────────────────────────────
 if (!is.null(seg) && nrow(seg) > 0) {
-  # Average activity per segment per participant
-  intensity_cols <- grep("^(SB|IN|LIG|MOD|VIG|MVPA)", names(seg),
+  # Absent days: count per participant before filtering
+  if ("absent" %in% seg$segment) {
+    absent_days <- seg[segment == "absent",
+                       .(n_absent_school_days = uniqueN(date)),
+                       by = .(ID, school, meting)]
+  } else {
+    absent_days <- NULL
+  }
+
+  # Exclude absent segments from activity averages
+  seg_active <- seg[segment != "absent"]
+
+  intensity_cols <- grep("^(SB|IN|LIG|MOD|VIG|MVPA)", names(seg_active),
                          value = TRUE, ignore.case = TRUE)
 
   if (length(intensity_cols) > 0) {
     seg_wide <- dcast(
-      seg[, c("ID", "school", "meting", "segment", intensity_cols), with = FALSE][
+      seg_active[, c("ID", "school", "meting", "segment", intensity_cols), with = FALSE][
         , lapply(.SD, mean, na.rm = TRUE),
         by = .(ID, school, meting, segment),
         .SDcols = intensity_cols
@@ -254,7 +279,8 @@ if (!is.null(seg) && nrow(seg) > 0) {
     seg_wide <- NULL
   }
 } else {
-  seg_wide <- NULL
+  seg_wide    <- NULL
+  absent_days <- NULL
 }
 
 # ── Context-aware sedentary bouts (from epoch-level data) ─────────────────────
@@ -354,6 +380,13 @@ if (!is.null(seg_wide) && nrow(seg_wide) > 0) {
                            by = c("ID", "school", "meting"), all.x = TRUE)
 }
 
+# Join absent day counts
+if (!is.null(absent_days) && nrow(absent_days) > 0) {
+  analysis_ready <- merge(analysis_ready, absent_days,
+                           by = c("ID", "school", "meting"), all.x = TRUE)
+  analysis_ready[is.na(n_absent_school_days), n_absent_school_days := 0L]
+}
+
 # Join context-aware bout columns (only when epoch data was available)
 if (!is.null(context_bouts_wide) && nrow(context_bouts_wide) > 0) {
   by_cols <- intersect(c("ID", "meting"), names(context_bouts_wide))
@@ -369,9 +402,16 @@ ready_path    <- file.path(out_dir, "analysis_ready.csv")
 validity_path <- file.path(out_dir, "validity_summary.csv")
 
 fwrite(analysis_ready, ready_path)
+if (!is.null(absent_days) && nrow(absent_days) > 0) {
+  participant_validity <- merge(participant_validity, absent_days,
+                                 by = c("ID", "school", "meting"), all.x = TRUE)
+  participant_validity[is.na(n_absent_school_days), n_absent_school_days := 0L]
+}
+
 validity_cols <- intersect(
   c("ID", "school", "meting", "n_days", "n_valid_days", "mean_wear_h", "has_weekend",
-    "meets_sedentary_criteria", "exclusion_reason", "n_valid_nights", "meets_sleep_criteria"),
+    "meets_sedentary_criteria", "exclusion_reason", "n_valid_nights", "meets_sleep_criteria",
+    "n_absent_school_days"),
   names(participant_validity)
 )
 fwrite(participant_validity[, validity_cols, with = FALSE], validity_path)
