@@ -169,6 +169,15 @@ app_css <- tags$head(tags$style(HTML("
     transform: translateY(-2px);
     transition: all 0.15s ease;
   }
+  .kpi-nav-card:active .kpi-strip {
+    transform: translateY(0px);
+    box-shadow: none !important;
+    transition: all 0.05s ease;
+  }
+  .kpi-nav-card:focus-visible .kpi-strip {
+    outline: 2px solid #2684FF;
+    outline-offset: 2px;
+  }
 
   /* ── Pipeline trigger row ── */
   .pipeline-bar {
@@ -345,8 +354,16 @@ app_css <- tags$head(tags$style(HTML("
 ")))
 
 # ── UI ────────────────────────────────────────────────────────────────────────
+abs_delete_js <- tags$script(HTML("
+  $(document).on('click', '.abs-del-btn', function() {
+    var row = $(this).data('row');
+    Shiny.setInputValue('abs_delete_row', row, {priority: 'event'});
+  });
+"))
+
 ui <- tagList(
   app_css,
+  abs_delete_js,
   page_navbar(
     id       = "main_nav",
     title    = "SchoolMove",
@@ -438,7 +455,7 @@ ui <- tagList(
 
       accordion(
         id   = "rapport_accordion",
-        open = "rapport",
+        open = FALSE,
         accordion_panel(
           title = tagList(icon("file-lines"), " Samenvatting voor rapport"),
           value = "rapport",
@@ -926,6 +943,39 @@ ui <- tagList(
                             "Bouts splitsen op contextgrens (schoolsegment)",
                             value = TRUE)
             )
+          )
+        ),
+
+        # ── Absence registry ───────────────────────────────────────────────────
+        card(
+          class = "shadow-sm",
+          card_header(
+            class = "d-flex align-items-center gap-2",
+            icon("user-xmark"), "Afwezigheden"
+          ),
+          card_body(
+            p(class = "text-muted small",
+              "Registreer schooldagen waarop een leerling afwezig was.",
+              " De pipeline markeert die dag als 'absent' zodat schooluren niet meegeteld worden in de analyse.",
+              " Herstart de pipeline na elke wijziging."),
+            layout_columns(
+              col_widths = c(4, 3, 3, 2),
+              selectInput("abs_pupil", "Leerling",
+                          choices = character(0), width = "100%"),
+              dateInput("abs_date", "Datum",
+                        value = Sys.Date(), language = "nl",
+                        format = "yyyy-mm-dd", width = "100%"),
+              textInput("abs_reason", "Reden (optioneel)",
+                        placeholder = "bijv. ziek", width = "100%"),
+              div(
+                style = "display:flex; align-items:flex-end; padding-bottom:1px;",
+                actionButton("abs_add", "Toevoegen",
+                             icon  = icon("plus"),
+                             class = "btn-primary btn-sm w-100")
+              )
+            ),
+            uiOutput("abs_status_msg"),
+            DTOutput("abs_table")
           )
         ),
 

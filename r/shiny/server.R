@@ -302,7 +302,7 @@ server <- function(input, output, session) {
   output$avg_mvpa <- renderText({
     mc <- mvpa_col_name()
     if (is.null(analysis_ready) || is.null(mc)) return("\u2014")
-    valid <- analysis_ready[meets_sedentary_criteria == TRUE]
+    valid <- analysis_ready[meets_sedentary_criteria == TRUE & !is.na(get(mc))]
     if (nrow(valid) == 0) return("\u2014")
     sprintf("%.0f min/dag", mean(valid[[mc]], na.rm = TRUE))
   })
@@ -343,8 +343,10 @@ server <- function(input, output, session) {
 
     wide <- dcast(agg, school_label ~ meting,
                   value.var = c("mean_mvpa", "ci95", "n"))
+    n_schools_total <- nrow(wide)
     # Only schools with both metingen
     wide <- wide[!is.na(mean_mvpa_meting_1) & !is.na(mean_mvpa_meting_2)]
+    n_excl_schools  <- n_schools_total - nrow(wide)
     if (nrow(wide) == 0) {
       # Fall back to single-meting dot plot
       ggplot(agg, aes(y = reorder(school_label, mean_mvpa), x = mean_mvpa,
@@ -403,7 +405,8 @@ server <- function(input, output, session) {
         ) +
         scale_x_continuous(expand = expansion(add = c(6, 6))) +
         labs(x = "Gem. MVPA (min/dag)", y = NULL,
-             subtitle = "Grijs = Meting 1 \u00b7 kleur = Meting 2 \u00b7 enkel geldige deelnemers \u00b7 foutbalken = 95% BI") +
+             subtitle = paste0("Grijs = Meting 1 \u00b7 kleur = Meting 2 \u00b7 enkel geldige deelnemers \u00b7 foutbalken = 95% BI",
+                               if (n_excl_schools > 0) paste0(" \u00b7 ", n_excl_schools, " school(s) uitgesloten (ontbreekt \u22651 meting)") else "")) +
         theme_schoolmove(legend_pos = "top") +
         theme(panel.grid.major.y = element_blank(),
               panel.grid.major.x = element_line(colour = "#F4F5F7"))
@@ -449,7 +452,7 @@ server <- function(input, output, session) {
     ) |>
       formatStyle(
         "Gem. MVPA (min/dag)",
-        background = styleColorBar(mvpa_range, "#0052CC33"),
+        background = styleColorBar(mvpa_range, paste0(ZONE_COLORS["MVPA"], "33")),
         backgroundSize = "98% 65%", backgroundRepeat = "no-repeat",
         backgroundPosition = "left center"
       ) |>
@@ -525,7 +528,7 @@ server <- function(input, output, session) {
         ) +
         facet_wrap(~ meting, scales = "free_x", labeller = as_labeller(METINGEN_LABELS)) +
         labs(x = "Datum", y = NULL,
-             title = paste("Draagduur \u2014", input$global_school),
+             title = paste("Draagduur \u2014", SCHOOL_LABELS[input$global_school]),
              subtitle = paste0("Groen = geldige dag (\u2265", MIN_WEAR_H, "h)")) +
         theme_schoolmove() +
         theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 8),
@@ -721,7 +724,7 @@ server <- function(input, output, session) {
       }
     }
     if (is.null(metric_col_name) || is.na(metric_col_name))
-      return(no_data_plot("Activiteitskolom niet gevonden."))
+      return(no_data_plot("Activiteitskolom niet gevonden — herrun stap 03."))
 
     school_day_segs <- c("before_school","in_class","recess","lunch","after_school")
     agg <- dt[segment %in% school_day_segs, {
@@ -1005,6 +1008,15 @@ server <- function(input, output, session) {
     dt
   })
 
+  sleep_data_msg <- reactive({
+    if (is.null(analysis_ready))
+      "Analysedata niet geladen — voer stap 03 opnieuw uit."
+    else if (!"sleep_duration_h" %in% names(analysis_ready))
+      "Slaapkolommen ontbreken — voer stap 03 opnieuw uit."
+    else
+      NULL
+  })
+
   output$sleep_avg_pooled <- renderText({
     dt <- if (is.null(analysis_ready)) NULL else
       analysis_ready[meets_sedentary_criteria == TRUE & !is.na(sleep_duration_h)]
@@ -1031,10 +1043,10 @@ server <- function(input, output, session) {
 
   sleep_dist_plot <- reactive({
     dt <- sleep_data()
-    if (is.null(dt) || nrow(dt) == 0) return(no_data_plot("Geen slaapdata."))
+    if (is.null(dt) || nrow(dt) == 0) return(no_data_plot(sleep_data_msg() %||% "Geen slaapdata."))
     y_col  <- if (input$sleep_metric == "duration") "sleep_duration_h" else "sleep_efficiency_pct"
     y_lab  <- if (input$sleep_metric == "duration") "Slaapduur (h/nacht)" else "Slaapeffici\u00ebntie (%)"
-    if (!y_col %in% names(dt)) return(no_data_plot("Kolom niet beschikbaar."))
+    if (!y_col %in% names(dt)) return(no_data_plot("Kolom niet beschikbaar — controleer of stap 03 klaar is."))
 
     # Aggregate per school × meting
     agg <- dt[, {
@@ -1049,9 +1061,10 @@ server <- function(input, output, session) {
       dcast(agg, school_label ~ meting_label, value.var = c("mean_val", "ci95", "n")),
       error = function(e) NULL
     )
+    m_labels <- unname(METINGEN_LABELS)
     has_both <- !is.null(wide) &&
-      all(c("mean_val_Meting 1", "mean_val_Meting 2") %in% names(wide)) &&
-      any(!is.na(wide[["mean_val_Meting 1"]]) & !is.na(wide[["mean_val_Meting 2"]]))
+      all(paste0("mean_val_", m_labels) %in% names(wide)) &&
+      any(!is.na(wide[[paste0("mean_val_", m_labels[1])]]) & !is.na(wide[[paste0("mean_val_", m_labels[2])]]))
 
     # individual background points (long format)
     dt[, val := get(y_col)]
@@ -1113,6 +1126,13 @@ server <- function(input, output, session) {
           annotate("text", x = 9, y = Inf,
                    label = "WHO: 8\u201310u", vjust = -0.4, colour = "#36B37E",
                    size = 2.8, fontface = "italic")
+      else if (input$sleep_metric == "efficiency")
+        p <- p +
+          geom_hline(yintercept = 85, linetype = "dashed",
+                     colour = "#36B37E", linewidth = 0.6) +
+          annotate("text", x = Inf, y = 85,
+                   label = "85% drempel", hjust = 1.1, vjust = -0.5,
+                   colour = "#36B37E", size = 2.8, fontface = "italic")
       p
 
     } else {
@@ -1141,7 +1161,7 @@ server <- function(input, output, session) {
     wide <- dcast(dt, ID + school_label ~ meting, value.var = "sleep_duration_h")
     if (!all(c("meting_1","meting_2") %in% names(wide))) return(no_data_plot("Niet genoeg metingen."))
     wide <- wide[!is.na(meting_1) & !is.na(meting_2)]
-    if (nrow(wide) == 0) return(no_data_plot())
+    if (nrow(wide) == 0) return(no_data_plot("Geen data om te vergelijken — beide metingen nodig."))
 
     wide[, ba_mean := (meting_1 + meting_2) / 2]
     wide[, ba_diff := meting_2 - meting_1]
@@ -1197,8 +1217,10 @@ server <- function(input, output, session) {
 
     wide <- dcast(dt[!is.na(get(mc))], ID + school_label ~ meting, value.var = mc)
     if (!all(c("meting_1","meting_2") %in% names(wide))) return(no_data_plot("Niet genoeg metingen."))
+    n_total_slope <- nrow(wide)
     wide <- wide[!is.na(meting_1) & !is.na(meting_2)]
     if (nrow(wide) == 0) return(no_data_plot("Geen deelnemers met beide metingen."))
+    n_excl_slope <- n_total_slope - nrow(wide)
 
     school_means <- wide[, .(m1 = mean(meting_1), m2 = mean(meting_2),
                                n  = .N), by = school_label]
@@ -1239,7 +1261,8 @@ server <- function(input, output, session) {
       scale_x_continuous(breaks = c(1, 2), labels = c("Meting 1", "Meting 2"),
                          expand = expansion(add = c(0.3, 1.4))) +
       labs(x = NULL, y = y_lab,
-           subtitle = "Individuele trajecten (dun) \u00b7 schoolgemiddelde (dik) \u00b7 hover = ID + waarden") +
+           subtitle = paste0("Individuele trajecten (dun) \u00b7 schoolgemiddelde (dik) \u00b7 hover = ID + waarden",
+                             if (n_excl_slope > 0) paste0(" \u00b7 ", n_excl_slope, " uitgesloten (ontbreekt \u22651 meting)") else "")) +
       theme_schoolmove() +
       theme(panel.grid.major.x = element_blank(), legend.position = "none")
   })
@@ -1845,4 +1868,94 @@ server <- function(input, output, session) {
   })
 
   output$settings_status_msg <- renderUI({ NULL })
+
+  # ── Afwezigheden (Absence registry) ───────────────────────────────────────
+  absences_path_server <- file.path("..", cfg$paths$absences %||% "../data/absences.csv")
+
+  read_absences <- function() {
+    if (!file.exists(absences_path_server))
+      return(data.table(pupil_id = character(), date = character(), reason = character()))
+    tryCatch(
+      fread(absences_path_server,
+            colClasses = c(pupil_id = "character", date = "character",
+                           reason   = "character")),
+      error = function(e) data.table(pupil_id = character(), date = character(),
+                                      reason = character())
+    )
+  }
+
+  absences_rv <- reactiveVal(read_absences())
+
+  # Populate pupil dropdown from all known IDs
+  observe({
+    ids <- character(0)
+    if (!is.null(analysis_ready) && "ID" %in% names(analysis_ready))
+      ids <- sort(unique(as.character(analysis_ready$ID)))
+    else if (nrow(part2) > 0 && "ID" %in% names(part2))
+      ids <- sort(unique(as.character(part2$ID)))
+    updateSelectInput(session, "abs_pupil", choices = ids)
+  })
+
+  output$abs_table <- renderDT({
+    dt <- absences_rv()
+    if (nrow(dt) == 0)
+      return(datatable(data.frame(Bericht = "Geen afwezigheden geregistreerd."),
+                       options = list(dom = "t"), rownames = FALSE))
+    dt[, Verwijderen := paste0(
+      '<button class="btn btn-outline-danger btn-sm abs-del-btn" ',
+      'data-row="', seq_len(.N), '">',
+      '<i class="fa fa-times"></i></button>'
+    )]
+    datatable(
+      dt,
+      colnames  = c("Leerling", "Datum", "Reden", ""),
+      escape    = FALSE,
+      rownames  = FALSE,
+      selection = "none",
+      options   = list(dom = "tp", pageLength = 10, ordering = TRUE,
+                        columnDefs = list(list(orderable = FALSE, targets = 3)))
+    )
+  })
+
+  output$abs_status_msg <- renderUI({ NULL })
+
+  observeEvent(input$abs_add, {
+    pupil  <- trimws(input$abs_pupil)
+    date   <- as.character(input$abs_date)
+    reason <- trimws(input$abs_reason)
+    if (!nzchar(pupil)) {
+      output$abs_status_msg <- renderUI(
+        div(class = "alert alert-danger small py-2 mt-2",
+            "Selecteer een leerling."))
+      return()
+    }
+    dt <- absences_rv()
+    if (any(dt$pupil_id == pupil & dt$date == date)) {
+      output$abs_status_msg <- renderUI(
+        div(class = "alert alert-warning small py-2 mt-2",
+            paste0("Leerling ", pupil, " is al afwezig op ", date, ".")))
+      return()
+    }
+    new_row <- data.table(pupil_id = pupil, date = date, reason = reason)
+    dt <- rbindlist(list(dt, new_row))
+    fwrite(dt, absences_path_server)
+    absences_rv(dt)
+    output$abs_status_msg <- renderUI(
+      div(class = "alert alert-success small py-2 mt-2",
+          icon("circle-check"), " Afwezigheid opgeslagen. Herstart de pipeline om toe te passen."))
+    updateTextInput(session, "abs_reason", value = "")
+  })
+
+  # Delete button via JS → Shiny input bridge
+  observeEvent(input$abs_delete_row, {
+    row_idx <- as.integer(input$abs_delete_row)
+    dt <- absences_rv()
+    if (row_idx < 1 || row_idx > nrow(dt)) return()
+    dt <- dt[-row_idx]
+    fwrite(dt, absences_path_server)
+    absences_rv(dt)
+    output$abs_status_msg <- renderUI(
+      div(class = "alert alert-success small py-2 mt-2",
+          icon("circle-check"), " Afwezigheid verwijderd."))
+  })
 }
