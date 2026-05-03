@@ -75,42 +75,44 @@ app_css <- tags$head(tags$style(HTML("
 
   /* ── Global base ── */
   body {
-    background-color: #f1f5f9 !important;
+    background-color: #e9f0fa !important;
     font-size: 15px;
   }
 
   /* ── Cards: white with subtle lift shadow, no harsh border ── */
   .card {
     background: #ffffff;
-    border: 1px solid #e2e8f0 !important;
-    box-shadow: 0 1px 4px rgba(30,41,59,0.07) !important;
+    border: 1px solid #dce6f5 !important;
+    box-shadow: 0 1px 4px rgba(30,100,200,0.07) !important;
     border-radius: 8px !important;
   }
   .card-header {
     background: #ffffff !important;
-    border-bottom: 1px solid #f1f5f9 !important;
+    border-top: 3px solid #1E64C8 !important;
+    border-bottom: 1px solid #e9f0fa !important;
+    border-radius: 8px 8px 0 0 !important;
     font-weight: 600;
     font-size: 0.88rem;
-    color: #1e293b;
+    color: #202020;
     padding: 0.75rem 1rem !important;
   }
   .card-body { padding: 1rem !important; }
   .card-footer {
     background: #ffffff !important;
-    border-top: 1px solid #f1f5f9 !important;
+    border-top: 1px solid #e9f0fa !important;
   }
 
   /* ── Sidebar: lightly tinted background ── */
   .bslib-sidebar-layout > .sidebar,
   .bslib-sidebar-layout > .bslib-sidebar {
-    background-color: #f8fafc !important;
-    border-right: 1px solid #e2e8f0 !important;
+    background-color: #f0f5fc !important;
+    border-right: 1px solid #c8d8f0 !important;
   }
   .sidebar .form-label,
-  .sidebar label { font-size: 0.82rem; font-weight: 600; color: #475569; }
+  .sidebar label { font-size: 0.82rem; font-weight: 600; color: #3a5080; }
   .sidebar .form-control,
   .sidebar .form-select { font-size: 0.85rem; }
-  .sidebar hr { border-color: #e2e8f0; }
+  .sidebar hr { border-color: #c8d8f0; }
 
   /* ── layout_columns: breathing room between cards ── */
   .bslib-gap-spacing { gap: 1.1rem !important; }
@@ -118,8 +120,8 @@ app_css <- tags$head(tags$style(HTML("
   /* ── KPI strip cards ── */
   .kpi-strip {
     background: #ffffff;
-    border: 1px solid #e2e8f0 !important;
-    box-shadow: 0 1px 3px rgba(30,41,59,0.06) !important;
+    border: 1px solid #dce6f5 !important;
+    box-shadow: 0 1px 3px rgba(30,100,200,0.06) !important;
     height: 82px !important;
     border-radius: 8px !important;
   }
@@ -131,7 +133,7 @@ app_css <- tags$head(tags$style(HTML("
     gap: 0.75rem;
   }
   .kpi-strip-icon {
-    color: #94a3b8;
+    color: #1E64C8;
     font-size: 1.25rem;
     width: 28px;
     flex-shrink: 0;
@@ -145,7 +147,7 @@ app_css <- tags$head(tags$style(HTML("
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.06em;
-    color: #94a3b8;
+    color: #5a6e8c;
     line-height: 1.2;
     margin-bottom: 3px;
     white-space: nowrap;
@@ -155,7 +157,7 @@ app_css <- tags$head(tags$style(HTML("
   .kpi-strip-value {
     font-size: 1.35rem;
     font-weight: 700;
-    color: #1e293b;
+    color: #202020;
     line-height: 1.1;
     white-space: nowrap;
   }
@@ -164,8 +166,8 @@ app_css <- tags$head(tags$style(HTML("
   /* ── Clickable KPI cards ── */
   .kpi-nav-card { cursor: pointer; }
   .kpi-nav-card:hover .kpi-strip {
-    border-color: #cbd5e1 !important;
-    box-shadow: 0 3px 10px rgba(30,41,59,0.11) !important;
+    border-color: #1E64C8 !important;
+    box-shadow: 0 3px 10px rgba(30,100,200,0.15) !important;
     transform: translateY(-2px);
     transition: all 0.15s ease;
   }
@@ -175,7 +177,7 @@ app_css <- tags$head(tags$style(HTML("
     transition: all 0.05s ease;
   }
   .kpi-nav-card:focus-visible .kpi-strip {
-    outline: 2px solid #2684FF;
+    outline: 2px solid #1E64C8;
     outline-offset: 2px;
   }
 
@@ -184,23 +186,30 @@ app_css <- tags$head(tags$style(HTML("
     display: flex;
     align-items: center;
     gap: 12px;
-    background: #f8fafc;
-    border-bottom: 1px solid #e2e8f0;
+    background: #f0f5fc;
+    border-bottom: 1px solid #c8d8f0;
     padding: 8px 20px;
     font-size: 0.82rem;
-    color: #64748b;
+    color: #3a5080;
     margin-bottom: 0.25rem;
   }
-  .pipeline-bar .pipeline-label { font-weight: 600; color: #475569; }
+  .pipeline-bar .pipeline-label { font-weight: 600; color: #3a5080; }
 
-  /* ── Active navbar tab ── */
+  /* ── Active navbar tab — UGent yellow-underline pattern ── */
   .navbar-nav .nav-link[aria-selected='true'],
   .navbar-nav .nav-link.active {
-    color: rgba(255,255,255,1) !important;
-    background: rgba(255,255,255,0.15) !important;
-    border-radius: 5px;
+    color: #ffffff !important;
+    background: transparent !important;
+    border-radius: 0 !important;
+    border-bottom: 3px solid #FFD200 !important;
+    padding-bottom: calc(0.5rem - 3px) !important;
   }
-  .navbar-nav .nav-link { color: rgba(255,255,255,0.8) !important; font-size: 0.87rem; }
+  .navbar-nav .nav-link { color: rgba(255,255,255,0.9) !important; font-size: 0.87rem; }
+  .navbar-nav .nav-link:hover:not(.active):not([aria-selected='true']) {
+    color: #ffffff !important;
+    border-bottom: 3px solid rgba(255,210,0,0.45) !important;
+    padding-bottom: calc(0.5rem - 3px) !important;
+  }
 
   /* ── Navbar filter controls ── */
   .navbar .form-select,
@@ -216,7 +225,7 @@ app_css <- tags$head(tags$style(HTML("
   }
   .navbar .form-select option,
   .navbar .form-control option {
-    background-color: #1e293b;
+    background-color: #1E64C8;
     color: #fff;
   }
   .navbar .filter-label {
@@ -247,11 +256,11 @@ app_css <- tags$head(tags$style(HTML("
     flex-wrap: wrap;
     gap: 6px 16px;
     align-items: center;
-    background: #f8fafc;
-    border-bottom: 1px solid #e2e8f0;
+    background: #f0f5fc;
+    border-bottom: 1px solid #c8d8f0;
     padding: 8px 20px;
     font-size: 0.8rem;
-    color: #64748b;
+    color: #3a5080;
   }
   .readiness-strip .check-ok   { color: #16a34a; font-weight: 600; }
   .readiness-strip .check-warn { color: #b45309; font-weight: 600; }
@@ -261,7 +270,7 @@ app_css <- tags$head(tags$style(HTML("
   .shiny-plot-output.shiny-output-recalculating,
   .shiny-plotly-output.shiny-output-recalculating {
     min-height: 40px;
-    background: linear-gradient(90deg, #f1f5f9 25%, #e2e8f0 50%, #f1f5f9 75%);
+    background: linear-gradient(90deg, #e9f0fa 25%, #dce8f5 50%, #e9f0fa 75%);
     background-size: 200% 100%;
     animation: shimmer 1.4s infinite;
     border-radius: 4px;
@@ -283,10 +292,10 @@ app_css <- tags$head(tags$style(HTML("
     text-align: center;
     padding: 5px 8px;
     font-size: 0.8rem;
-    border: 1.5px solid #1e293b;
+    border: 1.5px solid #1E64C8;
     cursor: pointer;
     background: white;
-    color: #1e293b;
+    color: #1E64C8;
     font-weight: 500;
     margin: 0;
     transition: background 0.1s, color 0.1s;
@@ -297,7 +306,7 @@ app_css <- tags$head(tags$style(HTML("
     border-left: none;
   }
   #seg_view .shiny-options-group .radio input[type=radio]:checked + label {
-    background: #1e293b;
+    background: #1E64C8;
     color: white;
   }
   #seg_view .shiny-options-group .radio input[type=radio] {
@@ -307,7 +316,7 @@ app_css <- tags$head(tags$style(HTML("
     opacity: 0;
     pointer-events: none;
   }
-  #seg_view > label { font-weight: 600; font-size: 0.85rem; color: #334155; }
+  #seg_view > label { font-weight: 600; font-size: 0.85rem; color: #202020; }
 
   /* ── Rapport samenvatting text area ── */
   #rapport_text_out {
@@ -315,11 +324,11 @@ app_css <- tags$head(tags$style(HTML("
     font-size: 0.92rem;
     line-height: 1.65;
     white-space: pre-wrap;
-    background: #f8fafc;
-    border: 1px solid #e2e8f0;
+    background: #f0f5fc;
+    border: 1px solid #c8d8f0;
     border-radius: 6px;
     padding: 0.85rem 1.1rem;
-    color: #1e293b;
+    color: #202020;
   }
 
   /* ── Vergelijking tab: no height clipping ── */
@@ -348,9 +357,9 @@ app_css <- tags$head(tags$style(HTML("
   }
 
   /* ── Accordion: match card aesthetic ── */
-  .accordion-item { border: 1px solid #e2e8f0 !important; border-radius: 8px !important; }
+  .accordion-item { border: 1px solid #dce6f5 !important; border-radius: 8px !important; }
   .accordion-button { font-size: 0.88rem; font-weight: 600; }
-  .accordion-button:not(.collapsed) { background-color: #f8fafc !important; color: #1e293b !important; }
+  .accordion-button:not(.collapsed) { background-color: #f0f5fc !important; color: #202020 !important; }
 ")))
 
 # ── UI ────────────────────────────────────────────────────────────────────────
@@ -370,13 +379,13 @@ ui <- tagList(
     fillable = FALSE,
     theme    = bs_theme(
       version      = 5,
-      bg           = "#f1f5f9",
-      fg           = "#1e293b",
-      primary      = "#1e293b",
-      base_font    = font_google("Inter"),
-      heading_font = font_google("Inter")
+      bg           = "#e9f0fa",
+      fg           = "#202020",
+      primary      = "#1E64C8",
+      base_font    = font_google("Source Sans 3"),
+      heading_font = font_google("Source Sans 3")
     ),
-    navbar_options = navbar_options(bg = "#1e293b"),
+    navbar_options = navbar_options(bg = "#1E64C8"),
 
     # ── Tab 1: Overzicht ───────────────────────────────────────────────────────
     nav_panel(

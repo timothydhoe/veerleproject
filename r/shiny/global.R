@@ -138,8 +138,8 @@ if (file.exists(seg_path)) {
   SEGMENT_LABELS <- c("Voor school", "Les", "Speeltijd", "Middagpauze", "Na school")
   segment_summary[, segment_label := factor(
     segment,
-    levels = SEGMENT_LEVELS,
-    labels = SEGMENT_LABELS
+    levels = c(SEGMENT_LEVELS, "absent", "weekend", "outside_school"),
+    labels = c(SEGMENT_LABELS, "Afwezig", "Weekend", "Buiten school")
   )]
 } else {
   segment_summary <- NULL
@@ -155,14 +155,14 @@ WHO_SLEEP_MIN_H <- 8   # WHO/AAP minimum sleep: ≥8h/night for children 6–12 
 ZONE_COLORS <- c(
   SB   = "#DFE1E6",   # neutral grey  — sedentary / inactivity (de-emphasised)
   LPA  = "#79E2F2",   # light cyan    — light physical activity
-  MVPA = "#0052CC"    # bold blue     — moderate-to-vigorous (hero metric)
+  MVPA = "#1E64C8"    # UGent Blue    — moderate-to-vigorous (hero metric)
 )
 
 # ── Shared plot theme (Atlassian neutrals) ────────────────────────────────────
 theme_schoolmove <- function(legend_pos = "bottom") {
   theme_minimal(base_size = 12) +
     theme(
-      plot.title       = element_text(face = "bold", size = 13, colour = "#172B4D",
+      plot.title       = element_text(face = "bold", size = 13, colour = "#202020",
                                       margin = margin(b = 2)),
       plot.subtitle    = element_text(colour = "#6B778C", size = 10.5,
                                       margin = margin(b = 8)),
@@ -176,8 +176,8 @@ theme_schoolmove <- function(legend_pos = "bottom") {
       legend.position  = legend_pos,
       legend.title     = element_blank(),
       legend.text      = element_text(size = 10, colour = "#5E6C84"),
-      strip.text       = element_text(face = "bold", size = 10.5, colour = "#172B4D"),
-      strip.background = element_rect(fill = "#F4F5F7", colour = NA)
+      strip.text       = element_text(face = "bold", size = 10.5, colour = "#202020"),
+      strip.background = element_rect(fill = "#e9f0fa", colour = NA)
     )
 }
 
