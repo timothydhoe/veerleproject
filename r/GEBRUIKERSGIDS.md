@@ -1,6 +1,6 @@
 # SchoolMove — Gebruikersgids
 
-Geschreven voor Veerle Van Oeckel (UGent). Dit document beschrijft alles wat je nodig hebt om de pipeline te draaien, het dashboard te gebruiken en de resultaten te exporteren.
+Dit document beschrijft alles wat je nodig hebt om de pipeline te draaien, het dashboard te gebruiken en de resultaten te exporteren.
 
 ---
 
@@ -20,6 +20,8 @@ Dit installeert alle benodigde R-pakketten (via `renv`). Dit kan 5–10 minuten 
 ```r
 renv::restore()
 ```
+
+Dit hoef je maar **één keer per machine** te doen. Daarna worden de pakketten automatisch geactiveerd via `.Rprofile` elke keer dat je het project opent — je hoeft `renv::restore()` niet opnieuw uit te voeren tenzij `renv.lock` is bijgewerkt (bijv. na een `git pull` waarbij nieuwe pakketten zijn toegevoegd).
 
 ---
 
@@ -93,7 +95,7 @@ Startscherm met vijf klikbare KPI-kaarten (klikken navigeert naar het bijbehoren
 
 Eronder: een grafiek met de MVPA-verandering per school (M1 → M2) en een schooloverzichttabel. Onderaan staat een automatisch gegenereerde **samenvatting voor rapport** die je kunt kopiëren.
 
-Bovenaan staat ook een **Pipeline uitvoeren**-knop om de pipeline direct vanuit het dashboard te starten.
+Bovenaan staat ook een **Pipeline uitvoeren**-knop. Die opent een dialoogvenster met de terminalopdracht om de pipeline te starten — de pipeline draait niet automatisch vanuit het dashboard zelf (GGIR kan 30–60 minuten duren en blokkeert anders de hele app).
 
 ### Deelnemers
 Individuele deelnemerverkenner. Selecteer een deelnemer via het dropdown-menu of door op een rij in de inclusietabel te klikken. Toont:
@@ -132,9 +134,13 @@ Vergelijkt de twee meetmomenten op twee sub-tabbladen:
 
 ### Export
 Downloadknoppen voor alle verwerkte uitvoerbestanden:
-- `analysis_ready.csv` — brede tabel, één rij per deelnemer × meting
-- `validity_summary.csv` — geldigheidsflags per deelnemer
-- `segment_summary.csv` — activiteit per schoolsegment
+- **GGIR Part 2** — ruwe dagsamenvattingen (draagduur, activiteitsminuten per dag)
+- **GGIR Part 5** — persoonsamenvattingen (MVPA-bouten, sedentaire bouten)
+- **Segmentoverzicht** — activiteit per schoolsegment (volledige en gefilterde versie)
+- **Analysis ready** — brede analysetabel, één rij per deelnemer × meting (volledige en gefilterde versie)
+- **Geldigheidsoverzicht** — inclusie/exclusieflags per deelnemer
+- **Input manifest** — overzicht van verwerkte invoerbestanden (voor reproduceerbaarheid)
+- **Pipeline-run log** — tijdstempel, R-versie en GGIR-versie per run
 
 ### Instellingen
 Beheer configuratieprofielen en pas parameters aan zonder `config.yaml` te bewerken. Drie secties:
@@ -182,7 +188,38 @@ De `logs/`-map bevat per pipeline-run een logboek en een kopie van de GGIR-confi
 
 ---
 
-## 7. Veelgestelde vragen en probleemoplossing
+## 7. Afwezigheden registreren
+
+Als een leerling op een schooldag afwezig was, wil je dat de schooluren van die dag niet meegeteld worden in de analyse (de leerling had geen normaal schoolgedrag).
+
+### Via het dashboard (aanbevolen)
+
+1. Ga naar het tabblad **Instellingen** → sectie **Afwezigheden**
+2. Kies de leerling (4-cijferige code), de datum en eventueel een reden (bijv. "ziek")
+3. Klik **Toevoegen** — de afwezigheid wordt opgeslagen in `data/absences.csv`
+4. Herstart de pipeline (`run_all.R`) om de afwezigheid toe te passen
+
+De schoolsegmenten (les, speeltijd, middagpauze) van die dag worden dan als **"afwezig"** gemarkeerd en uitgesloten uit de activiteitsanalyse.
+
+### Handmatig (gevorderde gebruikers)
+
+Je kunt `data/absences.csv` ook rechtstreeks bewerken in Excel of een teksteditor. Het formaat is:
+
+```csv
+pupil_id,date,reason
+3025,2026-01-21,ziek
+3026,2026-01-22,schooluitstap
+```
+
+- `pupil_id`: 4-cijferige leerlingcode (bijv. 3025)
+- `date`: datum in formaat `JJJJ-MM-DD`
+- `reason`: optionele toelichting
+
+Sla het bestand op en herstart de pipeline.
+
+---
+
+## 8. Veelgestelde vragen en probleemoplossing
 
 **Het dashboard laadt geen data**
 → Controleer of de pipeline volledig is doorgelopen (`run_all.R`) en dat `analysis_ready.csv` bestaat in `data/processed/`.
@@ -190,8 +227,8 @@ De `logs/`-map bevat per pipeline-run een logboek en een kopie van de GGIR-confi
 **De QC meldt "part4 nightsummary not found"**
 → GGIR heeft stap 4 (slaapdetectie) niet doorlopen of de outputmap heeft een andere naam. Controleer of `data/processed/ggir/meting_1/` de verwachte mapstructuur bevat.
 
-**School 3 of 4 toont een waarschuwing over "fallback schedule"**
-→ De bevestigde lesroosters voor deze scholen zijn nog niet ontvangen. Resultaten voor deze scholen zijn benaderingen. Stuur het rooster naar de ontwikkelaar om de fallback te verwijderen.
+**School 4 toont een waarschuwing over "fallback schedule"**
+→ Het bevestigde lesrooster voor school 4 is nog niet ontvangen. Resultaten voor deze school zijn benaderingen. Stuur het rooster naar de ontwikkelaar om de fallback te verwijderen.
 
 **"No valid days" voor alle deelnemers**
 → Waarschijnlijk is `dev.example_mode` op `false` terwijl de `data/raw/`-map leeg is, of andersom. Controleer de instelling in `config.yaml`.

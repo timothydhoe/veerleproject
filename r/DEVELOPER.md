@@ -267,6 +267,65 @@ Notable reactive patterns:
 - Deelnemers explorer populates from either a dropdown or clicking a row in the inclusion table
 - Vergelijking runs Wilcoxon signed-rank tests per school; reports Δ with 95% CI and rank-biserial effect size
 
+**Why the "Run Pipeline" button does not run GGIR:**
+The button (`btn_run_pipeline`) shows a modal with terminal instructions rather than
+calling GGIR directly. This is intentional: GGIR Parts 1–5 on the full 400-participant
+dataset can run for 30–60 minutes. A synchronous call inside Shiny would block the
+entire R process, freezing the UI until completion and preventing any other interaction.
+Do not "fix" this by adding a `system()` or `callr::r()` call in the server — the
+correct approach for a future async pipeline trigger would be `ExtendedTask` (Shiny
+1.8.1+) or `promises` + a separate R background process.
+
+### Module inventory
+
+| Module file | Module ID | Responsibility | Returns |
+|-------------|-----------|----------------|---------|
+| `modules/mod_overview.R` | `"overview"` | KPI ribbon, MVPA dumbbell per school, school summary table, auto-generated rapport | nothing |
+| `modules/mod_participants.R` | `"participants"` | Per-pupil MVPA/segment explorer, wear heatmap, inclusion/exclusion table | nothing |
+| `modules/mod_schoolday.R` | `"schoolday"` | Activity by segment, recess MVPA, weekday profile, sedentary bout chart | nothing |
+| `modules/mod_sleep.R` | `"sleep"` | Sleep duration/efficiency KPIs, violin plot, Bland-Altman M1 vs M2 | nothing |
+| `modules/mod_comparison.R` | `"comparison"` | Meting 1 vs 2 slopegraph, delta plot, Wilcoxon stats, correlation scatter | nothing |
+| `modules/mod_export.R` | `"export"` | 11 download handlers: GGIR parts 2 & 5, segment summary, analysis-ready, validity, filtered variants, manifests | nothing |
+| `modules/mod_settings.R` | `"settings"` | Profile manager, validity/cut-point/bout overrides, absence registry | `reactiveValues(profile_activated, absence_changed)` |
+
+### Shared list (server.R → modules)
+
+All module server functions receive a `shared` list. Contents:
+
+| Key | Type | Description |
+|-----|------|-------------|
+| `shared$apply_filters(dt, school_col, meting_col)` | function | Wraps `apply_global_filters_pure()` with session input values |
+| `shared$mvpa_col()` | reactive | Detects correct MVPA column name from `analysis_ready` |
+| `shared$global_school_val()` | reactive | Current school filter value (`"all"` or a school label) |
+| `shared$safe_meting_val()` | reactive | Current meting filter; defaults to `"all"` on Vergelijking tab |
+| `shared$cfg` | list | Parsed `config.yaml` (static, loaded at startup) |
+| `shared$cfg_path` | character | Resolved path to `config.yaml` (used by mod_settings for profile activation) |
+| `shared$segment_summary` | data.table | From `02_label_segments.R` |
+| `shared$analysis_ready` | data.table | From `03_build_summaries.R` |
+| `shared$validity_summary` | data.table | From `03_build_summaries.R` |
+| `shared$part2` | data.table | GGIR Part 2 day summaries |
+
+### Utility functions (`utils/`)
+
+**`utils/util_filters.R`**
+
+| Function | Pure | Description |
+|----------|------|-------------|
+| `extract_school_id(id)` | ✓ | First digit of participant code → `"school_N"` |
+| `apply_global_filters_pure(dt, school_val, meting_val, school_col, meting_col)` | ✓ | Filter a data.table by school and meting values |
+| `metric_col_pure(metric, dt, mvpa_col)` | ✓ | Resolve metric selector string to column name |
+| `metric_label(metric)` | ✓ | Dutch display label for metric selector |
+| `rb_effect_label(r)` | ✓ | Verbal label for rank-biserial effect size |
+
+**`utils/util_plots.R`**
+
+| Function / constant | Pure | Description |
+|---------------------|------|-------------|
+| `no_data_plot(msg)` | ✓ | Returns a minimal ggplot with a centred message (used when data is absent) |
+| `png_dl(plot_expr, filename_stem, width, height, dpi)` | ✓ | Standardised Shiny download handler factory for PNG exports |
+| `theme_schoolmove(legend_pos)` | ✓ | Shared ggplot2 theme (Atlassian neutrals, UGent blue accent) |
+| `ZONE_COLORS` | — | Named character vector: SB → grey, LPA → cyan, MVPA → UGent blue |
+
 ---
 
 ## GGIR output structure
@@ -405,9 +464,20 @@ uncorrected drift. This is an accepted trade-off; revisit if Veerle provides `.b
 
 | Item | Status | Notes |
 |------|--------|-------|
-| Schools 3 and 4 timetables | ⚠ Fallback | Approximate schedules in config — update when confirmed timetables arrive (use `/add-schedule`) |
-| Real participant data | Pending | Pipeline tested on dummy data; ready once `example_mode: false` and dev overrides removed |
+| School 4 timetable | ⚠ Fallback | `config.yaml` school_4 is `fallback: true` — reconstructed from an image. Update when Veerle provides the confirmed timetable (use `/add-schedule`) |
+| Real participant data | Pending | Pipeline tested on dummy data; see pre-production checklist below before switching |
 | Sleep log availability | Unknown | If children kept a diary, it improves GGIR sleep detection — ask Veerle |
+
+### Pre-production checklist (before switching to real data)
+
+1. `config.yaml` → set `validity.min_wear_hours_per_day: 16`
+2. `config.yaml` → set `validity.min_valid_days: 3`
+3. `config.yaml` → set `validity.require_weekend_day: true`
+4. `config.yaml` → set `validity.min_valid_nights_sleep: 5`
+5. `config.yaml` → remove (or null out) `dev.nonwear_approach`, `dev.includedaycrit`, `dev.includedaycrit_part5`
+6. Confirm `example_mode: false` (already set)
+7. Run `/validate-config` — should report no warnings
+8. Run `pipeline/run_all.R`, then all three QC scripts
 
 ---
 
