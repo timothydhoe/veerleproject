@@ -286,3 +286,213 @@ ever deployed with multiple concurrent users, this becomes a meaningful ineffici
 | Intermediate file cleanup | No cleanup logic; GGIR output accumulates in `data/processed/`; acceptable for this scale |
 | Multi-session path safety | N/A — single-researcher local deployment |
 | `fread()` error handling | `analysis_ready` and `validity_summary` wrapped in `tryCatch()`; missing files produce NULL, which causes per-output reactive errors rather than a full app crash |
+
+---
+
+## Pipeline Correctness
+
+**Date:** 2026-05-04  
+**Scope:** Parameter passthrough (`01_run_ggir.R` → `GGIR()`), pipeline stage sequencing, output interpretation (`02_label_segments.R`, `03_build_summaries.R`), edge cases  
+**Method:** Source-trace of every GGIR argument; cross-check against context7 GGIR docs; path resolution verified against git-status untracked files
+
+---
+
+## 🔴 BREAKING
+
+### P1 — Class-override pupil map key mismatch: school_3 per-pupil end times silently not applied
+
+**File:** `r/pipeline/02_label_segments.R:357`
+
+The `pupil_override_map` is keyed by plain integer strings from config (`"3025"`, `"3026"`, etc.). The lookup at line 357 is:
+
+```r
+pupil_info <- pupil_override_map[[as.character(row$ID)]]
+```
+
+`row$ID` comes directly from GGIR's `part2_daysummary.csv`. GGIR derives participant IDs from filenames when `idloc = 2`. The `extract_school_id()` function at `02_label_segments.R:32` strips `.csv` with `sub("\\.csv$", "", ...)` — this is defensive code that confirms GGIR's ID column includes the `.csv` extension (e.g. `"3025.csv"`). `as.character("3025.csv")` never matches map key `"3025"`.
+
+**Effect:** All 13 pupils in school_3 classes 2Aa/2Ab/2Ba/2Bb who have a 16:25 school-end override on specific weekdays receive the standard 15:35 end time instead. Their `in_class` and `after_school` segment boundaries are wrong for those days. The failure is completely silent — no warning, no error.
+
+**Action required:**
+
+```r
+# 02_label_segments.R:357 — replace:
+pupil_info <- pupil_override_map[[as.character(row$ID)]]
+
+# with:
+pupil_key  <- sub("\\.csv$", "", basename(as.character(row$ID)))
+pupil_info <- pupil_override_map[[pupil_key]]
+```
+
+---
+
+## 🟡 WARNINGS
+
+### P2 — `epochvalues2csv = TRUE` is unverified in GGIR 2.x; `labeled_epochs.csv` is never produced by any pipeline step
+
+**Files:** `r/pipeline/01_run_ggir.R:119`, `r/pipeline/03_build_summaries.R:286–320`
+
+`epochvalues2csv = TRUE` appears in the `shared_args` list passed to `GGIR()`. Whether this parameter exists and what it produces in GGIR 2.x could not be confirmed via context7 documentation. Regardless, `02_label_segments.R` is a day-level script only — it reads `part2_daysummary.csv` and writes `segment_summary.csv`. There is no code path in `02_label_segments.R` that produces epoch-level output.
+
+The comment at `03_build_summaries.R:291` is therefore incorrect:
+
+```r
+# This is produced when GGIR runs with epochvalues2csv = TRUE and
+# 02_label_segments.R assigns school context to each epoch.
+```
+
+`02_label_segments.R` never assigns school context to individual epochs. As a result, `labeled_epochs.csv` never exists, the `if (file.exists(labeled_epochs_path))` block in step 03 never fires, and `compute_context_bout_summaries()` in `utils_bouts.R` is dead code. W6 in the existing audit identified the symptom (NA bout columns); this finding identifies the root cause.
+
+**Action required before real-data run:**
+1. Verify whether `epochvalues2csv` is a valid GGIR 2.x parameter; if not, remove it from `shared_args`
+2. Correct the comment in `03_build_summaries.R:291` — either document that epoch labeling is not yet implemented, or implement the epoch-level labeling pipeline step
+
+---
+
+### P3 — `grep("MVPA", names(part5))` picks first alphabetical match from multiple candidates
+
+**File:** `r/pipeline/03_build_summaries.R:168`
+
+```r
+mvpa_col <- grep("MVPA", names(part5), value = TRUE, ignore.case = TRUE)
+```
+
+With `boutdur.in = c(10, 20, 30)` passed to GGIR, Part 5 `personsummary` likely contains several MVPA-related columns, for example: `dur_day_MVPA_bts_10_min_pla`, `dur_day_MVPA_bts_20_min_pla`, `dur_day_MVPA_bts_30_min_pla`, and `dur_day_total_MVPA_min_pla`. `grep("MVPA", ...)` returns all of them. `mvpa_col[1]` takes whichever sorts first alphabetically — `bts_10` sorts before `total`, so the dashboard KPI "Gem. MVPA" and the WHO-guideline percentage (`≥60 min/day`) could be showing MVPA-in-bouts-≥10min rather than total MVPA. This is a meaningful scientific distinction and the column selection is GGIR-version-dependent.
+
+**Action required:** After the first real GGIR run, inspect Part 5 column names and replace the broad grep with a ranked preference:
+
+```r
+# Prefer total MVPA; fall back to bouts metric
+mvpa_candidates <- grep("MVPA", names(part5), value = TRUE, ignore.case = TRUE)
+mvpa_col <- c(
+  grep("total_MVPA|MVPA_total", mvpa_candidates, value = TRUE),
+  mvpa_candidates
+)[1]
+```
+
+Or pin to the exact column name once it has been observed in practice.
+
+---
+
+### P4 — `dev.nonwear_approach: "2023"` is wrong for 1Hz dummy CSV data; W1 fix recommendation was incomplete
+
+**Files:** `config.yaml:229`, `r/pipeline/01_run_ggir.R:75`
+
+The existing W1 finding recommends removing `dev.nonwear_approach` before a real-data run. However, the config's own inline comment reveals a second problem: the current value `"2023"` is also wrong for example mode. The GGIR 2023 non-wear algorithm resamples internally to 5 Hz; at 1 Hz input this collapses all variance to zero, flagging every epoch as non-wear → zero valid days → all participants excluded. If a developer sets `example_mode: true` for testing, the run produces 0 valid participants with no diagnostic message.
+
+The correct value for 1 Hz CSV dummy data is `"2013"`. For real `.bin`/`.cwa` data (100 Hz), remove the setting entirely.
+
+**Two separate actions required:**
+1. *Now (for dummy data):* `config.yaml:229` → `nonwear_approach: "2013"`
+2. *Before real-data run:* Remove `dev.nonwear_approach` entirely (as W1 states)
+
+---
+
+### P5 — Output file paths are documented incorrectly in `r/DEVELOPER.md` (and `CLAUDE.md`)
+
+**Source of truth:** `config.yaml:14` (`data_processed: "../data/processed"`), `02_label_segments.R:473`, `03_build_summaries.R:398–401`
+
+`config.yaml` sets `data_processed: "../data/processed"`. Pipeline scripts write:
+
+```r
+file.path(base_out, "..", "segment_summary.csv")  # resolves to data/segment_summary.csv
+file.path(base_out, "..")                          # resolves to data/
+```
+
+Actual output locations (confirmed by `git status` untracked files):
+
+| File | Documented location | Actual location |
+|------|---------------------|-----------------|
+| `segment_summary.csv` | `data/processed/` | `data/` |
+| `analysis_ready.csv` | `data/processed/` | `data/` |
+| `validity_summary.csv` | `data/processed/` | `data/` |
+| GGIR output | `data/processed/ggir/meting_N/` | `data/processed/meting_N/` |
+
+The code is internally consistent (pipeline and Shiny resolve to the same paths). The documentation is wrong. `DEVELOPER.md` path diagrams require correction.
+
+---
+
+### P6 — Sleep efficiency column grep includes `fraction` — pattern is overly broad
+
+**File:** `r/pipeline/03_build_summaries.R:135`
+
+```r
+seff_col <- grep("SleepEfficiencyInSpt|sleep_efficiency|fraction",
+                 names(part4), value = TRUE, ignore.case = TRUE)
+```
+
+`fraction` matches any column containing that substring. GGIR Part 4 may contain columns like `fraction_night_invalid` or similar. `seff_col[1]` takes the first alphabetical match — which may not be the efficiency column. `SleepEfficiencyInSpt` and `sleep_efficiency` are sufficient for modern GGIR; the `fraction` alternative should be removed.
+
+---
+
+## 🟢 SUGGESTIONS
+
+### P7 — `weekdays()` in `global.R` not locale-protected (fallback path only)
+
+**File:** `r/shiny/global.R:113`
+
+```r
+part2[, weekday := weekdays(as.Date(calendar_date))]
+```
+
+This line fires only when GGIR's CSV does not include a `weekday` column (possible in older GGIR versions). Without `Sys.setlocale("LC_TIME", "C")`, on a Dutch-locale machine `weekdays()` returns Dutch day names. `mod_schoolday.R:231` filters using `c("Saturday","Sunday")` — Dutch names would return zero rows in the weekend activity plot. Risk is low since modern GGIR produces `weekday` in Part 2 output, but a one-line guard would eliminate the hazard:
+
+```r
+part2[, weekday := weekdays(as.Date(calendar_date), abbreviate = FALSE)]
+# Becomes locale-safe by calling format() with an explicit day name table, or:
+Sys.setlocale("LC_TIME", "C")  # add at top of global.R
+```
+
+---
+
+### P8 — `do.report = c(2, 5)` excludes Part 4 visual sleep report
+
+**File:** `r/pipeline/01_run_ggir.R:143`
+
+`DEVELOPER.md` documents `visualisation_sleep.pdf` as expected output under `results/`. GGIR generates this PDF only when Part 4 is included in `do.report`. With `do.report = c(2, 5)`, no sleep visualization PDF is produced. The pipeline doesn't consume the PDF, but researchers may expect it. Consider `do.report = c(2, 4, 5)` or document that the PDF is intentionally not generated.
+
+---
+
+### P9 — qwindow suffix pattern may mismatch actual GGIR column names
+
+**File:** `r/pipeline/02_label_segments.R:200–202`
+
+```r
+qw_suffixes <- paste0(qw_starts, ".", qw_ends)
+```
+
+For boundaries `[0, 8.5, 10.0, 12.0, 13.0, 15.5, 24]`, R formats `10.0` as `"10"`, producing suffix `"10.12"`. GGIR's actual column names for this window could be `"10.12"` or `"10.0.12.0"` depending on version. If the suffix doesn't match, `use_qwindow` stays `FALSE` and all segment estimates fall back to proportional approximation — silently. Once GGIR is re-run with qwindow set (existing open blocker), inspect the actual Part 2 column names and pin the suffix format explicitly.
+
+---
+
+## Verified ✅ — Parameters correctly passed to `GGIR()`
+
+All parameters below were source-traced from `config.yaml` → `01_run_ggir.R` → `GGIR()` call and cross-checked against context7 GGIR documentation.
+
+| Parameter | Configured value | Verdict |
+|-----------|-----------------|---------|
+| `mode = 1:5` | all five GGIR parts | ✅ |
+| `HASPT.algo = "HDCZA"` | van Hees 2015 wrist-validated sleep algorithm | ✅ |
+| `anglethreshold = 5` | degrees — HDCZA default | ✅ |
+| `timethreshold = 5` | minutes — HDCZA default | ✅ |
+| `threshold.lig = 56.3` | Hildebrand 2014/2017 SB/LPA boundary (mg) | ✅ |
+| `threshold.mod = 191.6` | Hildebrand 2014/2017 LPA/MPA boundary (mg) | ✅ |
+| `threshold.vig = 695.8` | Hildebrand 2014/2017 MPA/VPA boundary (mg) | ✅ |
+| `boutdur.in = c(10,20,30)` | sedentary bout duration thresholds (min) | ✅ |
+| `rmc.firstrow.acc = 101` | skips 100-row GENEActiv metadata header | ✅ |
+| `rmc.col.acc = 2:4` | x/y/z acceleration columns in g | ✅ |
+| `rmc.col.time = 1` | timestamp column | ✅ |
+| `rmc.col.temp = 7` | temperature column | ✅ |
+| `rmc.unit.acc = "g"` | GENEActiv native unit | ✅ |
+| `rmc.unit.time = "POSIX"` | timestamp format | ✅ |
+| `rmc.sf = 1` | 1 Hz — CSVs are pre-epoched 1-second data (W4) | ✅ |
+| `do.cal = FALSE` (CSV) | autocalibration requires raw signal; CSVs are pre-epoched | ✅ |
+| `do.cal = TRUE` (native) | sphere-fitting enabled for raw .bin/.cwa | ✅ |
+| `desiredtz = "Europe/Brussels"` | explicit override of machine-timezone default | ✅ |
+| `idloc = 2` | full filename as participant ID | ✅ |
+| `includedaycrit` | from `dev$includedaycrit` or `validity$min_wear_hours_per_day` | ✅ |
+| `includedaycrit.part5` | from `dev$includedaycrit_part5` or `2/3` | ✅ |
+| `overwrite = isTRUE(cfg$ggir$overwrite)` | milestone caching controlled via config | ✅ |
+| `qwindow` | from config (manual) or derived from schedules (auto) | ✅ |
+| Part 1→5 intermediate files | GGIR manages `meta/` milestone `.RData` files internally | ✅ no explicit pass-through needed |
+| `outputdir` path resolution | relative paths consistent across pipeline and Shiny | ✅ (P5 is docs error only) |

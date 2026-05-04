@@ -19,21 +19,28 @@ The project has one job: take accelerometer CSV files → run GGIR → label sch
         ↓
 pipeline/01_run_ggir.R                  ← GGIR Parts 1–5 for each meting
         ↓
-../data/processed/ggir/
+../data/processed/
   meting_1/output_meting_1/results/     ← Part 2, 4, 5 CSVs
   meting_2/output_meting_2/results/
         ↓
 pipeline/02_label_segments.R            ← map GGIR output to school-day segments
         ↓
-../data/processed/segment_summary.csv
+../data/segment_summary.csv             ← one level above data/processed/ (see note)
         ↓
 pipeline/03_build_summaries.R           ← join all outputs, compute validity flags
         ↓
-../data/processed/analysis_ready.csv
-../data/processed/validity_summary.csv
+../data/analysis_ready.csv
+../data/validity_summary.csv
         ↓
 shiny/                                  ← Dashboard
 ```
+
+> **Path note:** `config.yaml` sets `data_processed: "../data/processed"`. Steps 02 and 03
+> write their output to `file.path(data_processed, "..")` = `../data/` — one directory
+> above `data/processed/`, not inside it. The GGIR output itself lands inside
+> `data/processed/meting_N/output_meting_N/` (no intermediate `ggir/` subdirectory).
+> All scripts and Shiny resolve to the same paths; this is consistent but differs from
+> what some older documentation shows.
 
 Orchestrate the full pipeline with `pipeline/run_all.R`.
 
@@ -107,6 +114,86 @@ without opening RStudio.
 | `shiny/server.R` | Done | All tabs implemented: reactive filters, plots, downloads, report generation |
 | Hooks | Done | GDPR guard, config guard, R syntax check — all active |
 | Commands | Done | 6 slash commands available |
+
+---
+
+## Pipeline Architecture
+
+### GGIR Parts 1–5 → script mapping
+
+| GGIR Part | What it does | Script that triggers it | Key output |
+|-----------|-------------|------------------------|------------|
+| Part 1 | Load CSV data; compute ENMO + anglez from x/y/z; aggregate to epochs | `01_run_ggir.R` | `meta/*.RData` milestone files |
+| Part 2 | Non-wear detection; cut-point classification (SB/LPA/MPA/VPA); day summaries; qwindow segment columns | `01_run_ggir.R` | `part2_daysummary.csv` |
+| Part 3 | Rest period estimation for sleep detection | `01_run_ggir.R` | `meta/*.RData` |
+| Part 4 | Sleep detection (HDCZA algorithm); night summaries | `01_run_ggir.R` | `part4_nightsummary_sleep_cleaned.csv` |
+| Part 5 | Full behavioral timeline; waking-window (WW) bout summaries; person summaries | `01_run_ggir.R` | `part5_personsummary_WW_*.csv` |
+
+GGIR manages Part 1–5 sequencing internally. Intermediate milestone `.RData` files in `meta/` allow re-runs to skip already-completed parts when `overwrite: false`.
+
+### Parameter flow: `config.yaml` → `GGIR()`
+
+| `config.yaml` key | R variable | GGIR argument | Notes |
+|-------------------|-----------|---------------|-------|
+| `ggir.cut_points_mg.sedentary_to_light` | `cp$sedentary_to_light` | `threshold.lig` | 56.3 mg — Hildebrand 2014 |
+| `ggir.cut_points_mg.light_to_moderate` | `cp$light_to_moderate` | `threshold.mod` | 191.6 mg |
+| `ggir.cut_points_mg.moderate_to_vigorous` | `cp$moderate_to_vigorous` | `threshold.vig` | 695.8 mg |
+| `ggir.qwindow` | `qwindow_val` | `qwindow` | manual or auto-derived from schedules |
+| `ggir.maxNcores` | `max_cores` | `maxNcores`, `do.parallel` | `do.parallel = max_cores > 1` |
+| `ggir.overwrite` | — | `overwrite` | milestone caching control |
+| `output.timezone` | — | `desiredtz` | `"Europe/Brussels"` |
+| `dev.nonwear_approach` | `nonwear_approach` | `nonwear_approach` | see note below |
+| `dev.includedaycrit` | `includedaycrit` | `includedaycrit` | GGIR Part 2 valid-hour threshold |
+| `dev.includedaycrit_part5` | `includedaycrit_part5` | `includedaycrit.part5` | GGIR Part 5 valid-fraction threshold |
+| *(hardcoded)* | — | `HASPT.algo = "HDCZA"` | wrist-validated for children; van Hees 2015 |
+| *(hardcoded)* | — | `anglethreshold = 5` | degrees — HDCZA parameter |
+| *(hardcoded)* | — | `timethreshold = 5` | minutes — HDCZA parameter |
+| *(hardcoded)* | — | `boutdur.in = c(10,20,30)` | sedentary bout thresholds |
+| *(hardcoded)* | — | `rmc.sf = 1` | 1 Hz pre-epoched CSV (not raw 100 Hz) |
+| *(hardcoded)* | — | `rmc.firstrow.acc = 101` | 100-row GENEActiv metadata header |
+| *(hardcoded)* | — | `rmc.col.acc = 2:4` | x/y/z in g |
+| *(hardcoded)* | — | `idloc = 2` | full filename as participant ID |
+
+**`nonwear_approach` note:** The 2023 GGIR non-wear algorithm resamples to 5 Hz
+internally. This collapses all variance in 1 Hz dummy CSV data → every epoch flagged
+as non-wear. For dummy data (`example_mode: true`), this must be `"2013"`. For real
+`.bin`/`.cwa` data (100 Hz), remove the setting entirely.
+
+### Implicit assumptions
+
+| Assumption | Where it matters | Risk if violated |
+|-----------|-----------------|-----------------|
+| GGIR participant ID column is `ID` (not `id`) and includes `.csv` extension | `extract_school_id()` strips `.csv`; class-override map key lookup strips `.csv` | Different format → silent wrong school assignment or missed override (see P1 in AUDIT.md) |
+| Part 2 column `N valid hours` (with spaces) | `setnames()` normalises to `n_valid_hours` | Different name → NA validity flags |
+| Part 4 sleep duration column is named `SleepDurationInSpt` or `sleep_dur*` | `dur_col <- grep(...)` in step 03 | Wrong column → incorrect sleep_duration_h |
+| Part 5 personsummary has one row per participant (not per qwindow segment) | Step 03 aggregates by `(ID, school, meting)` | Multiple rows → inflated averages |
+| GGIR output subdir is named `output_<datadir_basename>` | `find_ggir_output_subdir()` searches for `^output_` | Different prefix → NULL results dir |
+| qwindow suffixes in Part 2 column names match `paste0(qw_start, ".", qw_end)` | `02_label_segments.R:200` | Mismatch → silent fallback to proportional approximation (see P9 in AUDIT.md) |
+
+### Known edge cases
+
+**Single-file upload vs batch:** GGIR processes all files in `datadir` as a batch.
+Single-file runs work identically. The `n_files` check in step 01 skips empty directories
+rather than erroring.
+
+**GGIR fails mid-pipeline:** GGIR throws an R error that propagates up through `source()`
+in `run_all.R` and halts the pipeline. Steps 02 and 03 do not run. The partial GGIR
+output in `meta/` is preserved, so a re-run with `overwrite: false` resumes from the
+last completed milestone.
+
+**Empty or unexpected output CSVs:** Steps 02 and 03 use `tryCatch()` / `NULL` guards
+around file reads. Missing files produce NULL; `rbindlist(Filter(Negate(is.null), ...),
+fill = TRUE)` tolerates any combination of present/absent metingen. An empty `analysis_ready`
+causes Shiny tabs to render empty rather than crashing.
+
+**Class override key mismatch (AUDIT.md P1):** The `pupil_override_map` lookup in
+`02_label_segments.R:357` uses `row$ID` directly. GGIR IDs include `.csv`; map keys do
+not. Fix: `sub("\\.csv$", "", basename(as.character(row$ID)))` before the lookup.
+
+**MVPA column ambiguity (AUDIT.md P3):** With `boutdur.in = c(10,20,30)`, Part 5 may
+contain `dur_day_MVPA_bts_10_min_pla`, `dur_day_MVPA_bts_20_min_pla`, and
+`dur_day_total_MVPA_min_pla`. `grep("MVPA", ...)` picks the first alphabetically. Pin
+to an explicit column name once actual GGIR output has been inspected.
 
 ---
 
@@ -331,22 +418,26 @@ All module server functions receive a `shared` list. Contents:
 ## GGIR output structure
 
 ```
-../data/processed/ggir/
+../data/processed/
   meting_1/
-    output_meting_1/
-      meta/          ← intermediate milestone files (.RData)
+    output_meting_1/          ← GGIR names this from the datadir basename
+      meta/                   ← intermediate milestone files (.RData)
       results/
         part2_daysummary.csv
         part2_summary.csv
-        part4_nightsummary_*.csv
+        part4_nightsummary_sleep_cleaned.csv  (or _full.csv, version-dependent)
         part5_daysummary_WW_L56.3M191.6V695.8_T5A5.csv
         part5_personsummary_WW_L56.3M191.6V695.8_T5A5.csv
-        visualisation_sleep.pdf
+      config.csv              ← GGIR's own parameter record (archived to logs/)
   meting_2/
     output_meting_2/results/  (same structure)
 ```
 
-Part 5 filenames embed the cut-point values. `utils_ggir.R` finds them with regex
+Note: `do.report = c(2, 5)` in `01_run_ggir.R` does **not** include Part 4, so
+`visualisation_sleep.pdf` is not produced. Add `4` to `do.report` if the PDF is needed.
+
+Part 5 filenames embed the cut-point values (`L56.3M191.6V695.8`) and HDCZA parameters
+(`T5A5` = timethreshold 5, anglethreshold 5). `utils_ggir.R` finds them with regex
 patterns so the exact filename doesn't need to be hardcoded anywhere.
 
 ### Key Part 2 columns
