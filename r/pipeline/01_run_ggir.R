@@ -165,7 +165,7 @@ for (meting in c("meting_1", "meting_2")) {
       rmc.unit.time    = "POSIX",
       rmc.format.time  = "%Y-%m-%d %H:%M:%OS",
       rmc.unit.temp    = "C",
-      rmc.sf           = 1
+      rmc.sf           = 1      # CSVs are pre-aggregated 1-second epochs, not raw 100 Hz samples
     )
     ggir_args <- c(shared_args, csv_args)
   }

@@ -11,7 +11,7 @@
 #' @param id  Participant ID string (e.g. "2063.csv" or "2063").
 #' @return    School key string, e.g. "school_2".
 extract_school_id <- function(id) {
-  code <- suppressWarnings(as.integer(sub("\\.csv$", "", basename(as.character(id)))))
+  code <- suppressWarnings(as.integer(sub("\\.[^.]+$", "", basename(as.character(id)))))
   paste0("school_", code %/% 1000L)
 }
 

@@ -68,14 +68,11 @@ bouts:
 # ── Validity criteria ─────────────────────────────────────────────────────────
 validity:
   # Sedentary analysis criteria
-  # ⚠ RELAXED for 24h test data — restore before real data runs:
-  #   min_wear_hours_per_day: 16, min_valid_days: 3, require_weekend_day: true,
-  #   min_valid_nights_sleep: 5
-  min_wear_hours_per_day: 10
-  min_valid_days: 1
-  require_weekend_day: false
+  min_wear_hours_per_day: 16
+  min_valid_days: 3
+  require_weekend_day: true
   # Sleep analysis criteria
-  min_valid_nights_sleep: 1    # min nights with valid sleep to include in sleep analysis
+  min_valid_nights_sleep: 5    # min nights with valid sleep to include in sleep analysis
   min_pct_night_valid: 50      # min sleep efficiency % to count a night as valid
 
 # ── Measurement windows ───────────────────────────────────────────────────────
@@ -223,15 +220,10 @@ dev:
   example_mode: false
 
   # GGIR non-wear algorithm override.
-  # For raw .bin/.cwa data (100 Hz) the 2023 algorithm is preferred.
-  # For 1 Hz dummy CSV data, use "2013" (2023 collapses variance at 1 Hz).
-  # ⚠ Set to "2013" when running on dummy CSV data.
-  nonwear_approach: "2023"
-
-  # Relaxed GGIR validity thresholds for 24h test data.
-  # ⚠ Reset to null (or remove) before running on real participant data.
-  includedaycrit: 10         # GGIR Part 2: min valid hours per day (production = 16)
-  includedaycrit_part5: 0.3  # GGIR Part 5: min fraction of waking day (production = 0.667)
+  # For 1 Hz dummy CSV data, "2013" is required (the 2023 algorithm collapses
+  # variance at 1 Hz and flags every epoch as non-wear → 0 valid participants).
+  # ⚠ Remove this setting entirely before running on real .bin/.cwa data.
+  nonwear_approach: "2013"
 
 # ── Reproducibility tracking ──────────────────────────────────────────────────
 # These actions always run unconditionally in run_all.R — the flags below are

@@ -29,7 +29,7 @@ tz          <- cfg$output$timezone
 # ── Helper: extract school ID from participant code ───────────────────────────
 # Participant code is a 4-digit number: first digit = school (1–6)
 extract_school_id <- function(id) {
-  code <- suppressWarnings(as.integer(sub("\\.csv$", "", basename(as.character(id)))))
+  code <- suppressWarnings(as.integer(sub("\\.[^.]+$", "", basename(as.character(id)))))
   paste0("school_", code %/% 1000L)
 }
 
@@ -354,7 +354,8 @@ for (i in seq_len(nrow(part2))) {
 
   # School day: look up schedule (with per-pupil class override if applicable)
   cache_key  <- paste(school, wday, sep = "_")
-  pupil_info <- pupil_override_map[[as.character(row$ID)]]
+  pupil_key  <- sub("\\.[^.]+$", "", basename(as.character(row$ID)))
+  pupil_info <- pupil_override_map[[pupil_key]]
   if (!is.null(pupil_info)) {
     wday_lower   <- tolower(wday)
     override_end <- pupil_info$overrides[[wday_lower]]

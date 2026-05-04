@@ -131,7 +131,7 @@ min_nights    <- val_cfg$min_valid_nights_sleep %||% 5L
 min_pct_valid <- val_cfg$min_pct_night_valid    %||% 50
 
 if (nrow(part4) > 0) {
-  seff_col <- grep("SleepEfficiencyInSpt|sleep_efficiency|fraction",
+  seff_col <- grep("SleepEfficiencyInSpt|sleep_efficiency",
                    names(part4), value = TRUE, ignore.case = TRUE)
   if (length(seff_col) > 0) {
     # Efficiency reported as 0–1 fraction in some GGIR versions, 0–100 in others
@@ -164,15 +164,23 @@ if (nrow(part4) > 0) {
 
 # ── Per-participant MVPA, sleep, SB, and bout averages (from part5) ───────────
 if (nrow(part5) > 0) {
+  # When qwindow is set, GGIR produces a _Segments_ file with one row per
+  # person per time window. Duration columns must be summed (not averaged) to
+  # get whole-day totals. The _WW_ file has one row per person, so sum = value.
+  is_segments_file <- "window" %in% names(part5) &&
+    any(grepl("^segment", part5[["window"]], ignore.case = TRUE))
+
   # ── MVPA column ────────────────────────────────────────────────────────────
-  mvpa_col <- grep("MVPA", names(part5), value = TRUE, ignore.case = TRUE)
-  if (length(mvpa_col) == 0) {
-    mod_col <- grep("_MOD_|^MOD", names(part5), value = TRUE, ignore.case = TRUE)
-    vig_col <- grep("_VIG_|^VIG", names(part5), value = TRUE, ignore.case = TRUE)
-    if (length(mod_col) > 0 && length(vig_col) > 0) {
-      part5[, mvpa_min_day := get(mod_col[1]) + get(vig_col[1])]
-      mvpa_col <- "mvpa_min_day"
-    }
+  # Prefer total MOD+VIG minutes — reliable across GGIR versions and file types.
+  # Avoid broad grep("MVPA") which picks ACC columns (mg, not min) alphabetically first.
+  mod_col <- grep("dur_day_total_MOD_min", names(part5), value = TRUE, ignore.case = TRUE)
+  vig_col <- grep("dur_day_total_VIG_min", names(part5), value = TRUE, ignore.case = TRUE)
+  if (length(mod_col) > 0 && length(vig_col) > 0) {
+    part5[, mvpa_min_day := get(mod_col[1]) + get(vig_col[1])]
+    mvpa_col <- "mvpa_min_day"
+  } else {
+    # Older GGIR: look for MVPA minutes columns specifically (not ACC or Nbouts)
+    mvpa_col <- grep("dur_day.*MVPA.*_min_pla$", names(part5), value = TRUE, ignore.case = TRUE)
   }
 
   # ── Sedentary time (inactivity) ────────────────────────────────────────────
@@ -286,14 +294,17 @@ if (!is.null(seg) && nrow(seg) > 0) {
 # ── Context-aware sedentary bouts (from epoch-level data) ─────────────────────
 # detect_activity_bouts() in utils_bouts.R requires epoch-level labeled data:
 # one row per 1-second epoch with ID, date, context, intensity, wear columns.
-# This is produced when GGIR runs with epochvalues2csv = TRUE and
-# 02_label_segments.R assigns school context to each epoch.
 #
-# The labeled epoch file (if available) lives at:
+# NOTE: labeled_epochs.csv is NOT currently produced by any pipeline step.
+# 02_label_segments.R is a day-level script only — it does not emit per-epoch output.
+# epochvalues2csv (in 01_run_ggir.R) controls raw GGIR epoch export, not school
+# context labeling. Until an epoch-level labeling step is implemented, this block
+# never fires and all bouts_30min_*_n columns in analysis_ready.csv will be NA.
+#
+# The labeled epoch file (if available) would live at:
 #   data/processed/labeled_epochs.csv
 #
-# When it is absent, we skip this block silently — the Shiny app reads
-# bouts_30min_*_n columns defensively and shows "—" when they are missing.
+# When it is absent, we skip this block and emit a warning.
 context_bouts_wide <- NULL
 labeled_epochs_path <- file.path(base_out, "..", "labeled_epochs.csv")
 
@@ -316,8 +327,8 @@ if (file.exists(labeled_epochs_path)) {
     }
   }
 } else {
-  message("Epoch-level labeled data not found — context-aware bout columns skipped.")
-  message("  (Produce labeled_epochs.csv by running 02_label_segments.R with epoch output enabled.)")
+  message("[WARN] labeled_epochs.csv not found — context-aware bout columns will be NA.")
+  message("  Epoch-level school context labeling is not yet implemented (see comment above).")
 }
 
 # ── Build analysis_ready table ────────────────────────────────────────────────
@@ -344,8 +355,11 @@ if (nrow(part5) > 0) {
 
   val_cols <- intersect(val_cols, names(part5))
   if (length(val_cols) > 0) {
+    # _Segments_ stores per-window totals → sum across windows for daily total.
+    # _WW_ has one row per person → sum = mean = the value itself.
+    agg_fn <- if (isTRUE(is_segments_file)) sum else mean
     part5_merge <- part5[,
-      lapply(.SD, mean, na.rm = TRUE),
+      lapply(.SD, agg_fn, na.rm = TRUE),
       by = .(ID, school, meting),
       .SDcols = val_cols
     ]
