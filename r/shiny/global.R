@@ -110,7 +110,11 @@ if (nrow(part2) > 0) {
   if ("N valid hours" %in% names(part2)) setnames(part2, "N valid hours", "n_valid_hours")
   if ("N hours"       %in% names(part2)) setnames(part2, "N hours",       "n_hours")
   if (!"weekday" %in% names(part2) && "calendar_date" %in% names(part2)) {
+    # Force English day names so Saturday/Sunday filters work on Dutch-locale machines.
+    old_lc <- Sys.getlocale("LC_TIME")
+    Sys.setlocale("LC_TIME", "C")
     part2[, weekday := weekdays(as.Date(calendar_date))]
+    Sys.setlocale("LC_TIME", old_lc)
   }
   part2[, valid_day := !is.na(n_valid_hours) & n_valid_hours >= MIN_WEAR_H]
   part2[, school_label := SCHOOL_LABELS[school]]

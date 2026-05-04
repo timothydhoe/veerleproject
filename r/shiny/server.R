@@ -4,15 +4,6 @@
 # All tab logic lives in modules/mod_*.R.
 # ─────────────────────────────────────────────────────────────────────────────
 
-# ── Module files (sourced here so they're available at session start) ─────────
-source("modules/mod_overview.R",      local = TRUE)
-source("modules/mod_participants.R",  local = TRUE)
-source("modules/mod_schoolday.R",     local = TRUE)
-source("modules/mod_sleep.R",         local = TRUE)
-source("modules/mod_comparison.R",    local = TRUE)
-source("modules/mod_export.R",        local = TRUE)
-source("modules/mod_settings.R",      local = TRUE)
-
 server <- function(input, output, session) {
 
   # ── MVPA column detection ──────────────────────────────────────────────────

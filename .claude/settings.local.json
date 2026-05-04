@@ -16,7 +16,12 @@
       "Bash(/Users/timothydhoe/Syntra/.venv/bin/python3 *)",
       "WebFetch(domain:styleguide.ugent.be)",
       "Bash(grep *)",
-      "mcp__playwright__browser_evaluate"
+      "mcp__playwright__browser_evaluate",
+      "mcp__context7__query-docs",
+      "Bash(Rscript -e \"shiny::runApp\\('r/shiny', port=7474, launch.browser=FALSE\\)\")",
+      "Bash(echo \"PID: $!\")",
+      "Bash(git add *)",
+      "Bash(git commit -m 'fix\\(shiny\\): Phase 2 UX fixes, fwrite guards, locale fix, module sources moved *)"
     ]
   },
   "enableAllProjectMcpServers": true,

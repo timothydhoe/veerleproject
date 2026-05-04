@@ -410,7 +410,16 @@ mod_settings_server <- function(id, shared) {
       }
       new_row <- data.table(pupil_id = pupil, date = date, reason = reason)
       dt <- rbindlist(list(dt, new_row))
-      fwrite(dt, absences_path_server)
+      tryCatch(
+        fwrite(dt, absences_path_server),
+        error = function(e) {
+          output$abs_status_msg <- renderUI(
+            div(class = "alert alert-danger small py-2 mt-2",
+                icon("triangle-exclamation"),
+                paste0(" Opslaan mislukt: ", conditionMessage(e))))
+          return()
+        }
+      )
       absences_rv(dt)
       out$absence_changed <- out$absence_changed + 1L
       output$abs_status_msg <- renderUI(
@@ -425,7 +434,16 @@ mod_settings_server <- function(id, shared) {
       dt <- absences_rv()
       if (row_idx < 1 || row_idx > nrow(dt)) return()
       dt <- dt[-row_idx]
-      fwrite(dt, absences_path_server)
+      tryCatch(
+        fwrite(dt, absences_path_server),
+        error = function(e) {
+          output$abs_status_msg <- renderUI(
+            div(class = "alert alert-danger small py-2 mt-2",
+                icon("triangle-exclamation"),
+                paste0(" Verwijderen mislukt: ", conditionMessage(e))))
+          return()
+        }
+      )
       absences_rv(dt)
       out$absence_changed <- out$absence_changed + 1L
       output$abs_status_msg <- renderUI(

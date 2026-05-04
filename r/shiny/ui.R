@@ -3,73 +3,6 @@
 # SchoolMove dashboard layout — 6 tabs.
 # ─────────────────────────────────────────────────────────────────────────────
 
-# ── Reusable: chart card with optional PNG download button ────────────────────
-chart_card <- function(header, plot_id, dl_id = NULL, height = "460px",
-                       subtitle = NULL, full_screen = TRUE, plotly = FALSE) {
-  footer <- if (!is.null(dl_id)) {
-    card_footer(
-      class = "d-flex justify-content-end py-1",
-      downloadButton(dl_id, "PNG opslaan",
-                     icon  = icon("download"),
-                     class = "btn-outline-secondary btn-sm")
-    )
-  }
-  plot_widget <- if (plotly) plotlyOutput(plot_id, height = height) else plotOutput(plot_id, height = height)
-  card(
-    class       = "shadow-sm",
-    full_screen = full_screen,
-    card_header(header),
-    card_body(
-      class = "p-3",
-      if (!is.null(subtitle)) p(class = "text-muted small mb-2", subtitle),
-      plot_widget
-    ),
-    footer
-  )
-}
-
-# ── Tooltip helper ────────────────────────────────────────────────────────────
-tip <- function(label, text) {
-  tagList(
-    label,
-    tooltip(
-      span(icon("circle-info"), style = "color:#94a3b8; margin-left:4px; font-size:0.8em;"),
-      text
-    )
-  )
-}
-
-# ── Compact KPI strip card ────────────────────────────────────────────────────
-kpi_strip_card <- function(icon_nm, title_ui, value_id) {
-  div(
-    class = "card kpi-strip",
-    div(
-      class = "card-body",
-      div(class = "kpi-strip-icon", icon(icon_nm)),
-      div(
-        class = "kpi-strip-text",
-        div(class = "kpi-strip-title", title_ui),
-        div(class = "kpi-strip-value", textOutput(value_id))
-      )
-    )
-  )
-}
-
-# ── Fallback warning (shared across tabs that use segment data) ───────────────
-fallback_banner <- function() {
-  if (length(FALLBACK_SCHOOLS) == 0) return(NULL)
-  school_names <- paste(SCHOOL_LABELS[FALLBACK_SCHOOLS], collapse = ", ")
-  div(
-    class = "readiness-strip",
-    style = "background:#fff3cd; border-bottom-color:#ffc107;",
-    tags$span(class = "check-warn",
-      icon("triangle-exclamation"),
-      paste0(" Geschat rooster: ", school_names,
-             " \u2014 segmentresultaten zijn benaderingen.")
-    )
-  )
-}
-
 # ── Custom CSS ────────────────────────────────────────────────────────────────
 app_css <- tags$head(tags$style(HTML("
 
@@ -444,7 +377,7 @@ ui <- tagList(
         span(class = "filter-label", "Filter:"),
         div(style = "width:150px;",
           selectInput("global_school", NULL, width = "100%",
-                      choices = c("Alle scholen" = "all", SCHOOL_LABELS))
+                      choices = c("Alle scholen" = "all", setNames(names(SCHOOL_LABELS), SCHOOL_LABELS)))
         ),
         div(style = "width:160px;",
           uiOutput("meting_filter_ui")

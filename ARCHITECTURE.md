@@ -185,5 +185,3 @@ flowchart TD
 | GGIR not async — blocks if called from Shiny (never do this) | Pipeline runs in terminal only | "Run Pipeline" button shows modal with terminal command |
 | `labeled_epochs.csv` never produced — context-aware bout detection is dead code | Bout columns in `analysis_ready` are always NA | Documented in AUDIT.md W6 + P2 |
 | No unit tests — pure utility functions are untested | Regression risk before real-data run | AUDIT.md S3 |
-| Module files sourced inside `server()` — re-parsed per session | Negligible for single-user deployment | AUDIT.md S5 |
-| School_3 class-override key mismatch — per-pupil end-time correction never applied | 13 pupils have wrong segment boundaries | AUDIT.md P1 — fix required before real-data run |

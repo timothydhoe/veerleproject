@@ -241,7 +241,7 @@ mod_participants_server <- function(id, shared) {
       dt[, school_label := SCHOOL_LABELS[school]]
       dt[, meting_label := METINGEN_LABELS[meting]]
       dt[, status := ifelse(meets_sedentary_criteria, "Inbegrepen", "Uitgesloten")]
-      dt[, reden  := fifelse(is.na(exclusion_reason), "—", exclusion_reason)]
+      dt[, reden  := fifelse(is.na(exclusion_reason), "—", as.character(exclusion_reason))]
 
       sf <- input$incl_status_filter
       if (!is.null(sf) && sf == "included") dt <- dt[meets_sedentary_criteria == TRUE]
