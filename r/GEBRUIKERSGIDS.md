@@ -174,7 +174,7 @@ Profielen worden opgeslagen in `r/profiles/`. Het actieve profiel wordt bij de v
 
 ## 6. Data exporteren
 
-Alle uitvoerbestanden staan in `data/processed/`:
+Alle uitvoerbestanden staan in `data/` (één map boven `data/processed/`):
 
 | Bestand | Inhoud |
 |---------|--------|
@@ -222,22 +222,34 @@ Sla het bestand op en herstart de pipeline.
 ## 8. Veelgestelde vragen en probleemoplossing
 
 **Het dashboard laadt geen data**
-→ Controleer of de pipeline volledig is doorgelopen (`run_all.R`) en dat `analysis_ready.csv` bestaat in `data/processed/`.
+→ Controleer of de pipeline volledig is doorgelopen (`run_all.R`) en dat `analysis_ready.csv` bestaat in `data/` (één map boven `data/processed/`).
 
 **De QC meldt "part4 nightsummary not found"**
-→ GGIR heeft stap 4 (slaapdetectie) niet doorlopen of de outputmap heeft een andere naam. Controleer of `data/processed/ggir/meting_1/` de verwachte mapstructuur bevat.
+→ GGIR heeft stap 4 (slaapdetectie) niet doorlopen of de outputmap heeft een andere naam. Controleer of `data/processed/meting_1/output_meting_1/results/` de verwachte mapstructuur bevat.
 
-**School 4 toont een waarschuwing over "fallback schedule"**
+**School 4 toont een waarschuwing over "geschat rooster"**
 → Het bevestigde lesrooster voor school 4 is nog niet ontvangen. Resultaten voor deze school zijn benaderingen. Stuur het rooster naar de ontwikkelaar om de fallback te verwijderen.
 
 **"No valid days" voor alle deelnemers**
 → Waarschijnlijk is `dev.example_mode` op `false` terwijl de `data/raw/`-map leeg is, of andersom. Controleer de instelling in `config.yaml`.
 
+**Schoolfilter bovenaan het dashboard werkt niet (alle data verdwijnt)**
+→ Dit is een bekende bug (zichtbaar als het filter een code toont als `school_1` in plaats van "School 1"). De developer moet `ui.R` updaten voor dit werkt. Gebruik in de tussentijd het filter op "Alle scholen".
+
+**Foutmelding rood in de Deelnemers-tabel**
+→ Als de tabel "Error: 'no' is of type logical..." toont, is er een typeconflict in de geldigheidsdata. Dit treedt op als alle deelnemers geldig zijn (lege `exclusion_reason`-kolom in dummy data). De developer moet `mod_participants.R:244` aanpassen.
+
+**Het dashboard start niet / scherm blijft leeg**
+→ Dit is een bekende bug: module-bestanden worden geladen op het verkeerde moment. Vraag de developer om de module-bronbestanden naar `global.R` te verplaatsen (zie UX_REVIEW.md U0).
+
 **Pipeline loopt erg lang**
-→ GGIR stap 1 kan uren duren op de volledige dataset. Verhoog `ggir.maxNcores` in `config.yaml` als je op een werkstation werkt (bijv. 4 of 8 cores). Op een laptop is 1 veilig.
+→ GGIR stap 1 kan **30–60 minuten** duren op de volledige dataset van ~400 deelnemers. Dit is normaal. Verhoog `ggir.maxNcores` in `config.yaml` als je op een werkstation werkt (bijv. 4 of 8 cores). Op een laptop is 1 veilig.
 
 **Ik wil opnieuw verwerken maar GGIR slaat stappen over**
 → Zet `ggir.overwrite: true` in `config.yaml` en draai `run_all.R` opnieuw. Vergeet achteraf niet terug te zetten op `false`.
+
+**De "Pipeline uitvoeren"-knop doet niets**
+→ Dit is zo ontworpen: de knop toont een venster met de terminalopdracht. De pipeline draait nooit automatisch vanuit het dashboard (GGIR zou de app 30–60 minuten blokkeren). Voer de opdracht uit in een apart terminalvenster en herlaad de app daarna.
 
 ---
 

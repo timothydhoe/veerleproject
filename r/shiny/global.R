@@ -157,3 +157,84 @@ SCHOOL_COLORS <- setNames(
   c("#2684FF", "#00B8D9", "#36B37E", "#FF991F", "#6554C0", "#FF5630")[seq_along(schools)],
   SCHOOL_LABELS
 )
+
+# ── UI helper functions (needed by modules; defined before module sources) ─────
+# BUG FIX (UX review): these helpers are also defined in ui.R (original location).
+# They must be available here so module UI functions can call them at definition time.
+# See UX_REVIEW.md → U0 for the full writeup.
+
+chart_card <- function(header, plot_id, dl_id = NULL, height = "460px",
+                       subtitle = NULL, full_screen = TRUE, plotly = FALSE) {
+  footer <- if (!is.null(dl_id)) {
+    card_footer(
+      class = "d-flex justify-content-end py-1",
+      downloadButton(dl_id, "PNG opslaan",
+                     icon  = icon("download"),
+                     class = "btn-outline-secondary btn-sm")
+    )
+  }
+  plot_widget <- if (plotly) plotlyOutput(plot_id, height = height) else plotOutput(plot_id, height = height)
+  card(
+    class       = "shadow-sm",
+    full_screen = full_screen,
+    card_header(header),
+    card_body(
+      class = "p-3",
+      if (!is.null(subtitle)) p(class = "text-muted small mb-2", subtitle),
+      plot_widget
+    ),
+    footer
+  )
+}
+
+tip <- function(label, text) {
+  tagList(
+    label,
+    tooltip(
+      span(icon("circle-info"), style = "color:#94a3b8; margin-left:4px; font-size:0.8em;"),
+      text
+    )
+  )
+}
+
+kpi_strip_card <- function(icon_nm, title_ui, value_id) {
+  div(
+    class = "card kpi-strip",
+    div(
+      class = "card-body",
+      div(class = "kpi-strip-icon", icon(icon_nm)),
+      div(
+        class = "kpi-strip-text",
+        div(class = "kpi-strip-title", title_ui),
+        div(class = "kpi-strip-value", textOutput(value_id))
+      )
+    )
+  )
+}
+
+fallback_banner <- function() {
+  if (length(FALLBACK_SCHOOLS) == 0) return(NULL)
+  school_names <- paste(SCHOOL_LABELS[FALLBACK_SCHOOLS], collapse = ", ")
+  div(
+    class = "readiness-strip",
+    style = "background:#fff3cd; border-bottom-color:#ffc107;",
+    tags$span(class = "check-warn",
+      icon("triangle-exclamation"),
+      paste0(" Geschat rooster: ", school_names,
+             " — segmentresultaten zijn benaderingen.")
+    )
+  )
+}
+
+# ── Module UI/server definitions ──────────────────────────────────────────────
+# BUG FIX (UX review): modules were only sourced in server.R with local = TRUE,
+# making their UI functions invisible to ui.R (which runs before server.R).
+# Sourced here (global env) so both ui.R and server.R can find them.
+# See UX_REVIEW.md → U0 for the full writeup.
+source("modules/mod_overview.R",      local = FALSE)
+source("modules/mod_participants.R",  local = FALSE)
+source("modules/mod_schoolday.R",     local = FALSE)
+source("modules/mod_sleep.R",         local = FALSE)
+source("modules/mod_comparison.R",    local = FALSE)
+source("modules/mod_export.R",        local = FALSE)
+source("modules/mod_settings.R",      local = FALSE)

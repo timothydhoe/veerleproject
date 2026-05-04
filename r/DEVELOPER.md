@@ -334,7 +334,7 @@ Loads everything the dashboard needs at startup:
 Global navbar filters (school, meting) apply across all tabs; meting filter is hidden
 on the Vergelijking tab.
 
-Reusable UI helpers in `ui.R`:
+Reusable UI helpers (defined in `ui.R`; also duplicated in `global.R` as a startup bug-fix — see UX debt section):
 - `chart_card()` — wraps plots in a card with optional PNG download button
 - `kpi_strip_card()` — compact icon + title + value KPI display
 - `tip()` — tooltip with info icon
@@ -412,6 +412,72 @@ All module server functions receive a `shared` list. Contents:
 | `png_dl(plot_expr, filename_stem, width, height, dpi)` | ✓ | Standardised Shiny download handler factory for PNG exports |
 | `theme_schoolmove(legend_pos)` | ✓ | Shared ggplot2 theme (Atlassian neutrals, UGent blue accent) |
 | `ZONE_COLORS` | — | Named character vector: SB → grey, LPA → cyan, MVPA → UGent blue |
+
+---
+
+## UI Architecture
+
+### Startup loading order
+
+Shiny evaluates files in this order: `global.R` → `ui.R` → `server.R`. Functions must be defined before the file that calls them is evaluated.
+
+```
+global.R          ← defines constants, loads data, UI helpers, module functions
+    ↓
+ui.R              ← calls modOverviewUI(), modParticipantsUI(), etc. + defines page layout
+    ↓
+server.R          ← calls mod_overview_server(), etc. (modules already defined)
+```
+
+**Critical constraint:** Module UI functions (`modOverviewUI`, `modParticipantsUI`, etc.) and the four reusable UI helpers (`chart_card`, `kpi_strip_card`, `tip`, `fallback_banner`) must all be available in the global environment by the time `ui.R` runs. This means they must be sourced in `global.R`, not `server.R`.
+
+Currently, `global.R` sources the modules and re-defines the helpers as a startup bug-fix (added during UX review — see UX_REVIEW.md U0). The permanent fix is to move these to a dedicated `shiny/utils/ui_helpers.R` file and source it in `global.R`.
+
+### CSS and theming
+
+All custom CSS lives in the `app_css` block at the top of `ui.R`. Key conventions:
+
+| Class | Purpose |
+|-------|---------|
+| `.kpi-strip` | 82px KPI card with icon + label + value |
+| `.kpi-nav-card` | Clickable wrapper: hover lift, focus ring |
+| `.pipeline-bar` | Top-of-Overzicht pipeline trigger row |
+| `.readiness-strip` | Coloured status checks below navbar |
+| `.readiness-strip .check-ok/warn/miss` | Green / amber / red check items |
+| `#schoolday-seg_view` | Custom segmented button for zone toggle |
+
+Theme: `bs_theme(version=5, bg="#e9f0fa", primary="#1E64C8")`. Heading font: Source Sans 3 (Google). No component library beyond bslib.
+
+### School filter data flow
+
+The global school filter uses `SCHOOL_LABELS`, defined in `global.R` as:
+```r
+SCHOOL_LABELS <- setNames(paste("School", seq_along(schools)), schools)
+# names = "school_1", ...; values = "School 1", ...
+```
+
+**Known bug (UX_REVIEW.md U1):** In `selectInput(choices = c("Alle scholen" = "all", SCHOOL_LABELS))`, Shiny displays the **names** ("school_1") and sends the **values** ("School 1") as `input$global_school`. The `school` column in data is "school_1", so the filter never matches. Fix: swap names/values in the `choices` argument:
+```r
+choices = c("Alle scholen" = "all", setNames(names(SCHOOL_LABELS), SCHOOL_LABELS))
+```
+
+---
+
+## UX Debt
+
+The following known issues were identified during the UX review (2026-05-04). Full details, root causes, and fixes in `UX_REVIEW.md`.
+
+| ID | Severity | Location | Description |
+|----|----------|----------|-------------|
+| U0 | 🔴 | global.R / server.R | Module sources with `local=TRUE` prevent app from starting — modules must be sourced in global.R |
+| U1 | 🔴 | ui.R:448 | `SCHOOL_LABELS` names/values swapped in `selectInput` choices — filter displays IDs, sends wrong values |
+| U2 | 🔴 | mod_participants.R:244 | `fifelse(is.na(exclusion_reason), "—", exclusion_reason)` — type mismatch when all-NA column read as logical |
+| U3 | 🟡 | 02_label_segments.R:33 | `sub("\\.csv$", ...)` only strips `.csv` — dummy `.bin`/`.cwa` IDs produce `school_NA` |
+| U4 | 🟡 | server.R:77–96 | "Start pipeline" modal: button label misleading, post-click ✔ implies success, duration "enkele minuten" wrong |
+| U5 | 🟡 | mod_participants.R | Explorer plot cards show blank white space when no participant selected — missing `req()` guard |
+| U6 | 🟡 | mod_schoolday.R | "herrun stap 03" in empty-state message exposes internal step reference |
+| U7 | 🟡 | mod_comparison.R | `datatable()` missing `language` option — "No data available in table" in English |
+| U8 | 🟡 | mod_overview.R | Duplicate legend in MVPA dumbbell chart (subtitle + ggplot legend both present) |
 
 ---
 
