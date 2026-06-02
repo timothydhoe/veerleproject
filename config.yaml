@@ -219,6 +219,13 @@ dev:
   # Flip to false when processing real participant data.
   example_mode: false
 
+  # Quick-test mode: process only the first N participant files per meting.
+  # Useful for verifying that the pipeline works with real data without waiting
+  # 30–60 minutes for the full run. Set to 2 or 3 for a fast check; remove or
+  # set to null (or ~) to process all files.
+  # Example: quick_test_n: 2
+  quick_test_n: ~
+
   # GGIR non-wear algorithm override.
   # For 1 Hz dummy CSV data, "2013" is required (the 2023 algorithm collapses
   # variance at 1 Hz and flags every epoch as non-wear → 0 valid participants).

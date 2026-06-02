@@ -160,11 +160,11 @@ mod_export_server <- function(id, shared) {
       if (!is.null(pattern)) {
         files <- list.files(results_dir, pattern = pattern, full.names = TRUE)
         if (length(files) == 0) return(NULL)
-        fread(files[1], data.table = FALSE)
+        fread(files[1], data.table = FALSE, encoding = "UTF-8")
       } else {
         fpath <- file.path(results_dir, filename)
         if (!file.exists(fpath)) return(NULL)
-        fread(fpath, data.table = FALSE)
+        fread(fpath, data.table = FALSE, encoding = "UTF-8")
       }
     }
 

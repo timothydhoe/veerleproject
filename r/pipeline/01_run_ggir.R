@@ -99,9 +99,19 @@ for (meting in c("meting_1", "meting_2")) {
     next
   }
 
+  quick_n <- dev$quick_test_n
+  if (!is.null(quick_n) && !is.na(quick_n)) {
+    quick_n <- as.integer(quick_n)
+    if (quick_n < n_files) {
+      message("⚡ QUICK TEST MODE: processing first ", quick_n, " of ", n_files, " files.")
+    }
+  } else {
+    quick_n <- NULL
+  }
+
   dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
 
-  message("\n── GGIR: ", meting, " (", n_files, " files) ─────────────────────────")
+  message("\n── GGIR: ", meting, " (", if (!is.null(quick_n)) paste0(quick_n, "/") else "", n_files, " files) ─────────────────────────")
   message("   input:  ", data_dir)
   message("   output: ", output_dir)
 
@@ -142,7 +152,10 @@ for (meting in c("meting_1", "meting_2")) {
     desiredtz   = cfg$output$timezone,
     do.report   = c(2, 5),
     do.parallel = max_cores > 1,
-    maxNcores   = max_cores
+    maxNcores   = max_cores,
+
+    # Quick-test: limit to first N files (f0 defaults to 1 in GGIR)
+    f1          = if (!is.null(quick_n)) min(quick_n, n_files) else n_files
   )
 
   if (has_native) {

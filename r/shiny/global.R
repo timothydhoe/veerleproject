@@ -95,11 +95,11 @@ load_ggir <- function(meting, filename = NULL, pattern = NULL) {
 # ── Load processed data ───────────────────────────────────────────────────────
 # analysis_ready + validity (output of 03_build_summaries.R)
 analysis_ready <- tryCatch(
-  fread(file.path(base_out, "..", "analysis_ready.csv"),   data.table = TRUE),
+  fread(file.path(base_out, "..", "analysis_ready.csv"),   data.table = TRUE, encoding = "UTF-8"),
   error = function(e) { message("analysis_ready.csv not found — run pipeline first"); NULL }
 )
 validity_summary <- tryCatch(
-  fread(file.path(base_out, "..", "validity_summary.csv"), data.table = TRUE),
+  fread(file.path(base_out, "..", "validity_summary.csv"), data.table = TRUE, encoding = "UTF-8"),
   error = function(e) NULL
 )
 
@@ -136,7 +136,7 @@ part4 <- rbindlist(Filter(Negate(is.null), part4_list), fill = TRUE)
 # segment summary (output of 02_label_segments.R)
 seg_path <- file.path(base_out, "..", "segment_summary.csv")
 if (file.exists(seg_path)) {
-  segment_summary <- fread(seg_path, data.table = TRUE)
+  segment_summary <- fread(seg_path, data.table = TRUE, encoding = "UTF-8")
   segment_summary[, school_label := SCHOOL_LABELS[school]]
   SEGMENT_LEVELS <- c("before_school", "in_class", "recess", "lunch", "after_school")
   SEGMENT_LABELS <- c("Voor school", "Les", "Speeltijd", "Middagpauze", "Na school")

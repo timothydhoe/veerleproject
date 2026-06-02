@@ -32,8 +32,7 @@ apply_global_filters_pure <- function(dt, school_val, meting_val,
                                       meting_col = "meting") {
   if (is.null(dt) || nrow(dt) == 0) return(dt)
   if (!is.null(school_val) && school_val != "all") {
-    sel <- names(SCHOOL_LABELS)[SCHOOL_LABELS == school_val]
-    dt  <- dt[get(school_col) %in% sel]
+    dt <- dt[get(school_col) == school_val]
   }
   if (!is.null(meting_val) && meting_val != "all") {
     dt <- dt[get(meting_col) == meting_val]

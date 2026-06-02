@@ -6,6 +6,22 @@ Dit document beschrijft alles wat je nodig hebt om de pipeline te draaien, het d
 
 ## 1. Eenmalige installatie
 
+### Vereiste software
+
+Zorg dat het volgende geïnstalleerd is **vóór** je het project opent:
+
+| Software | Versie | Waar te vinden |
+|----------|--------|----------------|
+| **R** | 4.4 of nieuwer | https://cran.r-project.org/bin/windows/base/ |
+| **RStudio** | Elke recente versie | https://posit.co/download/rstudio-desktop/ |
+| **Rtools** (Windows) | Rtools44 (bij R 4.4) | https://cran.r-project.org/bin/windows/Rtools/ |
+
+> **Windows-gebruikers:** Rtools is nodig omdat een deel van de R-pakketten (waaronder `GGIRread`) gecompileerd moet worden. Zonder Rtools kan `source("install.R")` mislukken. Installeer Rtools *vóór* je het project opent — een herstart van RStudio daarna is voldoende. Installeer het bij voorkeur op een kort pad, bijv. `C:\Rtools44\`, en laat Rtools zijn eigen PATH-aanpassing doorvoeren.
+
+> **Maplocatie:** Kies een korte maplocatie voor het project, bijv. `C:\SchoolMove\`. Windows heeft een padlengte-limiet van 260 tekens, en GGIR maakt geneste submappen aan.
+
+### R-pakketten installeren
+
 Open het project in RStudio door dubbel te klikken op `r/SchoolMove.Rproj`.
 
 Voer daarna eenmalig uit in de R-console:
@@ -14,7 +30,7 @@ Voer daarna eenmalig uit in de R-console:
 source("install.R")
 ```
 
-Dit installeert alle benodigde R-pakketten (via `renv`). Dit kan 5–10 minuten duren bij de eerste keer.
+Dit installeert alle benodigde R-pakketten (via `renv`). Dit kan **10–30 minuten** duren bij de eerste keer (op Windows mogelijk langer als pakketten gecompileerd moeten worden).
 
 **Let op:** voor elke nieuwe medewerker die het project opent, volstaat:
 ```r
@@ -54,6 +70,48 @@ Dit doorloopt drie stappen:
 1. **GGIR verwerking** — verwerkt de versnellingsmeterdata (duur: minuten tot uren afhankelijk van datagrootte)
 2. **Schoolcontext labels** — koppelt schoolsegmenten (les, speeltijd, pauze) aan elke dag
 3. **Samenvattingstabellen** — maakt `analysis_ready.csv` en `validity_summary.csv`
+
+> **Tip voor de echte dataset:** GGIR-stap 1 duurt **30–60 minuten** voor ~400 deelnemers. Draai de pipeline de **avond vóór een presentatie** en laat de resultaten staan. Het dashboard laadt de verwerkte bestanden in seconden — je hoeft de pipeline niet opnieuw te draaien tenzij de data of configuratie is gewijzigd. Als GGIR wordt onderbroken, kun je gewoon opnieuw `run_all.R` draaien: met `ggir.overwrite: false` (de standaard) slaat GGIR al verwerkte bestanden over.
+
+> **Sneller verwerken:** Zet `ggir.maxNcores` in `config.yaml` op 2–4 als je op een moderne laptop werkt (meer cores = sneller; gebruik nooit meer cores dan je machine heeft). Op een laptop met 4 cores is `maxNcores: 2` een veilige keuze.
+
+### 2b-bis. Snelle test met échte data (aanbevolen vóór de volledige run)
+
+Wil je eerst controleren of de pipeline correct omgaat met jouw bestanden zonder een uur te wachten? Zet dan de **quick-test modus** aan: de pipeline verwerkt dan alleen de eerste 2 of 3 deelnemers en is klaar in enkele minuten.
+
+**Stap 1 — open `config.yaml`** (in de projectmap, één niveau boven `r/`).
+
+Zoek de regel:
+```yaml
+  quick_test_n: ~
+```
+
+Verander `~` naar het aantal deelnemers dat je wil testen, bijvoorbeeld:
+```yaml
+  quick_test_n: 2
+```
+
+**Stap 2 — draai de pipeline:**
+```r
+source("pipeline/run_all.R")
+```
+
+Je ziet in de console:
+```
+⚡ QUICK TEST MODE: processing first 2 of 400 files.
+```
+
+**Stap 3 — controleer het dashboard:**
+```r
+shiny::runApp("shiny")
+```
+Het dashboard toont data voor 2 deelnemers. Verifieer dat namen, scholen, activiteitswaarden er logisch uitzien.
+
+**Stap 4 — zet quick_test_n terug naar `~` voor de volledige run:**
+```yaml
+  quick_test_n: ~
+```
+Draai daarna `run_all.R` opnieuw — met `ggir.overwrite: false` (de standaard) verwerkt GGIR enkel de nog niet-verwerkte bestanden, zodat de 2 al geteste deelnemers niet opnieuw worden berekend.
 
 ### 2c. QC-scripts
 
@@ -233,17 +291,11 @@ Sla het bestand op en herstart de pipeline.
 **"No valid days" voor alle deelnemers**
 → Waarschijnlijk is `dev.example_mode` op `false` terwijl de `data/raw/`-map leeg is, of andersom. Controleer de instelling in `config.yaml`.
 
-**Schoolfilter bovenaan het dashboard werkt niet (alle data verdwijnt)**
-→ Dit is een bekende bug (zichtbaar als het filter een code toont als `school_1` in plaats van "School 1"). De developer moet `ui.R` updaten voor dit werkt. Gebruik in de tussentijd het filter op "Alle scholen".
-
-**Foutmelding rood in de Deelnemers-tabel**
-→ Als de tabel "Error: 'no' is of type logical..." toont, is er een typeconflict in de geldigheidsdata. Dit treedt op als alle deelnemers geldig zijn (lege `exclusion_reason`-kolom in dummy data). De developer moet `mod_participants.R:244` aanpassen.
-
-**Het dashboard start niet / scherm blijft leeg**
-→ Dit is een bekende bug: module-bestanden worden geladen op het verkeerde moment. Vraag de developer om de module-bronbestanden naar `global.R` te verplaatsen (zie UX_REVIEW.md U0).
+**Ik wil eerst controleren of mijn data correct ingelezen wordt zonder uren te wachten**
+→ Gebruik de quick-test modus: zet `quick_test_n: 2` in `config.yaml` (zie sectie 2b-bis). De pipeline verwerkt dan alleen de eerste 2 deelnemers en is klaar in enkele minuten.
 
 **Pipeline loopt erg lang**
-→ GGIR stap 1 kan **30–60 minuten** duren op de volledige dataset van ~400 deelnemers. Dit is normaal. Verhoog `ggir.maxNcores` in `config.yaml` als je op een werkstation werkt (bijv. 4 of 8 cores). Op een laptop is 1 veilig.
+→ GGIR stap 1 kan **30–60 minuten** duren op de volledige dataset van ~400 deelnemers. Dit is normaal. Verhoog `ggir.maxNcores` in `config.yaml` als je op een werkstation werkt (bijv. 4 of 8 cores). Op een laptop is 2 veilig.
 
 **Ik wil opnieuw verwerken maar GGIR slaat stappen over**
 → Zet `ggir.overwrite: true` in `config.yaml` en draai `run_all.R` opnieuw. Vergeet achteraf niet terug te zetten op `false`.
