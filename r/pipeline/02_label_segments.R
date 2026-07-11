@@ -24,6 +24,7 @@ Sys.setlocale("LC_TIME", "C")  # force English weekday names regardless of OS lo
 source("pipeline/validate_config.R", local = TRUE)
 
 cfg         <- read_config_yaml("../config.yaml")
+cfg         <- apply_active_profile(cfg)
 base_out    <- cfg$paths$data_processed
 metingen    <- c("meting_1", "meting_2")
 tz          <- cfg$output$timezone

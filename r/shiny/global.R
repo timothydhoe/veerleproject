@@ -42,31 +42,10 @@ CONFIG_VALID <- tryCatch({
 
 # Load the active configuration profile and merge it over the base config.
 # Profiles live in r/profiles/ and are managed via Tab 7 "Instellingen".
-active_profile_name <- cfg$profiles$active %||% "default"
-profiles_dir        <- resolve_cfg_path(cfg$profiles$directory %||% "profiles/")
-profile_path        <- file.path(profiles_dir, paste0(active_profile_name, ".yaml"))
-
-if (file.exists(profile_path)) {
-  profile <- yaml::read_yaml(profile_path)
-  # Merge profile sections over base config (profile values take precedence)
-  for (section in c("validity", "bouts")) {
-    if (!is.null(profile[[section]])) {
-      cfg[[section]] <- modifyList(
-        cfg[[section]] %||% list(),
-        profile[[section]]
-      )
-    }
-  }
-  if (!is.null(profile$ggir$cut_points_mg)) {
-    cfg$ggir$cut_points_mg <- modifyList(
-      cfg$ggir$cut_points_mg %||% list(),
-      profile$ggir$cut_points_mg
-    )
-  }
-  message("[profile] Loaded: '", active_profile_name, "' from ", profile_path)
-} else {
-  message("[profile] Profile not found: '", profile_path, "' — using base config.yaml values.")
-}
+# Shared with the pipeline scripts via apply_active_profile() in
+# validate_config.R, so the dashboard and real runs agree on effective values.
+profiles_dir <- resolve_cfg_path(cfg$profiles$directory %||% "profiles/")
+cfg <- apply_active_profile(cfg, profiles_dir)
 base_out       <- resolve_cfg_path(cfg$paths$data_processed)
 metingen       <- c("meting_1", "meting_2")
 METINGEN_LABELS <- c(meting_1 = "Meting 1", meting_2 = "Meting 2")

@@ -36,6 +36,55 @@ read_config_yaml <- function(path) {
   )
 }
 
+#' Merge the active configuration profile over cfg
+#'
+#' Profiles let a researcher save named parameter presets (validity, bouts,
+#' cut-points) via the Shiny "Instellingen" tab and apply them without
+#' editing config.yaml directly. Only overrides keys the profile actually
+#' specifies (via modifyList) — config.yaml's own values remain the base for
+#' anything a profile omits, so partial profiles (e.g. saved profiles that
+#' only cover some bouts fields) work correctly.
+#'
+#' @param cfg Named list produced by read_config_yaml().
+#' @param profiles_dir Path to the profiles directory. If NULL, resolved
+#'   from cfg$profiles$directory (default "profiles"), relative to the
+#'   caller's own working directory — correct for scripts run from r/.
+#'   Callers running from a different working directory (e.g. shiny/global.R,
+#'   which runs from r/shiny/) must pass an already-resolved path explicitly.
+#' @return cfg, with validity/bouts/ggir.cut_points_mg overridden by the
+#'   active profile's values where present.
+apply_active_profile <- function(cfg, profiles_dir = NULL) {
+  if (is.null(profiles_dir)) {
+    profiles_dir <- cfg$profiles$directory
+    if (is.null(profiles_dir)) profiles_dir <- "profiles"
+  }
+  active_name <- cfg$profiles$active
+  if (is.null(active_name)) active_name <- "default"
+  profile_path <- file.path(profiles_dir, paste0(active_name, ".yaml"))
+
+  if (!file.exists(profile_path)) {
+    message("[profile] Profile not found: '", profile_path,
+            "' — using base config.yaml values.")
+    return(cfg)
+  }
+
+  profile <- yaml::read_yaml(profile_path)
+  for (section in c("validity", "bouts")) {
+    if (!is.null(profile[[section]])) {
+      base <- cfg[[section]]
+      if (is.null(base)) base <- list()
+      cfg[[section]] <- modifyList(base, profile[[section]])
+    }
+  }
+  if (!is.null(profile$ggir$cut_points_mg)) {
+    base_cp <- cfg$ggir$cut_points_mg
+    if (is.null(base_cp)) base_cp <- list()
+    cfg$ggir$cut_points_mg <- modifyList(base_cp, profile$ggir$cut_points_mg)
+  }
+  message("[profile] Loaded: '", active_name, "' from ", profile_path)
+  cfg
+}
+
 #' Validate the SchoolMove config list
 #'
 #' @param cfg Named list produced by yaml::read_yaml("config.yaml").

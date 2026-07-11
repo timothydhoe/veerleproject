@@ -276,7 +276,49 @@ detection helper or two independent targeted fixes.
 
 ---
 
-### 6. Shiny profile "Activeer" button doesn't propagate to the pipeline — status: `open`
+### 6. Shiny profile "Activeer" button doesn't propagate to the pipeline — status: `fixed`
+
+**Two candidate designs were investigated and independently reviewed before
+implementing.** The initial candidate ("Option 3": have "Activeer" write the
+profile's values directly into `config.yaml` via targeted line-patching, so every
+consumer needs zero new code) was reviewed by an independent agent and rejected:
+it would have needed to solve comment-preservation per-field (the exact failure
+class behind Bug #1), partial profiles are already a real, current fact (the
+existing "save profile" UI only writes 2 of `bouts:`'s 5 fields, not hypothetical),
+multi-line patches have no atomicity, and — most persuasively — `profiles/default.yaml`'s
+own header comment already documents the *intended* design: *"It is loaded by the
+Shiny app... and merged over the base values in config.yaml. **The pipeline uses
+these values when running.**"* That's a direct textual statement of intent that the
+pipeline should read profiles — this bug is that intent never being finished, not a
+different mechanism being deliberately chosen.
+
+**Fix applied (the reviewed-and-recommended design):** extracted `global.R`'s
+existing profile-merge logic (`modifyList()`-based, already correctly handles
+partial profiles) into a shared `apply_active_profile(cfg, profiles_dir = NULL)`
+function in `validate_config.R` (already sourced by all four consumers). Each of
+`01_run_ggir.R`, `02_label_segments.R`, `03_build_summaries.R` now calls
+`apply_active_profile(cfg)` right after `read_config_yaml()` (default path
+resolution correct since they all run from `r/`); `global.R` calls it with an
+explicitly resolved path (it runs one directory deeper, from `r/shiny/`). Never
+writes to `config.yaml` — purely an in-memory merge, same as before, just now
+shared by the pipeline instead of Shiny-only.
+
+**Verified live, both directions:**
+1. Created a temporary test profile (`min_wear_hours_per_day: 8` instead of the
+   base config's `16`), activated it, ran `02_label_segments.R` +
+   `03_build_summaries.R` against existing GGIR output. Result: participant
+   `1001.csv/meting_1` went from `n_valid_days=0, meets_sedentary_criteria=FALSE`
+   (16h baseline) to `n_valid_days=4, meets_sedentary_criteria=TRUE` (8h profile) —
+   a real, measurable change in pipeline output driven entirely by profile
+   activation, not a config.yaml edit.
+2. Reverted `profiles.active` back to `"default"`, re-ran the same two scripts, and
+   diffed all three output files against the original pre-fix baseline —
+   byte-for-byte identical. Confirms the fix is fully reversible and doesn't alter
+   default-profile behavior.
+3. Deleted the temporary test profile afterward; `config.yaml` confirmed clean via
+   `git diff` throughout (only `profiles.active` was ever touched, and only
+   temporarily, then restored to the committed value).
+
 **Where:** `r/shiny/modules/mod_settings.R:322-342`
 
 Activating a profile patches the `active:` line in `config.yaml` and shows: *"Profiel

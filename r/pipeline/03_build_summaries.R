@@ -23,6 +23,7 @@ source("pipeline/utils_bouts.R", local = TRUE)
 source("pipeline/validate_config.R", local = TRUE)
 
 cfg      <- read_config_yaml("../config.yaml")
+cfg      <- apply_active_profile(cfg)
 base_out <- cfg$paths$data_processed
 metingen <- c("meting_1", "meting_2")
 val_cfg  <- cfg$validity
