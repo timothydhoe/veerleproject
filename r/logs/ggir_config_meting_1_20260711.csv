@@ -1,5 +1,4 @@
 argument,value,context
-config_file_in_outputdir,../data/processed/meting_1/output_meting_1/config.csv,not applicable
 datadir,../data/example/dummy_data/meting_1,not applicable
 do.report,"c(2,4,5)",not applicable
 f0,1,not applicable

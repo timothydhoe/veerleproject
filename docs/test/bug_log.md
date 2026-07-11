@@ -43,7 +43,39 @@ assessment and had to be restored via `git checkout`.
 
 ---
 
-### 2. Stale per-output-directory `config.csv` breaks native `.bin`/`.cwa` runs — status: `open`
+### 2. Stale per-output-directory `config.csv` breaks native `.bin`/`.cwa` runs — status: `fixed`
+
+**Fix applied:** added a guard in `r/pipeline/01_run_ggir.R`, inside the `has_native`
+branch, right before `do.call(GGIR, ggir_args)`. Before every native run, it
+recursively searches `output_dir` for any `config.csv`, checks whether its
+`rmc.firstrow.acc` row is actually set (distinguishing a real leftover value from
+GGIR's own `c()` serialization of "unset"), and deletes the file if so — with a
+console message identifying exactly what was cleared and why. `file.remove()`'s
+return value is checked and a warning is raised if removal fails (e.g. a locked
+file), and an unreadable `config.csv` triggers a warning rather than failing
+silently. Single file changed; the dummy/CSV/`example_mode` branch is untouched.
+
+Considered and explicitly rejected: (a) redirecting `example_mode` output to a
+separate directory — technically sound but touches 9 bundle-shipped files for a
+failure mode CI can never trigger (ephemeral runners) and the project owner no longer
+triggers locally either (switched local testing to real native files); (b) a broader
+"detect any config drift" guard — no known trigger beyond the one confirmed failure
+mode, would have been speculative.
+
+**Verified two ways:**
+1. **Static review** by an independent agent (fresh context, read the real file,
+   traced the logic against the actual `config.csv` format) — confirmed correct, no
+   blocking issues.
+2. **Live end-to-end reproduction of the exact original failure, then confirmed the
+   fix resolves it**: re-ran the dummy CI script to recreate the stale
+   `rmc.firstrow.acc: 101` config in the real `data/processed/meting_1/output_meting_1/`
+   directory (the exact poisoning mechanism that caused the original crash), then ran
+   `01_run_ggir.R` against the same directory with the two real native test files.
+   Console output confirmed: `Clearing stale CSV-format config.csv
+   (rmc.firstrow.acc=101) before native run: ...` followed by a clean run through all
+   of Parts 1-5 with no crash (`Step 01 complete`). Previously, this exact sequence
+   crashed with `undefined columns selected`.
+
 **Where:** interaction between `01_run_ggir.R` and GGIR's own `g.inspectfile()`;
 manifests at `data/processed/meting_1/output_meting_1/config.csv`
 

@@ -166,6 +166,35 @@ for (meting in c("meting_1", "meting_2")) {
     # because raw multi-Hz data supports sphere-fitting.
     message("   format: native (.bin/.cwa) — autocalibration ON")
     ggir_args <- c(shared_args, list(do.cal = TRUE))
+
+    # ── Guard: clear a stale CSV-format config.csv before a native run ──────
+    # GGIR persists rmc.* parameters to config.csv per output directory and
+    # reuses them whenever overwrite: false. If an earlier run against this
+    # output directory used CSV input, a leftover rmc.firstrow.acc value
+    # makes GGIR route every file through its CSV reader regardless of
+    # actual extension - hard crash on native .bin/.cwa input. Native is the
+    # only supported format going forward, so any such leftover is
+    # unambiguously stale.
+    stale_configs <- list.files(output_dir, pattern = "^config\\.csv$",
+                                recursive = TRUE, full.names = TRUE)
+    for (stale_cfg in stale_configs) {
+      old <- tryCatch(read.csv(stale_cfg, stringsAsFactors = FALSE),
+                      error = function(e) NULL)
+      if (is.null(old)) {
+        warning("Could not read ", stale_cfg, " - leaving in place.")
+      } else if (all(c("argument", "value") %in% names(old))) {
+        rmc_val <- old$value[old$argument == "rmc.firstrow.acc"]
+        if (length(rmc_val) > 0 && nzchar(trimws(rmc_val[1])) &&
+              !identical(trimws(rmc_val[1]), "c()")) {
+          message("   Clearing stale CSV-format config.csv (rmc.firstrow.acc=",
+                  rmc_val[1], ") before native run: ", stale_cfg)
+          removed <- file.remove(stale_cfg)
+          if (!removed) {
+            warning("Could not remove ", stale_cfg)
+          }
+        }
+      }
+    }
   } else {
     # ── CSV path (GENEActiv 100-row header) ──────────────────────────────────
     # Autocalibration disabled: CSV is pre-epoched at 1 Hz.
