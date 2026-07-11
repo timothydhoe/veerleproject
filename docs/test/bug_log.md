@@ -99,7 +99,42 @@ succeeded immediately with the exact same input files and config.
 
 ## 🟠 High
 
-### 3. Dev overrides applied unconditionally to real GGIR runs — status: `open`
+### 3. Dev overrides applied unconditionally to real GGIR runs — status: `fixed`
+
+**Root cause traced further than originally documented:** `docs/prompt_run_test_data.md`
+(an earlier session's own test-prep notes) confirms `nonwear_approach: "2013"` was
+only ever meant for dummy-CSV testing, with an explicit rollback step ("remove for
+real .bin data") that was never carried out — so the committed value is a forgotten
+test-session leftover, not a deliberate real-data choice. Confirmed via GGIR 3.3.6's
+own parameter documentation: GGIR's actual default is `"2023"`; `"2013"` is the
+original van Hees et al. (2013) algorithm, superseded but kept for backward
+compatibility. Nothing in GGIR's own docs ties either version to CSV vs. native
+format — that constraint appears to be specific to how this project's CSV path was
+originally built, not a GGIR requirement.
+
+**Fix applied:** gated `nonwear_approach`, `includedaycrit`, and `includedaycrit_part5`
+behind `isTRUE(dev$example_mode)` in `r/pipeline/01_run_ggir.R` (lines ~76-93) — real
+runs (`example_mode: false`) now always get GGIR's own defaults
+(`nonwear_approach = "2023"`, `includedaycrit = cfg$validity$min_wear_hours_per_day`)
+regardless of whatever is sitting in `config.yaml`'s `dev:` section.
+
+**Explicitly rejected:** removing `dev.nonwear_approach` from `config.yaml` and
+hardcoding it per-format in the script (my initial proposal). This would have
+violated `CLAUDE.md`'s own stated principle — *"Veerle should never need to edit an
+`.R` file to change a parameter... always route new configurable parameters through
+`config.yaml`"* — for no added benefit over gating. The chosen fix keeps the config
+key alive and editable for dummy/dev testing (matching the `dev:` section's own
+documented purpose) while guaranteeing it can never again leak into a real run.
+
+**Verified live:** ran the real native pipeline against the two test files with
+`config.yaml`'s stale values still committed as-is (`example_mode: false`,
+`nonwear_approach: "2013"`, `includedaycrit: 4`, unchanged). No "Dev overrides
+active" message printed (correctly suppressed). Checked GGIR's own freshly-written
+`config.csv`: `nonwear_approach,2023,params_cleaning` and
+`includedaycrit,16,params_cleaning` — confirming the real run used the correct
+defaults regardless of the stale config values. `config.yaml` restored and verified
+clean (`git diff` empty) afterward.
+
 **Where:** `r/pipeline/01_run_ggir.R:77-85, 148-150`
 
 `nonwear_approach` and `includedaycrit` are computed from `dev.*` config values and

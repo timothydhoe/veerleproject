@@ -74,14 +74,23 @@ if (isTRUE(dev$example_mode)) {
 }
 
 # ── Dev overrides (only active with dummy data) ───────────────────────────────
-nonwear_approach     <- dev$nonwear_approach     %||% "2023"
-includedaycrit       <- dev$includedaycrit       %||% cfg$validity$min_wear_hours_per_day
-includedaycrit_part5 <- dev$includedaycrit_part5 %||% (2 / 3)
+# Gated on example_mode so a value left in config.yaml from a dummy-data test
+# session (e.g. nonwear_approach: "2013") can never silently affect a real run.
+if (isTRUE(dev$example_mode)) {
+  nonwear_approach     <- dev$nonwear_approach     %||% "2023"
+  includedaycrit       <- dev$includedaycrit       %||%
+    cfg$validity$min_wear_hours_per_day
+  includedaycrit_part5 <- dev$includedaycrit_part5 %||% (2 / 3)
 
-if (isTRUE(dev$example_mode) && (!is.null(dev$nonwear_approach) || !is.null(dev$includedaycrit))) {
-  message("Dev overrides active: nonwear_approach=", nonwear_approach,
-          " | includedaycrit=", includedaycrit,
-          " | includedaycrit.part5=", round(includedaycrit_part5, 2))
+  if (!is.null(dev$nonwear_approach) || !is.null(dev$includedaycrit)) {
+    message("Dev overrides active: nonwear_approach=", nonwear_approach,
+            " | includedaycrit=", includedaycrit,
+            " | includedaycrit.part5=", round(includedaycrit_part5, 2))
+  }
+} else {
+  nonwear_approach     <- "2023"
+  includedaycrit       <- cfg$validity$min_wear_hours_per_day
+  includedaycrit_part5 <- 2 / 3
 }
 
 # ── Run GGIR for each meting ──────────────────────────────────────────────────
