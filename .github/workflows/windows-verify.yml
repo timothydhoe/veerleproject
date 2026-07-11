@@ -12,7 +12,11 @@ on:
 jobs:
   verify:
     runs-on: windows-latest
-    timeout-minutes: 60
+    # Free windows-latest runners vary in speed run-to-run; the GGIR pipeline
+    # step alone has taken anywhere from ~42 to 53+ minutes on 2 dummy
+    # participants across observed runs. 60 min was too tight and got a run
+    # cancelled outright (not failed — GitHub kills the job at the timeout).
+    timeout-minutes: 90
 
     steps:
       - name: Checkout
