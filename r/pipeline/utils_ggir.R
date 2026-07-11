@@ -127,7 +127,9 @@ read_part4_sleep <- function(results_dir) {
     if (file.exists(p)) {
       message("[utils_ggir] Part 4 sleep: ", basename(p),
               if (dirname(p) != results_dir) paste0(" (", basename(dirname(p)), "/)") else "")
-      return(read.csv(p, stringsAsFactors = FALSE))
+      out <- read.csv(p, stringsAsFactors = FALSE)
+      attr(out, "source_path") <- p
+      return(out)
     }
   }
 
@@ -136,7 +138,9 @@ read_part4_sleep <- function(results_dir) {
                           pattern = "^part4.*\\.csv$", full.names = TRUE))
   if (length(any_p4) > 0) {
     message("[utils_ggir] Part 4 sleep (fallback): ", basename(any_p4[1]))
-    return(read.csv(any_p4[1], stringsAsFactors = FALSE))
+    out <- read.csv(any_p4[1], stringsAsFactors = FALSE)
+    attr(out, "source_path") <- any_p4[1]
+    return(out)
   }
 
   message("[utils_ggir] No Part 4 sleep CSV found. Sleep data may be in Part 5.")

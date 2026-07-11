@@ -159,7 +159,50 @@ arguments are affected.
 
 ## 🟡 Medium
 
-### 4. QC 01 false-fails on part4 sleep file (non-recursive search) — status: `open`
+### 4. QC 01 false-fails on part4 sleep file (non-recursive search) — status: `fixed`
+
+**Investigated before fixing:** confirmed via git history that `qc_01_ggir.R`'s
+inline `list.files()`+`fread()` check and `utils_ggir.R`'s `read_part4_sleep()`
+weren't a deliberate design split — both were written in the same initial scaffold
+commit, and `read_part4_sleep()` was fixed later (commit `f56adcf`, "sleep report
+path" fix) to search `results/QC/` too, but `qc_01_ggir.R`'s copy was never updated
+to match. Empirically confirmed `fread()` (used by QC) and `read.csv()` (used by
+`read_part4_sleep()`, production's only Part 4 reader — confirmed via
+`03_build_summaries.R:64-73`) parse the same file with a real type difference
+(`calendar_date` as `IDate/Date` vs `character`) — though an independent review
+correctly pushed back that this specific difference is inert for what the QC check
+actually reports (row/column counts only); the real, load-bearing justification is
+the directory/filename-priority mismatch, not the parser choice.
+
+**Fix applied:**
+- `qc_01_ggir.R`'s part4 check now calls `read_part4_sleep(results_dir)` (the same
+  production helper) instead of its own narrower `list.files()`/`fread()` logic —
+  same two-directory search, same cleaned→full→plain filename priority as
+  production.
+- `utils_ggir.R`'s `read_part4_sleep()` now attaches the resolved file path as a
+  `source_path` attribute on its return value (additive, backward-compatible — no
+  existing caller is affected) so QC's pass message can still report which specific
+  file was found, avoiding the diagnostic-detail regression an independent review
+  caught in the first draft of this fix.
+
+**Verified two ways:**
+1. **Independent static review** (fresh agent, no prior context) confirmed the fix
+   correct and well-justified, caught one real issue (loss of filename detail in the
+   pass message, fixed via the `source_path` attribute above), and correctly
+   reframed the primary justification from "different parser" to "directory/priority
+   search mismatch."
+2. **Live before/after comparison**, run on real data:
+   - Before: `qc_01_ggir.R` against `meting_2`'s existing output (which only has its
+     Part 4 file under `results/QC/`, no `results/`-level file) showed
+     `[FAIL] part4 nightsummary CSV not found`.
+   - After: same directory shows `[PASS] part4_nightsummary_sleep_full.csv — 3 rows,
+     42 columns`, with the resolved path correctly logged.
+   - **Confirmed the fix changes nothing else**: ran the full `02_label_segments.R` +
+     `03_build_summaries.R` before and after the fix and diffed
+     `segment_summary.csv`, `analysis_ready.csv`, `validity_summary.csv` —
+     byte-for-byte identical in all three files. The fix only changes QC's own
+     diagnostic report, never pipeline output.
+
 **Where:** `r/qc/qc_01_ggir.R:56`
 
 ```r

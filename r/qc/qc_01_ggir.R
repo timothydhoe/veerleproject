@@ -52,17 +52,16 @@ for (meting in metingen) {
     }
   }
 
-  # part4: name varies by GGIR version (≥2.6 uses *_sleep_cleaned.csv)
-  part4_files <- list.files(results_dir, pattern = "^part4.*\\.csv$", full.names = TRUE)
-  if (length(part4_files) == 0) {
-    fail("part4 nightsummary CSV not found (expected ^part4.*\\.csv)")
+  # part4: filename and directory (results/ vs results/QC/) vary by GGIR
+  # version and by whether any night passed sleep validity criteria — reuse
+  # the production helper so QC checks the same file production would use.
+  part4 <- tryCatch(read_part4_sleep(results_dir), error = function(e) NULL)
+  if (is.null(part4)) {
+    fail("part4 nightsummary CSV not found (checked results/ and results/QC/)")
   } else {
-    dt4 <- tryCatch(fread(part4_files[1], data.table = TRUE), error = function(e) NULL)
-    if (is.null(dt4)) {
-      fail(paste(basename(part4_files[1]), "exists but could not be read"))
-    } else {
-      pass(sprintf("%s — %d rows, %d columns", basename(part4_files[1]), nrow(dt4), ncol(dt4)))
-    }
+    src <- attr(part4, "source_path")
+    label <- if (!is.null(src)) basename(src) else "part4 nightsummary CSV"
+    pass(sprintf("%s — %d rows, %d columns", label, nrow(part4), ncol(part4)))
   }
 
   # Part 5 uses a dynamic filename — search by pattern
