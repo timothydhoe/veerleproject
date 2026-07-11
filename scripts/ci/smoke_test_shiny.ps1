@@ -22,10 +22,19 @@ $tempDir = if ($env:RUNNER_TEMP) { $env:RUNNER_TEMP } else { [System.IO.Path]::G
 $logOut  = Join-Path $tempDir "shiny_stdout.log"
 $logErr  = Join-Path $tempDir "shiny_stderr.log"
 
+# Write the launch code to a .R file rather than passing it inline via -e.
+# Windows processes take a single command-line string (not an argv array like
+# Unix) — Start-Process's own quoting of an -e string containing single
+# quotes gets mangled when it's reassembled, truncating the expression. A
+# bare file path has no quoting ambiguity on any OS.
+$launchScript = Join-Path $tempDir "launch_shiny.R"
+"shiny::runApp('shiny', port=$Port, launch.browser=FALSE, host='127.0.0.1')" |
+  Set-Content -Path $launchScript -Encoding utf8
+
 Write-Host "Launching Shiny from $RDir on port $Port using $RscriptPath ..."
 
 $proc = Start-Process -FilePath $RscriptPath `
-  -ArgumentList "-e", "shiny::runApp('shiny', port=$Port, launch.browser=FALSE, host='127.0.0.1')" `
+  -ArgumentList $launchScript `
   -WorkingDirectory $RDir `
   -PassThru -RedirectStandardOutput $logOut -RedirectStandardError $logErr
 
