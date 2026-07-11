@@ -38,8 +38,7 @@ jobs:
           $sizeMB = [math]::Round((Get-Item "${{ runner.temp }}/SchoolMove_Windows.zip").Length / 1MB, 1)
           Write-Host "Bundle zip size: $sizeMB MB"
 
-      # ── The real test: extract the zip exactly like Veerle would, and
-      # launch it via the bundled R (not the CI runner's ambient R) ─────────
+      # extract the zip and launch it via the bundled R (not the CI runner's ambient R)
       - name: Extract and smoke test the bundle
         shell: pwsh
         run: |
