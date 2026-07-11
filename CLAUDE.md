@@ -132,10 +132,14 @@ reproducible re-runs. Our `config.yaml` feeds into this.
 
 ### Input format
 
-**CSV files only for now.** Raw `.bin` files are not in scope at this stage. This means
-GGIR autocalibration (Part 1 sphere-fitting) cannot be applied — ENMO values will be
-based on the pre-converted CSV data. This is an accepted trade-off; revisit if Veerle
-provides `.bin` files.
+**Both CSV and native `.bin`/`.cwa` files are supported.** The original plan assumed
+CSV-only input (see the CSV-specific caveats below), but real GGIR runs against
+Veerle's data have already processed native `.bin` files directly, with GGIR
+autocalibration (Part 1 sphere-fitting) enabled — confirmed by pipeline logs showing
+`format: native (.bin/.cwa) — autocalibration ON`. The earlier "CSV only" blocker is
+superseded; `.bin` input works in practice. The CSV-only caveats below (no
+autocalibration, SVMgs ≠ GGIR ENMO) still apply when a participant's data arrives as
+pre-converted CSV rather than raw `.bin`.
 
 ## Key Domain Concepts
 

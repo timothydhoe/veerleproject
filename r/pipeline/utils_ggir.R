@@ -106,26 +106,34 @@ load_ggir_file <- function(meting_output_dir, meting,
 
 #' Read GGIR Part 4 sleep summary with multi-level fallback
 #'
-#' Tries: cleaned → full → any part4 CSV.
+#' Tries: cleaned → full → any part4 CSV. Checked in both results/ and
+#' results/QC/ — GGIR writes the "cleaned" (valid-nights-only) report to
+#' results/ when at least one night passes validity criteria, but falls back
+#' to only writing the unfiltered "full" report under results/QC/ when it
+#' doesn't (observed with GGIR 3.3.6 on a small test set).
 #'
 #' @param results_dir Path to the GGIR results/ directory.
 #' @return data.frame, or NULL if no Part 4 file found.
 read_part4_sleep <- function(results_dir) {
-  candidates <- c(
-    file.path(results_dir, "part4_nightsummary_sleep_cleaned.csv"),
-    file.path(results_dir, "part4_nightsummary_sleep_full.csv"),
-    file.path(results_dir, "part4_nightsummary.csv")
+  filenames <- c(
+    "part4_nightsummary_sleep_cleaned.csv",
+    "part4_nightsummary_sleep_full.csv",
+    "part4_nightsummary.csv"
   )
+  search_dirs <- c(results_dir, file.path(results_dir, "QC"))
+  candidates  <- as.vector(outer(search_dirs, filenames, file.path))
 
   for (p in candidates) {
     if (file.exists(p)) {
-      message("[utils_ggir] Part 4 sleep: ", basename(p))
+      message("[utils_ggir] Part 4 sleep: ", basename(p),
+              if (dirname(p) != results_dir) paste0(" (", basename(dirname(p)), "/)") else "")
       return(read.csv(p, stringsAsFactors = FALSE))
     }
   }
 
-  # Last resort: any file matching part4*.csv
-  any_p4 <- list.files(results_dir, pattern = "^part4.*\\.csv$", full.names = TRUE)
+  # Last resort: any file matching part4*.csv, in results/ or results/QC/
+  any_p4 <- unlist(lapply(search_dirs, list.files,
+                          pattern = "^part4.*\\.csv$", full.names = TRUE))
   if (length(any_p4) > 0) {
     message("[utils_ggir] Part 4 sleep (fallback): ", basename(any_p4[1]))
     return(read.csv(any_p4[1], stringsAsFactors = FALSE))

@@ -28,9 +28,10 @@ result = subprocess.run(
 )
 
 staged = [f for f in result.stdout.strip().split("\n") if f]
+protected_files = {"data/analysis_ready.csv", "data/segment_summary.csv", "data/validity_summary.csv"}
 forbidden = [
     f for f in staged
-    if "data/raw/" in f or "data/processed/" in f
+    if "data/raw/" in f or "data/processed/" in f or f in protected_files
 ]
 
 if forbidden:

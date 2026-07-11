@@ -20,7 +20,9 @@ Sys.setlocale("LC_TIME", "C")  # force English weekday names regardless of OS lo
 source("pipeline/utils_ggir.R",  local = TRUE)
 source("pipeline/utils_bouts.R", local = TRUE)
 
-cfg      <- yaml::read_yaml("../config.yaml")
+source("pipeline/validate_config.R", local = TRUE)
+
+cfg      <- read_config_yaml("../config.yaml")
 base_out <- cfg$paths$data_processed
 metingen <- c("meting_1", "meting_2")
 val_cfg  <- cfg$validity
@@ -36,8 +38,10 @@ need_wknd   <- isTRUE(val_cfg$require_weekend_day)
 
 # ── Helper: extract school ID from participant code ───────────────────────────
 extract_school_id <- function(id) {
-  code <- suppressWarnings(as.integer(sub("\\.csv$", "", basename(as.character(id)))))
-  paste0("school_", code %/% 1000L)
+  code     <- suppressWarnings(as.integer(sub("\\.[^.]+$", "", basename(as.character(id)))))
+  school_n <- code %/% 1000L
+  school_n[is.na(school_n) | school_n < 1L | school_n > 6L] <- NA_integer_
+  paste0("school_", school_n)
 }
 
 # ── Helper: load a GGIR CSV for a given meting (version-tolerant) ─────────────

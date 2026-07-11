@@ -23,6 +23,11 @@ r/renv/sandbox/
 data/raw/
 data/processed/
 data/veerle_processed/
+data/test_files_veerle/
+data/absences.csv
+data/analysis_ready.csv
+data/segment_summary.csv
+data/validity_summary.csv
 r/_examples
 
 # OS

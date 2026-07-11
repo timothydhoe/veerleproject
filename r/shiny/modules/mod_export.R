@@ -155,7 +155,7 @@ mod_export_server <- function(id, shared) {
     # ── Private GGIR file readers (private to this module) ───────────────────
     # NOTE: do not expose in utils/ — depend on cfg path conventions
     dl_ggir <- function(meting, filename = NULL, pattern = NULL) {
-      results_dir <- file.path("..", shared$cfg$paths$data_processed, meting,
+      results_dir <- file.path(resolve_cfg_path(shared$cfg$paths$data_processed), meting,
                                paste0("output_", meting), "results")
       if (!is.null(pattern)) {
         files <- list.files(results_dir, pattern = pattern, full.names = TRUE)
@@ -202,7 +202,7 @@ mod_export_server <- function(id, shared) {
     output$dl_segments <- downloadHandler(
       filename = function() paste0("segment_summary_", ts, ".csv"),
       content  = function(f) {
-        src <- file.path("..", shared$cfg$paths$data_processed, "..", "segment_summary.csv")
+        src <- file.path(resolve_cfg_path(shared$cfg$paths$data_processed), "..", "segment_summary.csv")
         if (file.exists(src)) file.copy(src, f) else write.csv(data.frame(), f)
       }
     )
@@ -210,7 +210,7 @@ mod_export_server <- function(id, shared) {
     output$dl_ready <- downloadHandler(
       filename = function() paste0("analysis_ready_", ts, ".csv"),
       content  = function(f) {
-        src <- file.path("..", shared$cfg$paths$data_processed, "..", "analysis_ready.csv")
+        src <- file.path(resolve_cfg_path(shared$cfg$paths$data_processed), "..", "analysis_ready.csv")
         if (file.exists(src)) file.copy(src, f) else write.csv(data.frame(), f)
       }
     )
@@ -218,7 +218,7 @@ mod_export_server <- function(id, shared) {
     output$dl_validity <- downloadHandler(
       filename = function() paste0("validity_summary_", ts, ".csv"),
       content  = function(f) {
-        src <- file.path("..", shared$cfg$paths$data_processed, "..", "validity_summary.csv")
+        src <- file.path(resolve_cfg_path(shared$cfg$paths$data_processed), "..", "validity_summary.csv")
         if (file.exists(src)) file.copy(src, f) else write.csv(data.frame(), f)
       }
     )

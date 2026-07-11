@@ -1,0 +1,33 @@
+name: Windows verify
+
+# Proves — on a real, clean Windows machine — that install, the pipeline, and
+# the Shiny dashboard all actually work. This is the direct answer to "it
+# looked fine locally but failed on Veerle's laptop": every push gets a real
+# pass/fail signal from a stock windows-latest runner, not a guess.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  verify:
+    runs-on: windows-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup R and restore renv library
+        uses: ./.github/actions/setup-r-env
+
+      - name: Run pipeline in example mode (dummy data, quick test)
+        working-directory: r
+        run: Rscript ../scripts/ci/run_example_pipeline.R
+
+      - name: Smoke test Shiny dashboard
+        shell: pwsh
+        run: |
+          pwsh scripts/ci/smoke_test_shiny.ps1 -RDir "${{ github.workspace }}/r"

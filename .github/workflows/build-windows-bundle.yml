@@ -1,0 +1,61 @@
+name: Build Windows bundle
+
+# Produces the portable SchoolMove bundle: R + a pre-restored renv library +
+# the repo, zipped up. Double-click "2 - Dashboard starten.bat" with no install
+# step and no network access required.
+# Manually triggered.
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "bundle-*"
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup R and restore renv library
+        uses: ./.github/actions/setup-r-env
+
+      - name: Assemble bundle
+        shell: pwsh
+        run: |
+          pwsh scripts/bundle/build-bundle.ps1 `
+            -RepoRoot "${{ github.workspace }}" `
+            -OutputDir "${{ runner.temp }}/SchoolMove"
+
+      - name: Zip bundle
+        shell: pwsh
+        run: |
+          Compress-Archive -Path "${{ runner.temp }}/SchoolMove" `
+            -DestinationPath "${{ runner.temp }}/SchoolMove_Windows.zip" -Force
+          $sizeMB = [math]::Round((Get-Item "${{ runner.temp }}/SchoolMove_Windows.zip").Length / 1MB, 1)
+          Write-Host "Bundle zip size: $sizeMB MB"
+
+      # ── The real test: extract the zip exactly like Veerle would, and
+      # launch it via the bundled R (not the CI runner's ambient R) ─────────
+      - name: Extract and smoke test the bundle
+        shell: pwsh
+        run: |
+          $extractDir = "${{ runner.temp }}/bundle_verify"
+          Expand-Archive -Path "${{ runner.temp }}/SchoolMove_Windows.zip" -DestinationPath $extractDir
+          $bundleRoot = Join-Path $extractDir "SchoolMove"
+          $rscript = Join-Path $bundleRoot "R-portable\bin\x64\Rscript.exe"
+          if (-not (Test-Path $rscript)) { $rscript = Join-Path $bundleRoot "R-portable\bin\Rscript.exe" }
+
+          pwsh scripts/ci/smoke_test_shiny.ps1 `
+            -RDir (Join-Path $bundleRoot "r") `
+            -RscriptPath $rscript
+
+      - name: Upload bundle artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: SchoolMove_Windows_bundle
+          path: ${{ runner.temp }}/SchoolMove_Windows.zip
+          retention-days: 30

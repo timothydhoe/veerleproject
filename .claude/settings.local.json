@@ -21,7 +21,9 @@
       "Bash(Rscript -e \"shiny::runApp\\('r/shiny', port=7474, launch.browser=FALSE\\)\")",
       "Bash(echo \"PID: $!\")",
       "Bash(git add *)",
-      "Bash(git commit -m 'fix\\(shiny\\): Phase 2 UX fixes, fwrite guards, locale fix, module sources moved *)"
+      "Bash(git commit -m 'fix\\(shiny\\): Phase 2 UX fixes, fwrite guards, locale fix, module sources moved *)",
+      "Bash(Rscript *)",
+      "mcp__playwright__browser_find"
     ]
   },
   "enableAllProjectMcpServers": true,

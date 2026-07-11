@@ -183,8 +183,8 @@ mod_settings_server <- function(id, shared) {
 
     # Paths derived from config (unified here; global.R has profiles_dir too,
     # but this module uses its own local copy to be self-contained)
-    profiles_dir        <- file.path("..", shared$cfg$profiles$directory %||% "profiles/")
-    absences_path_server <- file.path("..",
+    profiles_dir        <- resolve_cfg_path(shared$cfg$profiles$directory %||% "profiles/")
+    absences_path_server <- resolve_cfg_path(
       shared$cfg$paths$absences %||% "../data/absences.csv")
 
     # Return signals for server.R (future-proofing; not acted on currently)

@@ -21,7 +21,9 @@ library(data.table)
 
 Sys.setlocale("LC_TIME", "C")  # force English weekday names regardless of OS locale
 
-cfg         <- yaml::read_yaml("../config.yaml")
+source("pipeline/validate_config.R", local = TRUE)
+
+cfg         <- read_config_yaml("../config.yaml")
 base_out    <- cfg$paths$data_processed
 metingen    <- c("meting_1", "meting_2")
 tz          <- cfg$output$timezone
@@ -29,8 +31,10 @@ tz          <- cfg$output$timezone
 # ── Helper: extract school ID from participant code ───────────────────────────
 # Participant code is a 4-digit number: first digit = school (1–6)
 extract_school_id <- function(id) {
-  code <- suppressWarnings(as.integer(sub("\\.[^.]+$", "", basename(as.character(id)))))
-  paste0("school_", code %/% 1000L)
+  code     <- suppressWarnings(as.integer(sub("\\.[^.]+$", "", basename(as.character(id)))))
+  school_n <- code %/% 1000L
+  school_n[is.na(school_n) | school_n < 1L | school_n > 6L] <- NA_integer_
+  paste0("school_", school_n)
 }
 
 # ── Helper: get schedule for a school + weekday ───────────────────────────────
@@ -172,71 +176,86 @@ if (length(wday_col) == 0) {
   if (wday_col != "weekday") setnames(part2, wday_col, "weekday")
 }
 
-# ── Find ENMO/activity columns per qwindow segment ───────────────────────────
-# GGIR part2 has columns like:  ACC_day_mg_0.8.75 (ENMO mean for 0–8.75 h window)
-# We also look for SB/LIG/MOD/VIG columns broken down by segment.
-# For now, we use the total-day columns and distribute context labels from
-# the schedule — a per-minute breakdown requires the part5 timeseries.
+# ── Find activity intensity data for qwindow segments ─────────────────────────
+# part2 never carries activity-intensity columns (SB/LIG/MOD/VIG) — GGIR only
+# puts wear-time/valid-hours per qwindow there. True per-window activity
+# intensity lives in part5_daysummary_Segments_*.csv instead: one row per
+# participant x day x window, with "window" values like "segment1", "segment2"
+# where segmentN = the Nth qwindow interval [qw_starts[N], qw_ends[N]).
+# Column names below (dur_IN_min etc.) match what shiny/modules/mod_schoolday.R
+# expects (grep("^dur_MOD", ...) etc.) — do not rename without updating that too.
+intensity_cols <- c("dur_IN_min", "dur_LIG_min", "dur_MOD_min", "dur_VIG_min")
+INTENSITY_SRC_COLS <- c(
+  dur_IN_min  = "dur_day_total_IN_min",
+  dur_LIG_min = "dur_day_total_LIG_min",
+  dur_MOD_min = "dur_day_total_MOD_min",
+  dur_VIG_min = "dur_day_total_VIG_min"
+)
 
-# Detect activity intensity columns (total-day level)
-intensity_cols <- grep("^(SB|IN|LIG|MOD|VIG|MVPA)", names(part2),
-                       value = TRUE, ignore.case = TRUE)
-
-if (length(intensity_cols) == 0) {
-  warning("No activity intensity columns found in part2 — segment_summary will only contain wear time")
-}
-
-# ── Detect qwindow columns in part2 ──────────────────────────────────────────
-# If 01_run_ggir.R was run with qwindow set, part2 has per-window columns like
-# dur_day_total_IN_min_8.5.10 or ACC_day_mg_12.13. Using these gives far better
-# per-segment estimates than distributing day-level totals proportionally.
-qwindow     <- cfg$ggir$qwindow
-use_qwindow <- FALSE
-qw_starts   <- qw_ends <- qw_suffixes <- NULL
+qwindow       <- as.numeric(cfg$ggir$qwindow)
+use_qwindow   <- FALSE
+qw_starts     <- qw_ends <- NULL
+window_lookup <- NULL  # keyed by "ID date window_idx" -> one-row data.table of intensity cols
 
 if (!is.null(qwindow) && length(qwindow) >= 2) {
-  qw_starts   <- head(qwindow, -1)
-  qw_ends     <- tail(qwindow, -1)
-  qw_suffixes <- paste0(qw_starts, ".", qw_ends)
+  qw_starts <- head(qwindow, -1)
+  qw_ends   <- tail(qwindow, -1)
 
-  qw_suffix_pattern <- paste0("_(", paste(gsub("\\.", "\\\\.", qw_suffixes), collapse = "|"), ")$")
-  qw_col_names      <- grep(qw_suffix_pattern, names(part2), value = TRUE)
+  seg5_list <- lapply(metingen, function(m) {
+    load_ggir_file(meting_output_dir = file.path(base_out, m), meting = m,
+                   pattern = "^part5_daysummary_Segments_")
+  })
+  seg5 <- rbindlist(Filter(function(x) !is.null(x) && nrow(x) > 0, seg5_list), fill = TRUE)
 
-  if (length(qw_col_names) > 0) {
-    use_qwindow <- TRUE
-    message(sprintf(
-      "qwindow columns detected (%d columns) — using per-window aggregation for segment estimates",
-      length(qw_col_names)
-    ))
-  } else {
-    message("qwindow is set in config but per-window columns not found in part2.")
-    message("  Re-run pipeline/01_run_ggir.R to generate qwindow-based columns.")
-    message("  Falling back to proportional day-level approximation.")
+  if (nrow(seg5) > 0 && "window" %in% names(seg5)) {
+    seg5[, window_idx := suppressWarnings(as.integer(sub("^segment", "", window, ignore.case = TRUE)))]
+    seg5 <- seg5[!is.na(window_idx) & window_idx >= 1 & window_idx <= length(qw_starts)]
+    date5_col <- intersect(c("calendar_date", "Date", "date"), names(seg5))
+    present_src <- INTENSITY_SRC_COLS[INTENSITY_SRC_COLS %in% names(seg5)]
+
+    if (nrow(seg5) > 0 && length(date5_col) > 0 && length(present_src) > 0) {
+      date5_col <- date5_col[1]
+      seg5[, lookup_key := paste(as.character(ID), as.character(get(date5_col)), window_idx)]
+      window_lookup <- split(seg5[, c(names(present_src)) := lapply(.SD, as.numeric), .SDcols = present_src][
+        , c("lookup_key", names(present_src)), with = FALSE], by = "lookup_key", keep.by = FALSE)
+      use_qwindow <- TRUE
+      message(sprintf(
+        "part5 Segments data loaded (%d window-rows, %d participants) — using true per-window activity for segment estimates",
+        nrow(seg5), uniqueN(seg5$ID)
+      ))
+    }
+  }
+
+  if (!use_qwindow) {
+    message("qwindow is set in config but part5_daysummary_Segments_*.csv not found or unusable.")
+    message("  Falling back to wear-time-only segment estimates (no activity intensity).")
   }
 }
 
-# Helper: for a segment [start_h, end_h], accumulate qwindow column values
-# weighted by overlap with each qwindow interval. Modifies seg_row in place.
-distribute_qwindow_cols <- function(seg_row, row, start_h, end_h) {
+# Helper: for a segment [start_h, end_h], accumulate part5-Segments intensity
+# values (looked up by participant/date/qwindow-index) weighted by overlap
+# with each qwindow interval. Modifies seg_row in place.
+distribute_qwindow_cols <- function(seg_row, id, date_val, start_h, end_h) {
   for (qi in seq_along(qw_starts)) {
     qw_start <- qw_starts[qi]
     qw_end   <- qw_ends[qi]
-    qw_suf   <- qw_suffixes[qi]
     qw_dur   <- qw_end - qw_start
     overlap  <- max(0, min(end_h, qw_end) - max(start_h, qw_start))
     if (overlap <= 0 || qw_dur <= 0) next
     frac <- overlap / qw_dur
 
-    cols_this_qw <- grep(
-      paste0("_", gsub("\\.", "\\\\.", qw_suf), "$"),
-      names(row), value = TRUE
-    )
-    for (col in cols_this_qw) {
-      val <- row[[col]]
+    key     <- paste(as.character(id), as.character(date_val), qi)
+    win_row <- window_lookup[[key]]
+    if (is.null(win_row) || nrow(win_row) == 0) next
+
+    for (out_col in names(INTENSITY_SRC_COLS)) {
+      # window_lookup rows are already renamed src->out (see construction
+      # above) — look up by out_col, not the original GGIR src column name.
+      if (!out_col %in% names(win_row)) next
+      val <- win_row[[out_col]][1]
       if (!is.numeric(val) || is.na(val)) next
-      base_col <- sub(paste0("_", gsub("\\.", "\\\\.", qw_suf), "$"), "", col)
-      cur <- if (base_col %in% names(seg_row)) seg_row[[base_col]] else 0
-      set(seg_row, j = base_col, value = cur + val * frac)
+      cur <- if (out_col %in% names(seg_row)) seg_row[[out_col]] else 0
+      set(seg_row, j = out_col, value = cur + val * frac)
     }
   }
   seg_row
@@ -344,7 +363,7 @@ for (i in seq_len(nrow(part2))) {
       n_valid_hours = if ("n_valid_hours" %in% names(row)) row$n_valid_hours else NA_real_
     )
     if (use_qwindow) {
-      seg_row <- distribute_qwindow_cols(seg_row, row, 0, 24)
+      seg_row <- distribute_qwindow_cols(seg_row, row$ID, seg_row$date, 0, 24)
     } else {
       for (col in intensity_cols) seg_row[, (col) := row[[col]]]
     }
@@ -380,7 +399,7 @@ for (i in seq_len(nrow(part2))) {
       n_valid_hours = if ("n_valid_hours" %in% names(row)) row$n_valid_hours else NA_real_
     )
     if (use_qwindow) {
-      seg_row <- distribute_qwindow_cols(seg_row, row, 0, 24)
+      seg_row <- distribute_qwindow_cols(seg_row, row$ID, seg_row$date, 0, 24)
     } else {
       for (col in intensity_cols) {
         val <- row[[col]]
@@ -412,7 +431,7 @@ for (i in seq_len(nrow(part2))) {
     # Activity columns: use qwindow overlap aggregation if available,
     # otherwise distribute proportionally (day-level approximation)
     if (use_qwindow) {
-      seg_row <- distribute_qwindow_cols(seg_row, row,
+      seg_row <- distribute_qwindow_cols(seg_row, row$ID, seg_row$date,
                                          sched$start_h[j], sched$end_h[j])
     } else {
       for (col in intensity_cols) {

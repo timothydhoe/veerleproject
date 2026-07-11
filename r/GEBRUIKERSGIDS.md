@@ -6,17 +6,29 @@ Dit document beschrijft alles wat je nodig hebt om de pipeline te draaien, het d
 
 ## 1. Eenmalige installatie
 
-### Vereiste software
+### Optie A — Draagbare versie (aanbevolen)
 
-Zorg dat het volgende geïnstalleerd is **vóór** je het project opent:
+Als je een `SchoolMove_Windows.zip` bundel hebt gekregen (bevat een map met
+`R\`, `r\` en twee `.bat`-bestanden), heb je **niets van onderstaande nodig**.
+Pak de zip uit naar een korte maplocatie zoals `C:\SchoolMove\` en volg
+`LEES MIJ.txt` in die map. Er is geen installatiestap en geen
+internetverbinding nodig — R en alle R-pakketten zitten al in de bundel.
+
+Ga verder naar sectie 2 als je de draagbare versie gebruikt.
+
+### Optie B — Handmatige installatie
+
+Alleen nodig als je **geen** draagbare bundel hebt en zelf met de broncode
+werkt (bijv. als ontwikkelaar). Zorg dat het volgende geïnstalleerd is
+**vóór** je het project opent:
 
 | Software | Versie | Waar te vinden |
 |----------|--------|----------------|
-| **R** | 4.4 of nieuwer | https://cran.r-project.org/bin/windows/base/ |
+| **R** | Exact de versie in `r/renv.lock` (veld `R.Version`) | https://cran.r-project.org/bin/windows/base/ |
 | **RStudio** | Elke recente versie | https://posit.co/download/rstudio-desktop/ |
-| **Rtools** (Windows) | Rtools44 (bij R 4.4) | https://cran.r-project.org/bin/windows/Rtools/ |
+| **Rtools** (Windows) | De versie die hoort bij jouw R-versie — zie de tabel op de Rtools-pagina | https://cran.r-project.org/bin/windows/Rtools/ |
 
-> **Windows-gebruikers:** Rtools is nodig omdat een deel van de R-pakketten (waaronder `GGIRread`) gecompileerd moet worden. Zonder Rtools kan `source("install.R")` mislukken. Installeer Rtools *vóór* je het project opent — een herstart van RStudio daarna is voldoende. Installeer het bij voorkeur op een kort pad, bijv. `C:\Rtools44\`, en laat Rtools zijn eigen PATH-aanpassing doorvoeren.
+> **Windows-gebruikers:** Rtools is nodig omdat een deel van de R-pakketten (waaronder `GGIRread`) gecompileerd moet worden. Zonder Rtools kan `source("install.R")` mislukken. Installeer Rtools *vóór* je het project opent — een herstart van RStudio daarna is voldoende. Installeer het bij voorkeur op een kort pad (bijv. `C:\Rtools\`) en laat Rtools zijn eigen PATH-aanpassing doorvoeren. **Belangrijk:** de R-versie en de Rtools-versie moeten bij elkaar passen — controleer dit op de Rtools-pagina hierboven, niet op wat een oudere versie van dit document zei.
 
 > **Maplocatie:** Kies een korte maplocatie voor het project, bijv. `C:\SchoolMove\`. Windows heeft een padlengte-limiet van 260 tekens, en GGIR maakt geneste submappen aan.
 
@@ -286,7 +298,7 @@ Sla het bestand op en herstart de pipeline.
 → GGIR heeft stap 4 (slaapdetectie) niet doorlopen of de outputmap heeft een andere naam. Controleer of `data/processed/meting_1/output_meting_1/results/` de verwachte mapstructuur bevat.
 
 **School 4 toont een waarschuwing over "geschat rooster"**
-→ Het bevestigde lesrooster voor school 4 is nog niet ontvangen. Resultaten voor deze school zijn benaderingen. Stuur het rooster naar de ontwikkelaar om de fallback te verwijderen.
+→ Het rooster van school 4 is inmiddels verwerkt en de fallback is verwijderd. Als deze melding nog verschijnt, herstart dan de pipeline zodat de nieuwe configuratie wordt toegepast.
 
 **"No valid days" voor alle deelnemers**
 → Waarschijnlijk is `dev.example_mode` op `false` terwijl de `data/raw/`-map leeg is, of andersom. Controleer de instelling in `config.yaml`.
@@ -398,8 +410,8 @@ GGIR-versies rapporteren slaapefficiëntie soms als percentage (0–100) en soms
 **Schoolcontext is een benadering**
 De verdeling van activiteitsminuten over segmenten (les, speeltijd enz.) is proportioneel op basis van de tijdsduur van het segment. Een exacte verdeling per seconde vereist GGIR epoch-level uitvoer gekoppeld aan de schoolsegmenten — dit is nog niet geïmplementeerd.
 
-**School 3 — klassenrooster-correctie (tijdelijk beperkt)**
-Leerlingen in de klassen 2Aa, 2Ab, 2Ba en 2Bb van school 3 hebben op bepaalde dagen een lesdag tot 16:25 in plaats van 15:35. Door een technische fout in de code worden deze correcties momenteel nog niet toegepast. De segmentgrenzen voor deze 13 leerlingen zijn iets te vroeg. Dit wordt gecorrigeerd voor de eerste echte datarun.
+**School 3 — klassenrooster-correctie**
+Leerlingen in de klassen 2Aa, 2Ab, 2Ba en 2Bb van school 3 hebben op bepaalde dagen een lesdag tot 16:25 in plaats van 15:35. Deze correcties zijn verwerkt in `config.yaml` en worden automatisch toegepast per leerling. Leerlingcode 2027 (klasse 2Aa) is bevestigd via Info_metingen.docx.
 
 **Dashboard laadt geen nieuwe data zonder herstart**
 Het dashboard laadt alle gegevens eenmalig bij opstarten. Als je de pipeline opnieuw draait terwijl het dashboard open staat, moet je de Shiny-app herstarten (`Ctrl+C` in de terminal, dan `shiny::runApp("shiny")`) om de nieuwe resultaten te zien.

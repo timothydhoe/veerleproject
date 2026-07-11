@@ -225,7 +225,7 @@ mod_schoolday_server <- function(id, shared) {
       dt[, mvpa_val := get(mod_c) + get(vig_c)]
 
       daily <- dt[, .(mvpa_day = sum(mvpa_val, na.rm = TRUE)),
-                  by = .(ID, school_label, meting, calendar_date, weekday)]
+                  by = .(ID, school_label, meting, date, weekday)]
 
       if (isTRUE(input$seg_weekday == "weekend")) {
         wd_order <- c("Saturday","Sunday")

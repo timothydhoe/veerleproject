@@ -7,6 +7,35 @@
 # Does NOT require interactive input — safe to call in batch/Shiny context.
 # ─────────────────────────────────────────────────────────────────────────────
 
+#' Read config.yaml with a friendlier error for a common Windows mistake
+#'
+#' Windows users routinely paste backslash paths (e.g. "C:\Users\...") into
+#' a double-quoted YAML scalar. YAML then tries to parse the backslash as an
+#' escape sequence (e.g. \\U as a broken unicode escape), producing a cryptic
+#' "did not find expected hexdecimal number" scanner error (libyaml's own
+#' spelling, not a typo introduced here). Detect that specific failure and
+#' re-throw a clear, actionable Dutch message instead.
+#'
+#' @param path Path to the YAML file to read.
+#' @return Named list produced by yaml::read_yaml().
+read_config_yaml <- function(path) {
+  tryCatch(
+    yaml::read_yaml(path),
+    error = function(e) {
+      if (grepl("did not find expected hexdecimal number", conditionMessage(e), fixed = TRUE)) {
+        stop(
+          "Kon ", path, " niet lezen: het pad bevat waarschijnlijk backslashes (\\), ",
+          "die YAML als een ongeldig escape-teken interpreteert.\n",
+          "  Gebruik forward slashes (/) in plaats daarvan, bv.: \"C:/Data/SchoolMove\" ",
+          "i.p.v. \"C:\\Data\\SchoolMove\".",
+          call. = FALSE
+        )
+      }
+      stop(e)
+    }
+  )
+}
+
 #' Validate the SchoolMove config list
 #'
 #' @param cfg Named list produced by yaml::read_yaml("config.yaml").

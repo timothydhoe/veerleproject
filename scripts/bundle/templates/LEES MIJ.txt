@@ -1,0 +1,32 @@
+SchoolMove — Draagbare versie
+==============================
+
+Deze map bevat alles wat nodig is om SchoolMove te draaien: R, alle
+benodigde R-pakketten, en de code. Je hoeft niets te installeren.
+
+BELANGRIJK: pak deze map uit naar een korte locatie, bijvoorbeeld
+C:\SchoolMove\ — niet naar een netwerkschijf of OneDrive-map. Windows heeft
+een padlengte-limiet, en een netwerkschijf kan de pipeline laten mislukken.
+
+Stappen
+-------
+
+1. Zet je databestanden in:
+     data\raw\meting_1\
+     data\raw\meting_2\
+
+2. Dubbelklik op "1 - Pipeline uitvoeren.bat"
+   Dit verwerkt de data. Duurt 30-60 minuten voor de volledige dataset.
+
+3. Dubbelklik op "2 - Dashboard starten.bat"
+   Dit opent het dashboard in je browser.
+
+Voor de volledige uitleg over wat elk tabblad doet en hoe je parameters
+aanpast, zie r\GEBRUIKERSGIDS.md (te openen met Kladblok of Word).
+
+Problemen?
+----------
+Als een van beide .bat-bestanden een venster opent dat meteen weer
+verdwijnt, of een foutmelding toont die je niet begrijpt: maak een
+schermafbeelding en stuur die door — dat is veel sneller te verhelpen
+dan een mondelinge beschrijving.

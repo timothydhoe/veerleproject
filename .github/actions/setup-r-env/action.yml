@@ -1,0 +1,37 @@
+name: Setup R environment
+description: >
+  Installs R (matching r/renv.lock's pinned version) with Rtools, restores the
+  renv library from the committed lockfile, and caches it across runs.
+  Assumes the repo has already been checked out and the caller's working
+  directory (or subsequent steps) use the r/ subdirectory as needed.
+
+runs:
+  using: composite
+  steps:
+    - name: Read R version from renv.lock
+      id: r-version
+      shell: pwsh
+      run: |
+        $lock = Get-Content -Raw -Path "r/renv.lock" | ConvertFrom-Json
+        $version = $lock.R.Version
+        Write-Host "renv.lock pins R $version"
+        "version=$version" >> $env:GITHUB_OUTPUT
+
+    - name: Setup R
+      uses: r-lib/actions/setup-r@v2
+      with:
+        r-version: ${{ steps.r-version.outputs.version }}
+        use-public-rspm: true
+
+    - name: Cache renv library
+      uses: actions/cache@v4
+      with:
+        path: r/renv/library
+        key: ${{ runner.os }}-renv-${{ hashFiles('r/renv.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-renv-
+
+    - name: Restore renv library
+      shell: pwsh
+      working-directory: r
+      run: Rscript -e "renv::restore()"

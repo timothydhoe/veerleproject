@@ -16,7 +16,9 @@ library(yaml)
 
 Sys.setlocale("LC_TIME", "C")  # force English weekday names regardless of OS locale
 
-cfg <- yaml::read_yaml("../config.yaml")
+source("pipeline/validate_config.R", local = TRUE)
+
+cfg <- read_config_yaml("../config.yaml")
 cp  <- cfg$ggir$cut_points_mg
 dev <- cfg$dev
 
@@ -150,7 +152,7 @@ for (meting in c("meting_1", "meting_2")) {
     # General
     idloc       = 2,
     desiredtz   = cfg$output$timezone,
-    do.report   = c(2, 5),
+    do.report   = c(2, 4, 5),
     do.parallel = max_cores > 1,
     maxNcores   = max_cores,
 

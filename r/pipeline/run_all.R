@@ -34,7 +34,7 @@ t_start <- proc.time()
 # This is a reproducibility record — does not change what GGIR receives.
 source("pipeline/utils_input.R", local = TRUE)
 
-cfg <- yaml::read_yaml("../config.yaml")
+cfg <- read_config_yaml("../config.yaml")
 validate_config(cfg)
 
 if (isTRUE(cfg$dev$example_mode)) {

@@ -6,6 +6,14 @@
 
 `%||%` <- function(a, b) if (!is.null(a)) a else b
 
+# Resolve a config-file path relative to r/ (global.R runs from r/shiny/, one
+# level deeper) — unless the path is already absolute (Windows drive letter,
+# UNC, or POSIX), in which case it's used as-is. config.yaml explicitly allows
+# absolute paths for paths.data_raw / data_processed / etc.
+resolve_cfg_path <- function(p) {
+  if (grepl("^([A-Za-z]:[\\\\/]|\\\\\\\\|/)", p)) p else file.path("..", p)
+}
+
 library(shiny)
 library(bslib)
 library(DT)
@@ -22,7 +30,7 @@ source("../utils/util_filters.R", local = TRUE)
 # ── Config ────────────────────────────────────────────────────────────────────
 source("../pipeline/validate_config.R", local = TRUE)
 
-cfg <- yaml::read_yaml("../../config.yaml")
+cfg <- read_config_yaml("../../config.yaml")
 
 CONFIG_VALID <- tryCatch({
   validate_config(cfg)
@@ -35,7 +43,7 @@ CONFIG_VALID <- tryCatch({
 # Load the active configuration profile and merge it over the base config.
 # Profiles live in r/profiles/ and are managed via Tab 7 "Instellingen".
 active_profile_name <- cfg$profiles$active %||% "default"
-profiles_dir        <- file.path("..", cfg$profiles$directory %||% "profiles/")
+profiles_dir        <- resolve_cfg_path(cfg$profiles$directory %||% "profiles/")
 profile_path        <- file.path(profiles_dir, paste0(active_profile_name, ".yaml"))
 
 if (file.exists(profile_path)) {
@@ -59,7 +67,7 @@ if (file.exists(profile_path)) {
 } else {
   message("[profile] Profile not found: '", profile_path, "' — using base config.yaml values.")
 }
-base_out       <- file.path("..", cfg$paths$data_processed)
+base_out       <- resolve_cfg_path(cfg$paths$data_processed)
 metingen       <- c("meting_1", "meting_2")
 METINGEN_LABELS <- c(meting_1 = "Meting 1", meting_2 = "Meting 2")
 schools        <- names(cfg$schedules)

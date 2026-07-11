@@ -1,84 +1,77 @@
-# SchoolMove Pipeline Configuration
+# SchoolMove — configuratiebestand
 # ─────────────────────────────────────────────────────────────────────────────
-# This is the single file researchers should edit to adjust pipeline behaviour.
-# R scripts read these values at startup — you should not need to edit any
-# .R files to change parameters.
+# Dit is het enige bestand dat je aanpast om de pipeline bij te sturen.
+# De R-scripts lezen deze waarden in bij het opstarten — je hoeft geen
+# .R-bestanden te openen.
 #
-# Paths are relative to the r/ working directory (one level inside the repo).
+# Paden zijn relatief aan de r/ werkdirectory (één niveau binnen de repo).
 # ─────────────────────────────────────────────────────────────────────────────
 
-# ── Data paths ────────────────────────────────────────────────────────────────
+# ── Datapaden ─────────────────────────────────────────────────────────────────
 paths:
-  data_raw:       "../data/raw"
-  data_processed: "../data/processed"
-  data_example:   "../data/example"              # Fictional test data (safe to commit)
-  absences:       "../data/absences.csv"         # Researcher-maintained absence registry
+  data_raw:       "../data/raw"           # Invoermap voor echte data. Bevat submappen meting_1/ en meting_2/.
+                                          # Mag ook een absoluut pad zijn, bv. "C:/Data/SchoolMove".
+  data_processed: "../data/processed"     # Uitvoermap voor GGIR-resultaten en samenvattingsbestanden.
+  data_example:   "../data/example"       # Fictieve testdata — veilig om te committen.
+  absences:       "../data/absences.csv"  # Afwezigheidsregister, beheerd via het dashboard.
 
-# ── GGIR parameters ───────────────────────────────────────────────────────────
+# ── GGIR-parameters ───────────────────────────────────────────────────────────
 ggir:
-  parts: [1, 2, 3, 4, 5]        # documentation only — script hardcodes mode=1:5
-  overwrite: false              # Set to true to force re-processing of existing output
-  epoch_length_s: 1             # documentation only — not passed to GGIR (CSVs are pre-epoched)
+  parts: [1, 2, 3, 4, 5]        # informatief, niet actief ingelezen
+  overwrite: false               # true = verwerk al verwerkte bestanden opnieuw; gelezen door: 01_run_ggir.R
+  epoch_length_s: 1              # informatief, niet actief ingelezen (CSV's zijn reeds per seconde geaggregeerd)
 
-  # Activity cut-points (ENMO in mg) — wrist-worn GENEActiv, Hildebrand et al. 2014
+  # Activiteitsgrenswaarden (ENMO in mg) — polshorloge bij kinderen, Hildebrand et al. 2014
+  # Gelezen door: 01_run_ggir.R (threshold.lig / threshold.mod / threshold.vig)
   cut_points_mg:
-    sedentary_to_light:    56.3   # SB  | LPA boundary
-    light_to_moderate:    191.6   # LPA | MPA boundary
-    moderate_to_vigorous: 695.8   # MPA | VPA boundary
+    sedentary_to_light:    56.3   # SB  | LPA
+    light_to_moderate:    191.6   # LPA | MPA
+    moderate_to_vigorous: 695.8   # MPA | VPA
 
-  # Non-wear detection
-  nonwear_window_min: 15        # documentation only — not passed to GGIR (uses GGIR defaults)
+  # Non-wear detectie
+  nonwear_window_min: 15         # informatief, niet actief ingelezen (GGIR gebruikt interne standaard)
 
-  # Parallel processing: number of CPU cores GGIR may use.
-  # 1 = single-core (safe for laptops). Set to 4–8 on a server or workstation.
+  # Aantal CPU-kernen dat GGIR mag gebruiken.
+  # 1 = één kern (veilig op elke laptop). Op een moderne laptop zijn 2–4 kernen sneller.
   maxNcores: 1
 
-  # qwindow strategy:
-  #   "manual" — use the qwindow list below (current behaviour, safe default).
-  #   "auto"   — derive breakpoints from all schools' bell times in schedules:
-  #              produces a finer-grained qwindow that aligns exactly with each
-  #              school's schedule. IMPORTANT: switching to "auto" requires
-  #              re-running Step 01 (GGIR) — this takes hours on a full dataset.
+  # qwindow-strategie:
+  #   "manual" — gebruik de qwindow-lijst hieronder (standaard, aanbevolen).
+  #   "auto"   — leidt grenspunten automatisch af uit de schoolroosters.
+  #              Let op: wisselen naar "auto" vereist een volledige herrun van stap 01 (GGIR).
   qwindow_strategy: "manual"
 
-  # Time-of-day segment boundaries (decimal hours, 24-h clock).
-  # Used when qwindow_strategy is "manual". GGIR Part 2 produces separate
-  # activity columns for each window, e.g. dur_day_total_IN_min_8.5.10.
-  # 02_label_segments.R maps these windows onto school-specific context labels.
-  # Values are a compromise across all school schedules; adjust if needed.
-  #   08:30 – schools start (08:25–08:30)
-  #   10:00 – just before first recess (10:05–10:15 across schools)
-  #   12:00 – lunch start
-  #   13:00 – approx. end of lunch (ranges 12:50–13:30)
-  #   15:30 – covers most end-of-day times (15:25–15:55; school 4 ends 16:30)
+  # Tijdsgrenzen voor dagdelen (decimale uren, 24-uursformaat).
+  # Geldig als qwindow_strategy = "manual". Past bij de roosters van alle scholen.
+  # Pas alleen aan als je de grenzen wil verfijnen — een herrun van stap 01 is dan nodig.
   qwindow: [0, 8.5, 10.0, 12.0, 13.0, 15.5, 24]
 
-# ── Bout detection parameters ─────────────────────────────────────────────────
-# Used by utils_bouts.R when epoch-level data is available.
-# split_at_context_boundary: true means a sedentary bout is reset when the
-# school context changes (e.g. a 35-min sit that spans a recess is counted
-# as two separate bouts, not one).
+# ── Boutdetectie ──────────────────────────────────────────────────────────────
+# Gebruikt door utils_bouts.R wanneer epoch-niveau data beschikbaar is.
+# split_at_context_boundary: een sedentaire bout wordt afgebroken als de
+# schoolcontext verandert (bv. een 35 min. zitperiode over een speeltijd heen
+# telt als twee aparte bouts).
 bouts:
-  sedentary_min: 30              # minimum consecutive minutes to count as a SB bout
-  light_min: 10                  # documentation only — not yet used by pipeline
-  moderate_min: 5                # documentation only — not yet used by pipeline
-  vigorous_min: 5                # documentation only — not yet used by pipeline
-  split_at_context_boundary: true  # not yet active — pending methodological decision
+  sedentary_min: 30              # minimum aaneengesloten minuten voor een sedentaire bout
+  light_min: 10                  # informatief, nog niet actief ingelezen
+  moderate_min: 5                # informatief, nog niet actief ingelezen
+  vigorous_min: 5                # informatief, nog niet actief ingelezen
+  split_at_context_boundary: true  # nog niet actief — wacht op methodologische beslissing
 
-# ── Validity criteria ─────────────────────────────────────────────────────────
+# ── Geldigheidsdrempels ───────────────────────────────────────────────────────
 validity:
-  # Sedentary analysis criteria
-  min_wear_hours_per_day: 16
-  min_valid_days: 3
-  require_weekend_day: true
-  # Sleep analysis criteria
-  min_valid_nights_sleep: 5    # min nights with valid sleep to include in sleep analysis
-  min_pct_night_valid: 50      # min sleep efficiency % to count a night as valid
+  # Criteria voor sedentaire analyse
+  min_wear_hours_per_day: 16    # minimum draaguren per dag om een dag als geldig te tellen
+  min_valid_days: 3             # minimum aantal geldige dagen per meting
+  require_weekend_day: true     # minimaal één weekenddag vereist onder de geldige dagen
+  # Criteria voor slaapanalyse
+  min_valid_nights_sleep: 5    # minimum nachten met geldige slaap voor de slaapanalyse
+  min_pct_night_valid: 50      # minimum slaapefficiëntie (%) om een nacht als geldig te tellen
 
-# ── Measurement windows ───────────────────────────────────────────────────────
-# Approximate dates when accelerometers were distributed and collected per school.
-# Source: Info_metingen.docx
-# Note: this section is documentation only — no R script reads these values.
+# ── Meetperiodes ──────────────────────────────────────────────────────────────
+# Indicatieve data-inzameling per school en meting.
+# Bron: Info_metingen.docx
+# Informatief — wordt niet actief ingelezen door de pipeline.
 measurements:
   school_1:
     n_pupils: 70
@@ -105,13 +98,12 @@ measurements:
     meting_1: { start: "2026-03-02", end: "2026-03-09" }
     meting_2: { start: "2026-05-04", end: "2026-05-11" }
 
-# ── School schedules ──────────────────────────────────────────────────────────
-# Used to assign a context label to every epoch: in_class, recess, lunch,
-# before_school, after_school, or weekend.
+# ── Schoolroosters ────────────────────────────────────────────────────────────
+# Bepaalt het contextlabel per epoch: in_class, recess, lunch,
+# before_school, after_school of weekend.
 #
-# Times are HH:MM in 24-hour format, Europe/Brussels timezone.
-# Schools marked  fallback: true  use an approximate schedule and update when
-# the confirmed timetable is received from Veerle.
+# Tijden in HH:MM, 24-uursformaat, tijdzone Europe/Brussels.
+# fallback: true = rooster is een benadering; fallback: false = bevestigd rooster.
 schedules:
 
   school_1:
@@ -156,9 +148,8 @@ schedules:
         - { label: recess, start: "14:30", end: "14:45" }
       wednesday:
         - { label: recess, start: "10:05", end: "10:20" }
-    # Per-class overrides: 2nd-year pupils have an 8th lesson (→ 16:25) on specific days.
-    # Source: Veerle Van Oeckel email + Info_metingen.docx
-    # ⚠ Pupil 3027 in class 2Aa may be a typo for 2027 in the source doc — confirm with Veerle.
+    # Per-klasoverride: 2e-jaars leerlingen hebben een 8e lesuur (→ 16:25) op bepaalde dagen.
+    # Bron: e-mail Veerle Van Oeckel + Info_metingen.docx
     class_overrides:
       2Aa:
         pupils: [3025, 3026, 3027]
@@ -174,31 +165,31 @@ schedules:
         school_end_override: { thursday: "16:25" }
 
   school_4:
-    # ⚠ FALLBACK — timetable was image-only and could not be fully parsed. Update when received.
-    fallback: true
-    school_start: "08:30"
+    # Bron: roosterafbeelding (Secundair en OKAN). Woensdageinde geschat (les 4 → 12:15).
+    fallback: false
+    school_start: "08:40"
     school_end:
-      mon_tue_thu_fri: "16:30"
-      wednesday:       "12:00"
+      mon_tue_thu_fri: "16:35"
+      wednesday:       "12:15"
     breaks:
       mon_tue_thu_fri:
-        - { label: recess, start: "10:15", end: "10:30" }
-        - { label: lunch,  start: "12:00", end: "13:30" }
+        - { label: recess, start: "10:20", end: "10:35" }
+        - { label: lunch,  start: "12:15", end: "13:15" }
       wednesday:
-        - { label: recess, start: "10:15", end: "10:30" }
+        - { label: recess, start: "10:20", end: "10:35" }
 
   school_5:
     fallback: false
     school_start: "08:30"
     school_end:
       mon_tue_thu_fri: "15:55"
-      wednesday:       "12:05"    # Assumed end after 4th period
+      wednesday:       "12:05"    # geschat einde na het 4e lesuur
     breaks:
       mon_tue_thu_fri:
         - { label: recess, start: "10:10", end: "10:25" }
         - { label: lunch,  start: "12:05", end: "13:10" }
         - { label: recess, start: "14:50", end: "15:05" }
-      wednesday: []               # No afternoon
+      wednesday: []               # geen namidag
 
   school_6:
     fallback: false
@@ -213,44 +204,46 @@ schedules:
       wednesday:
         - { label: recess, start: "10:10", end: "10:20" }
 
-# ── Developer / testing ───────────────────────────────────────────────────────
+# ── Ontwikkelaars- en testinstellingen ───────────────────────────────────────
 dev:
-  # Set to true to run the pipeline on example/dummy data instead of data/raw/.
-  # Flip to false when processing real participant data.
+  # true = gebruik de fictieve testdata in data/example/ (snel, enkele minuten).
+  # false = gebruik de echte data in de map aangeduid door paths > data_raw.
   example_mode: false
 
-  # Quick-test mode: process only the first N participant files per meting.
-  # Useful for verifying that the pipeline works with real data without waiting
-  # 30–60 minutes for the full run. Set to 2 or 3 for a fast check; remove or
-  # set to null (or ~) to process all files.
-  # Example: quick_test_n: 2
+  # Snelle test met echte data: verwerk alleen de eerste N deelnemers per meting.
+  # Handig om te controleren of de pipeline de bestanden correct inleest zonder uren te wachten.
+  # Zet op ~ (of verwijder de waarde) om alle deelnemers te verwerken.
+  # Voorbeeld: quick_test_n: 2
   quick_test_n: ~
 
-  # GGIR non-wear algorithm override.
-  # For 1 Hz dummy CSV data, "2013" is required (the 2023 algorithm collapses
-  # variance at 1 Hz and flags every epoch as non-wear → 0 valid participants).
-  # ⚠ Remove this setting entirely before running on real .bin/.cwa data.
+  # Algoritme voor non-wear detectie (GGIR-parameter).
+  # "2013" is vereist voor 1 Hz CSV-bestanden (GENEActiv-export). Niet aanpassen.
   nonwear_approach: "2013"
 
-# ── Reproducibility tracking ──────────────────────────────────────────────────
-# These actions always run unconditionally in run_all.R — the flags below are
-# documentation only and are not checked at runtime.
-reproducibility:
-  save_ggir_config:      true   # copy GGIR config.csv to logs/ after Step 01
-  write_input_manifest:  true   # write logs/input_manifest.csv at pipeline start
-  write_run_log:         true   # append to logs/pipeline_runs.csv at pipeline end
+  # Verlaagde drempel voor "geldige dag" — ALLEEN actief als example_mode: true.
+  # De fictieve testdata in data/example/ haalt de echte 16 u/dag drempel niet,
+  # waardoor een demo met dummy-data altijd "0% geldig" toont. Deze override
+  # heeft geen enkel effect op echte data (example_mode: false negeert dit).
+  includedaycrit: 4
 
-# ── Configuration profiles ────────────────────────────────────────────────────
-# Profiles let Veerle save and restore named parameter sets (validity thresholds,
-# cut-points, bout durations) without editing this file directly.
-# The active profile is loaded by the Shiny app at startup and merged over the
-# base values in this file.
-# Profiles are managed through Tab 7 "Instellingen" in the Shiny dashboard.
+# ── Reproduceerbaarheid ───────────────────────────────────────────────────────
+# Deze acties worden altijd uitgevoerd door run_all.R — de vlaggen hieronder
+# zijn informatief en worden niet actief ingelezen.
+reproducibility:
+  save_ggir_config:      true   # kopieert GGIR config.csv naar logs/ na stap 01
+  write_input_manifest:  true   # schrijft logs/input_manifest.csv bij aanvang pipeline
+  write_run_log:         true   # voegt een regel toe aan logs/pipeline_runs.csv na afloop
+
+# ── Configuratieprofielen ─────────────────────────────────────────────────────
+# Profielen laten je benoemde parametersets opslaan (geldigheidsdrempels,
+# grenswaarden, boutduren) zonder dit bestand rechtstreeks te bewerken.
+# Het actieve profiel wordt geladen door de Shiny-app bij het opstarten.
+# Profielen worden beheerd via tabblad "Instellingen" in het dashboard.
 profiles:
   active:    "default"
-  directory: "profiles/"    # relative to r/ working directory
+  directory: "profiles/"    # relatief aan de r/ werkdirectory
 
-# ── Output settings ───────────────────────────────────────────────────────────
+# ── Uitvoerinstellingen ───────────────────────────────────────────────────────
 output:
-  timezone: "Europe/Brussels"   # read by: 01_run_ggir.R (desiredtz), shiny/global.R
-  locale:   "nl_BE"             # documentation only — not applied by any script
+  timezone: "Europe/Brussels"   # tijdzone voor alle datumberekeningen; gelezen door: 01_run_ggir.R, shiny/global.R
+  locale:   "nl_BE"             # informatief, niet actief ingelezen
