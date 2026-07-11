@@ -1,9 +1,7 @@
 name: Windows verify
 
-# Proves — on a real, clean Windows machine — that install, the pipeline, and
-# the Shiny dashboard all actually work. This is the direct answer to "it
-# looked fine locally but failed on Veerle's laptop": every push gets a real
-# pass/fail signal from a stock windows-latest runner, not a guess.
+# Proves — on a real, clean Windows machine — that install,
+# the pipeline, and the Shiny dashboard all actually work.
 
 on:
   push:

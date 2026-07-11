@@ -18,6 +18,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+$templates = Join-Path $RepoRoot "scripts/bundle/templates"
 
 if (Test-Path $OutputDir) {
   Remove-Item -Recurse -Force $OutputDir
@@ -56,17 +57,19 @@ $dataDest = Join-Path $OutputDir "data"
 New-Item -ItemType Directory -Path (Join-Path $dataDest "example") -Force | Out-Null
 Copy-Item -Recurse -Force (Join-Path $RepoRoot "data/example/*") (Join-Path $dataDest "example")
 
+# NOTE: the README template text lives under scripts/bundle/templates/, not
+# under data/raw/ itself — data/raw/ is entirely gitignored (it's meant to
+# hold real participant data), so a placeholder file placed there would
+# never survive a git checkout and would silently be missing from the bundle
+# (this happened once — the placeholder existed only on a local machine).
 foreach ($m in @("meting_1", "meting_2")) {
   $rawDir = Join-Path $dataDest "raw/$m"
   New-Item -ItemType Directory -Path $rawDir -Force | Out-Null
-  $readme = Join-Path $RepoRoot "data/raw/$m/README.txt"
-  if (Test-Path $readme) {
-    Copy-Item -Force $readme (Join-Path $rawDir "README.txt")
-  }
+  $readme = Join-Path $templates "raw_README_$m.txt"
+  Copy-Item -Force $readme (Join-Path $rawDir "README.txt")
 }
 
 # ── 4. Launchers ─────────────────────────────────────────────────────────────
-$templates = Join-Path $RepoRoot "scripts/bundle/templates"
 Copy-Item -Force (Join-Path $templates "1 - Pipeline uitvoeren.bat") $OutputDir
 Copy-Item -Force (Join-Path $templates "2 - Dashboard starten.bat") $OutputDir
 Copy-Item -Force (Join-Path $templates "LEES MIJ.txt") $OutputDir
