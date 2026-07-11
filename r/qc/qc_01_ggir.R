@@ -64,12 +64,18 @@ for (meting in metingen) {
     pass(sprintf("%s — %d rows, %d columns", label, nrow(part4), ncol(part4)))
   }
 
-  # Part 5 uses a dynamic filename — search by pattern
-  part5_files <- list.files(results_dir, pattern = "^part5_daysummary_WW_", full.names = TRUE)
-  part5_pers  <- list.files(results_dir, pattern = "^part5_personsummary_WW_", full.names = TRUE)
+  # Part 5 uses a dynamic filename — search by pattern.
+  # Daysummary: 02_label_segments.R hard-requires the Segments variant
+  # specifically (no fallback). Personsummary: 03_build_summaries.R accepts
+  # any variant (WW/MM/Segments), so check generically to match.
+  part5_files <- list.files(results_dir, pattern = "^part5_daysummary_Segments_",
+                            full.names = TRUE)
+  part5_pers  <- list.files(results_dir, pattern = "^part5_personsummary_",
+                            full.names = TRUE)
 
   if (length(part5_files) == 0) {
-    fail("part5_daysummary_WW_*.csv not found")
+    fail(paste("part5_daysummary_Segments_*.csv not found",
+               "(required by 02_label_segments.R)"))
   } else {
     dt5 <- tryCatch(fread(part5_files[1], data.table = TRUE), error = function(e) NULL)
     if (is.null(dt5)) {
@@ -80,7 +86,7 @@ for (meting in metingen) {
   }
 
   if (length(part5_pers) == 0) {
-    warn("part5_personsummary_WW_*.csv not found (may appear after more participants are processed)")
+    warn("part5_personsummary_*.csv not found (may appear after more participants are processed)")
   } else {
     dtp <- tryCatch(fread(part5_pers[1], data.table = TRUE), error = function(e) NULL)
     if (!is.null(dtp)) {

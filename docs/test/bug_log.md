@@ -218,7 +218,46 @@ passed — so this specific false-fail is data/config-dependent, not universal.
 
 ---
 
-### 5. QC 01 false-fails on part5 file — hardcoded filename pattern — status: `open`
+### 5. QC 01 false-fails on part5 file — hardcoded filename pattern — status: `fixed`
+
+**Investigated before fixing:** traced exactly which part5 variant each production
+script depends on, rather than assuming a generic pattern swap would do. Confirmed:
+`02_label_segments.R` (line ~206) hard-requires `part5_daysummary_Segments_*.csv`
+specifically — no fallback to WW/MM (it degrades to wear-time-only estimates without
+it, doesn't crash, but silently loses activity-intensity detail, which is why this
+is still a `fail()` not a `warn()`). `03_build_summaries.R` (line 76) is deliberately
+variant-agnostic for personsummary — matches any `part5_personsummary_*` file and
+adapts its summation logic (`is_segments_file` check) to whichever variant is
+present. The original QC check required `_WW_` specifically for both — a variant
+`02_label_segments.R` never even reads, and one that a real GGIR run may not produce
+at all (confirmed: a 2-day native test recording produced only the `Segments`
+variant, no `WW`, even though GGIR's own log announces attempting all three).
+
+**Fix applied:** daysummary check now requires `part5_daysummary_Segments_*.csv`
+specifically (matching `02_label_segments.R`'s real dependency); personsummary check
+broadened to generic `^part5_personsummary_` (matching `03_build_summaries.R`'s own
+generic pattern). No `results/QC/` recursion added (unlike the part4 fix) — confirmed
+via a real run log that Part 5 Segments daysummary reliably lands directly in
+`results/`, never under `QC/`, so this asymmetry with the Part 4 fix is justified,
+not an oversight.
+
+**Verified two ways:**
+1. **Independent static review** (fresh agent) confirmed both production-dependency
+   claims by reading the actual source, confirmed QC's and production's "first
+   match" file picks are guaranteed to agree (same directory, same pattern, same
+   default alphabetical sort), and confirmed the no-QC/-recursion decision against a
+   real run log rather than taking it on faith.
+2. **Live before/after comparison**: `meting_2` went from `[FAIL]
+   part5_daysummary_WW_*.csv not found` to `[PASS]
+   part5_daysummary_Segments_L56.3M191.6V695.8_T5A5.csv — 3 rows` and `[PASS]
+   part5_personsummary_Segments_... — 2 participants`. Re-ran `02_label_segments.R` +
+   `03_build_summaries.R` after the fix and diffed all three output files against the
+   pre-fix baseline (same baseline used for Bug #4's verification) — byte-for-byte
+   identical. Confirms zero impact on pipeline output, only on QC's own diagnostics.
+
+**New issue surfaced by the independent review (not previously tracked) — logged
+below as item #15**, out of scope for this fix but worth tracking.
+
 **Where:** `r/qc/qc_01_ggir.R:69`
 
 ```r
@@ -375,3 +414,21 @@ overwrite guard/confirmation, or just document the risk clearly.
 `renv::status()` / every script run reports: *"renv 1.2.0 was loaded from project
 library, but this project is configured to use renv 1.2.2."* Low priority — likely a
 one-line `renv::record()` or `renv::restore(packages = "renv")` fix.
+
+---
+
+## 🟡 Medium — found during Bug #5's independent review
+
+### 15. Shiny "download part5" export hardcodes the `WW` variant — status: `open`
+**Where:** `r/shiny/modules/mod_export.R:193` —
+`dl_combined(pattern = "^part5_personsummary_WW_")`
+
+Same category of bug as the original #5, in a different consumer: this dashboard
+export handler hardcodes the `WW` personsummary variant specifically, with no
+fallback. Confirmed via a real GGIR 3.3.6 run log
+(`docs/test/pipeline.md:65,118`) that a real run can produce **only** `MM` and
+`Segments` variants, no `WW` at all. In that scenario, this export handler currently
+finds nothing and silently writes an empty CSV — no error, no warning, just a
+misleadingly empty download for Veerle. Not covered by any QC check (QC 01 only
+validates inputs for steps 02/03, not Shiny's own export paths). Not fixed as part
+of Bug #5 — flagged as a follow-up.
