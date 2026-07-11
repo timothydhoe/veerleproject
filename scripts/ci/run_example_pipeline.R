@@ -12,15 +12,19 @@ library(yaml)
 cfg_path <- "../config.yaml"
 original_lines <- readLines(cfg_path, warn = FALSE)
 
-on.exit({
+# tryCatch(..., finally = ...) rather than on.exit(): on.exit() only attaches
+# to a function's call frame, and this script runs at top level, so it would
+# silently never fire. finally always runs, on success or error.
+tryCatch({
+  cfg <- yaml::read_yaml(cfg_path)
+  cfg$dev$example_mode <- TRUE
+  cfg$dev$quick_test_n <- 2
+  yaml::write_yaml(cfg, cfg_path)
+  message("[ci] config.yaml temporarily set to ",
+          "example_mode: true, quick_test_n: 2")
+
+  source("pipeline/run_all.R")
+}, finally = {
   writeLines(original_lines, cfg_path)
   message("[ci] config.yaml restored to its original contents")
-}, add = TRUE)
-
-cfg <- yaml::read_yaml(cfg_path)
-cfg$dev$example_mode <- TRUE
-cfg$dev$quick_test_n <- 2
-yaml::write_yaml(cfg, cfg_path)
-message("[ci] config.yaml temporarily set to example_mode: true, quick_test_n: 2")
-
-source("pipeline/run_all.R")
+})

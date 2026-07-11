@@ -1,3 +1,5 @@
 "timestamp","r_version","ggir_version","example_mode","active_profile"
 "2026-04-28 07:36:32","4.5.3","3.3.4",FALSE,"default"
 "2026-05-03 05:08:02","4.6.0","3.3.6",FALSE,"default"
+"2026-07-11 12:54:35","4.5.3","3.3.6",FALSE,"default"
+"2026-07-11 14:05:05","4.5.3","3.3.6",TRUE,"default"
