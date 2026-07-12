@@ -161,3 +161,29 @@ read_ggir_config <- function(meting_output_dir) {
   if (!file.exists(cfg_path)) return(NULL)
   read.csv(cfg_path, stringsAsFactors = FALSE)
 }
+
+#' Resolve the qwindow actually used by GGIR for a given meting output
+#'
+#' Reads GGIR's own persisted config.csv (via read_ggir_config()) and parses
+#' the qwindow argument's value string (e.g. "c(0,8.5,10,12,13,15.5,24)")
+#' into a numeric vector. This is the ground truth of what GGIR actually used
+#' for this run — independent of whatever config.yaml currently says, which
+#' may be stale (edited without a step-01 rerun) or irrelevant
+#' (qwindow_strategy: "auto" derives boundaries from schedules instead).
+#'
+#' @param meting_output_dir The outputdir passed to GGIR for this meting.
+#' @return Numeric vector of qwindow boundaries, or NULL if config.csv is
+#'   missing, has no qwindow row, or the value can't be parsed.
+resolve_ggir_qwindow <- function(meting_output_dir) {
+  ggir_cfg <- read_ggir_config(meting_output_dir)
+  if (is.null(ggir_cfg) || !"argument" %in% names(ggir_cfg)) return(NULL)
+  row <- ggir_cfg[ggir_cfg$argument == "qwindow", ]
+  if (nrow(row) == 0) return(NULL)
+  # Defensive: GGIR writes one config.csv per run, so this should never have
+  # more than one qwindow row — but take the last one if it ever does.
+  val_str <- tail(row$value, 1)
+  val_str <- gsub("^c\\(|\\)$", "", val_str)
+  parsed  <- suppressWarnings(as.numeric(strsplit(val_str, ",")[[1]]))
+  if (length(parsed) == 0 || anyNA(parsed)) return(NULL)
+  parsed
+}

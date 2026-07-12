@@ -193,7 +193,43 @@ INTENSITY_SRC_COLS <- c(
   dur_VIG_min = "dur_day_total_VIG_min"
 )
 
-qwindow       <- as.numeric(cfg$ggir$qwindow)
+# ── Resolve the qwindow GGIR actually used (must agree across metingen) ──────
+# Prefer GGIR's own recorded config.csv per meting over the literal
+# config.yaml value, which may be stale (edited without a step-01 rerun) or
+# irrelevant (qwindow_strategy: "auto" derives it from schedules instead).
+resolved_qwindows <- list()
+for (meting in metingen) {
+  resolved <- resolve_ggir_qwindow(file.path(base_out, meting))
+  if (!is.null(resolved)) resolved_qwindows[[meting]] <- resolved
+}
+
+if (length(resolved_qwindows) == 0) {
+  warning("No GGIR config.csv found for either meting - falling back to config.yaml's ",
+          "ggir.qwindow value. This may not reflect an actual GGIR run; rerun ",
+          "pipeline/01_run_ggir.R to confirm the real boundaries.")
+  qwindow <- as.numeric(cfg$ggir$qwindow)
+} else {
+  rounded <- lapply(resolved_qwindows, round, digits = 6)
+  if (length(resolved_qwindows) == length(metingen) && !identical(rounded[[1]], rounded[[2]])) {
+    stop(
+      "meting_1 and meting_2 resolved to different qwindow values from their GGIR ",
+      "config.csv files - this should never happen (both metingen must share the ",
+      "same qwindow). meting_1: ", paste(resolved_qwindows[[metingen[1]]], collapse = ", "),
+      " | meting_2: ", paste(resolved_qwindows[[metingen[2]]], collapse = ", "),
+      ". Check whether one meting was re-run with a different config.yaml/schedule ",
+      "and reconcile before continuing."
+    )
+  }
+  qwindow <- resolved_qwindows[[1]]
+  if (length(resolved_qwindows) < length(metingen)) {
+    missing <- setdiff(metingen, names(resolved_qwindows))
+    message("Note: GGIR config.csv not found for ", paste(missing, collapse = ", "),
+            " - using the qwindow resolved from ", names(resolved_qwindows)[1],
+            " for both.")
+  }
+  message("Using qwindow resolved from GGIR's own config.csv: ",
+          paste(round(qwindow, 4), collapse = ", "))
+}
 use_qwindow   <- FALSE
 qw_starts     <- qw_ends <- NULL
 window_lookup <- NULL  # keyed by "ID date window_idx" -> one-row data.table of intensity cols

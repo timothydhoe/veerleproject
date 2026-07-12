@@ -12,6 +12,66 @@ Status legend: `open` · `fixed` · `wontfix` · `deferred`
 
 ---
 
+## ⏸ Session checkpoint (2026-07-12)
+
+**Progress: 7 of 16 fixed** (#16 is a new low-priority item logged during #7's fix —
+see below).
+- ✅ Fixed: #1 (config.yaml corruption), #2 (stale config.csv breaking native runs),
+  #3 (dev overrides leaking into real runs), #4 (QC part4 false-fail), #5 (QC part5
+  false-fail), #6 (Shiny profile not reaching pipeline), #7 (step 02 trusting a
+  possibly-stale config.yaml qwindow instead of GGIR's own recorded value).
+- ⬜ Open: #8, #9, #10, #11, #12 (doc drift), #13, #14, #15, #16.
+
+Next open item in severity order: **#15** (Medium — Shiny "download part5" export
+hardcodes the `WW` variant), discovered during #5's review but not yet fixed.
+
+### Resume prompt
+
+Paste this to continue in the same style:
+
+> We're working through `docs/test/bug_log.md` in SchoolMove, one bug at a time.
+> Check the "Session checkpoint" section at the top for where we left off, then
+> pick up exactly there. Keep using this workflow for every remaining bug:
+>
+> 1. **Explain the problem** in plain terms — what's broken, where, why it matters.
+>    Investigate before proposing anything (read the actual current code, check git
+>    history/docs for original intent, don't assume the bug log's original wording
+>    is the final word — it's a starting point, re-verify against the live repo
+>    since line numbers and context shift as earlier fixes land).
+> 2. **Ask clarifying questions** if the fix direction depends on something only I
+>    know (intent, priorities, risk tolerance) — don't guess.
+> 3. **Present 2-3 concrete options** with tradeoffs, mark your recommended one, and
+>    say why. Be willing to reverse your own recommendation if I push back with a
+>    good reason, or if you find new evidence — say so plainly rather than
+>    defending a first take.
+> 4. **Leave room for my questions** on that specific bug before doing anything.
+> 5. **Wait for explicit approval** before touching any file — no changes on
+>    spec alone.
+> 6. Once approved, and for anything non-trivial: **get an independent agent review**
+>    of the problem + proposed solution before applying (static/read-only review,
+>    no code execution) — this has caught real issues on every bug so far
+>    (comment-stripping risk, parser-parity concerns, wrong root-cause framing).
+>    Use judgement on when this is warranted; ask if unsure.
+> 7. **Apply the fix**, then **verify it live**: reproduce the original bug first if
+>    possible, confirm the fix resolves it, and — critically — **run the full
+>    pipeline (or the affected steps) before and after the change and diff the
+>    output CSVs** (`segment_summary.csv`, `analysis_ready.csv`,
+>    `validity_summary.csv`) to prove the fix doesn't alter results it shouldn't.
+>    Back up and restore `config.yaml` around any test that needs to temporarily
+>    change it (verify via `git diff` that it's byte-identical afterward).
+> 8. **Update `docs/test/bug_log.md`**: mark the item `fixed`, document what was
+>    tried/rejected and why, what was applied, and exactly how it was verified —
+>    write it the way the already-fixed items (#1-#6) are written, as the reference
+>    format.
+> 9. Log any new issues discovered along the way as new tracked items, don't just
+>    mention them in passing and drop them.
+> 10. Move to the next open item in severity order, and repeat.
+>
+> Do not batch multiple bugs' approvals together — one at a time, fully verified
+> and documented, before starting the next.
+
+---
+
 ## 🔴 Critical
 
 ### 1. `run_example_pipeline.R` never restores `config.yaml` — status: `fixed`
@@ -333,15 +393,102 @@ exactly.
 
 ---
 
-### 7. `qwindow_strategy: auto` would silently break step 02 — status: `open`
-**Where:** `r/pipeline/02_label_segments.R:195`
+### 7. `qwindow_strategy: auto` would silently break step 02 — status: `fixed`
 
-Step 02 always does a literal `qwindow <- as.numeric(cfg$ggir$qwindow)` — no
-auto-derivation logic. `01_run_ggir.R` supports `qwindow_strategy: auto` (computing
-boundaries from school schedules dynamically) but doesn't persist the resolved
-values anywhere for step 02 to reread. Currently latent (default and only-used
-strategy is `manual`), but `config.yaml` documents `auto` as supported, so this
-would break silently the moment someone switches to it.
+**Investigated before fixing:** confirmed step 02's `qwindow <- as.numeric(cfg$ggir$qwindow)`
+(then at line 196) always re-reads `config.yaml`'s literal manual list, with no
+awareness of `qwindow_strategy`. Traced two distinct failure modes, not one:
+(a) the originally-titled case — switching to `qwindow_strategy: auto` means step 01
+stops using `config.yaml`'s `qwindow:` list entirely (derives boundaries from
+`cfg$schedules` instead, held only in memory, never written back to `config.yaml`),
+so step 02 would silently use a stale/irrelevant list; (b) a second, broader case
+found during investigation — even in `manual` mode, editing `config.yaml`'s
+`qwindow:` list after step 01 has already run (without a step-01 rerun) produces the
+exact same class of silent mismatch. Confirmed via GGIR's own docs (`context7`,
+`/wadpac/ggir`) that `qwindow` is a single Part 2 argument GGIR uses to segment both
+Part 2's daysummary and Part 5's Segments file identically — there was never a
+legitimate reason for step 01 and step 02 to have independently-sourced values;
+step 02's job is to *remember* what step 01 used, not to have its own opinion.
+
+Also confirmed step 01/02 run in the same R session when invoked via `run_all.R`
+(`source()`, not separate processes) — but rejected relying on that in-memory value
+because both scripts are also designed to be run standalone (e.g. re-running just
+step 02 after a labeling-logic tweak, without re-running slow GGIR — the reason
+`ggir.overwrite: false` exists). An in-memory handoff would work by accident via
+`run_all.R` and break silently the moment either script is run on its own.
+
+**Fix applied:** added `resolve_ggir_qwindow(meting_output_dir)` to `utils_ggir.R` —
+reads GGIR's own persisted per-meting `config.csv` (via the existing but previously
+unused `read_ggir_config()` helper), parses its `qwindow` row's `"c(0,8.5,...)"`
+string into a numeric vector. This file is GGIR's own audit record of what it
+actually ran with for that specific output — already trusted enough that
+`run_all.R:60-76` archives a copy of it into `logs/` after every run.
+
+`02_label_segments.R` now resolves `qwindow` by calling this helper for `meting_1`
+and `meting_2` independently (confirmed with the project owner: both metingen must
+always share the same schedule/qwindow — a study-design invariant, not just an
+assumption), and:
+- if both resolve and agree → uses that value;
+- if both resolve but **disagree** → hard `stop()` naming both resolved values,
+  since divergence would itself indicate a real inconsistency (e.g. one meting
+  re-run with different schedules) worth surfacing loudly rather than silently
+  picking one;
+- if only one meting has GGIR output yet → uses that one, with a `message()` noting
+  which meting was missing;
+- if neither has run yet → falls back to `as.numeric(cfg$ggir$qwindow)` (old
+  behavior) with a `warning()` that the value may not reflect an actual GGIR run.
+
+No changes to `01_run_ggir.R` — confirmed via grep that `cfg$ggir$qwindow` /
+`qwindow_strategy` are read nowhere else in the repo (not in Shiny, not in QC
+scripts, not in `validate_config.R`), so the fix is fully contained to
+`utils_ggir.R` (additive) and `02_label_segments.R`.
+
+**Explicitly rejected:**
+- *Sharing `build_qwindow_from_schedules()` between both scripts* (the original
+  plan going into this session) — would have step 02 **recompute** the auto-derived
+  value from `cfg$schedules` rather than read what GGIR actually used. Still
+  vulnerable to schedule-drift between a step-01 run and a later step-02 run, and
+  does nothing for the manual-mode drift case. Reconsidered once the ground-truth
+  `config.csv` route was found to be no more code for a strictly more correct
+  result.
+- *Building full meting-aware matching into `distribute_qwindow_cols()`* (reading
+  each meting's value and keeping them separately keyed all the way through
+  window-matching) — unnecessary once the project owner confirmed meting_1/meting_2
+  are guaranteed to share one qwindow; a "must-agree-or-stop" check gets the same
+  safety without restructuring the downstream matching logic.
+
+**Verified three ways:**
+1. **Independent static review** (fresh agent, no prior context) read
+   `utils_ggir.R`, `02_label_segments.R`, and three real archived `config.csv`
+   samples (`r/logs/ggir_config_meting_*_2026*.csv`), confirmed the parser handles
+   real GGIR output correctly (including GGIR's `c()`-empty-value convention),
+   confirmed no other file reads the changed variables, and confirmed graceful
+   degradation on a fresh clone before step 01 has ever run. Flagged two low-cost
+   improvements (both applied): use `tail(row$value, 1)` instead of `row$value[1]`
+   defensively in case `config.csv` ever has more than one `qwindow` row, and print
+   both resolved values in the disagreement `stop()` message rather than just
+   telling the user to reconcile them. Also flagged a pre-existing, out-of-scope
+   issue — logged below as item #16.
+2. **Live end-to-end run on real data**: backed up the existing
+   `segment_summary.csv`/`analysis_ready.csv`/`validity_summary.csv` (produced
+   pre-fix from the two real native test files), re-ran `02_label_segments.R` +
+   `03_build_summaries.R` post-fix. Console confirmed the new message: `Using
+   qwindow resolved from GGIR's own config.csv: 0, 8.5, 10, 12, 13, 15.5, 24` (both
+   metingen's real `config.csv` agreed, as expected — no drift in this dataset).
+   Diffed all three output files against the pre-fix baseline — byte-for-byte
+   identical. Confirms the fix changes nothing when there's no actual drift, only
+   the previously-untested drift/mismatch paths.
+3. **Isolated unit test of the new logic's edge cases**, using synthetic
+   `config.csv` fixtures in a scratch directory (no real pipeline data touched):
+   confirmed `resolve_ggir_qwindow()` parses agreeing and disagreeing values
+   correctly and returns `NULL` for a missing file; confirmed the "both agree" path
+   returns the shared value; confirmed the "disagree" path throws the expected
+   `stop()` with both values named; confirmed the "only one meting present" path
+   falls back to it with the expected missing-meting note; confirmed the "neither
+   present" path correctly falls through to the `config.yaml` fallback.
+
+**Where:** `r/pipeline/utils_ggir.R` (new `resolve_ggir_qwindow()`),
+`r/pipeline/02_label_segments.R` (~line 196, `qwindow` resolution block)
 
 ---
 
@@ -377,6 +524,27 @@ Self-documented in the code and confirmed live
 entire `config.yaml bouts:` section and all `bouts_30min_*` columns in
 `analysis_ready.csv` currently have zero effect on output. Not silently broken — an
 acknowledged, unfinished feature.
+
+---
+
+### 16. `find_ggir_output_subdir()` picks the first `output_*` subdir with no ordering guarantee — status: `open` (informational)
+**Where:** `r/pipeline/utils_ggir.R:40-51`
+
+Discovered during Bug #7's independent review, not previously tracked. If a
+meting's output directory ever accumulates more than one `output_*` subdirectory
+(e.g. a partial re-run under a renamed `datadir`), `find_ggir_output_subdir()` picks
+`ggir_subdirs[1]` — order from `list.dirs()`, not guaranteed stable or chronological
+across filesystems. This is pre-existing and already affects every consumer of
+`find_ggir_results_dir()` / `read_ggir_config()` (step 02's main part2 loading,
+`read_part4_sleep()`, and now `resolve_ggir_qwindow()` from Bug #7's fix) —
+Bug #7's fix does not make this scenario any more likely to occur, but it does add a
+new, more visible symptom if it's ever hit: the new meting_1-vs-meting_2 qwindow
+agreement check could throw a confusing "metingen disagree" `stop()` when the real
+cause would be a stale/wrong subdirectory pick, not an actual qwindow mismatch.
+Previously this would have just silently used the wrong subdirectory's data with no
+error at all — arguably worse. Not fixed as part of Bug #7 — flagged as a follow-up;
+worth deciding whether `find_ggir_output_subdir()` should sort by modification time
+or fail loudly when more than one candidate exists.
 
 ---
 
