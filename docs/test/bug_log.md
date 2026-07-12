@@ -620,6 +620,30 @@ overwrite guard/confirmation, or just document the risk clearly.
 
 ## ℹ️ Minor — status: `open`
 
+### 17. Deep output paths can hit Windows's 260-character MAX_PATH limit — status: `open` (non-critical)
+**Where:** GGIR's own Part 5 report-writing (`g.report.part5`, via `data.table::fwrite`), triggered from `r/pipeline/01_run_ggir.R`
+
+Discovered while verifying the dummy-ID rename (item #16's fix — not caused by it). Redirecting
+`paths.data_processed` to a deeply-nested path (a session-scoped scratch directory used only for
+that verification, ~150 characters before GGIR's own subfolders/filenames were even added) caused
+GGIR to fail with `cannot open the connection` / `No such file or directory`, while the exact same
+run against a short path (`C:/Users/.../Temp/sm_dummy_verify`) succeeded immediately. Confirmed the
+failing path was exactly 260 characters — Windows's classic `MAX_PATH` limit (paths at or above
+260 characters fail unless long-path support is explicitly enabled, which is not the default on
+most Windows installs). GGIR's own report filenames are already fairly long on their own (e.g.
+`part5_daysummary_full_MM_L56.3M191.6V695.8_T5A5.csv`), so this doesn't take an especially deep
+project location to trigger — a repo checked out under a moderately nested path (e.g. a redirected
+OneDrive/corporate profile folder, which is common on managed Windows machines) plus the default
+`data/processed/<meting>/output_<meting>/results/QC/...` nesting could plausibly hit this on a real
+researcher's machine, not just in ad-hoc testing.
+
+**Not fixed, not urgent** — no evidence this affects the current repo location or any real run so
+far, and it's an OS/filesystem constraint rather than a logic bug. Worth knowing about before
+recommending a deployment location to Veerle or a colleague (e.g. avoid deeply nested folders,
+or note that Windows long-path support may need enabling), rather than something to code around.
+
+---
+
 ### 14. renv version mismatch
 `renv::status()` / every script run reports: *"renv 1.2.0 was loaded from project
 library, but this project is configured to use renv 1.2.2."* Low priority — likely a
