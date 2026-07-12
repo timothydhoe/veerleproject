@@ -14,19 +14,21 @@ Status legend: `open` · `fixed` · `wontfix` · `deferred`
 
 ## ⏸ Session checkpoint (2026-07-12)
 
-**Progress: 9 of 17 fixed** (#16/#17 are new low-priority items logged along the way;
-#16b is a one-time manual data cleanup, not a numbered bug).
+**Progress: 10 of 17 fixed** (#16/#17 are new low-priority items logged along the
+way; #16b is a one-time manual data cleanup, not a numbered bug).
 - ✅ Fixed: #1 (config.yaml corruption), #2 (stale config.csv breaking native runs),
   #3 (dev overrides leaking into real runs), #4 (QC part4 false-fail), #5 (QC part5
   false-fail), #6 (Shiny profile not reaching pipeline), #7 (step 02 trusting a
   possibly-stale config.yaml qwindow instead of GGIR's own recorded value), #15
   (Shiny part5 export hardcoded WW variant, silently dropping participants), #16
   (dummy participant IDs collided with real ID convention — renamed to a reserved
-  range).
-- ⬜ Open: #8, #9, #10, #11, #12 (doc drift), #13, #14, #17.
+  range), #8 (sleep validity conflated data-completeness with sleep-efficiency,
+  plus an adjacent sleep_duration_h column-mismatch bug found alongside it).
+- ⬜ Open: #9, #10, #11, #12 (doc drift), #13, #14, #17.
 
-Next open item in severity order: **#8** (Low — sleep validity can silently resolve
-to NA). All remaining open items are Low/informational/minor severity.
+Next open item in severity order: **#9** (Low — segment-summary build is an
+unoptimized row-by-row loop). All remaining open items are Low/informational/minor
+severity.
 
 ### Resume prompt
 
@@ -497,15 +499,100 @@ scripts, not in `validate_config.R`), so the fix is fully contained to
 
 ## ⚪ Low / informational
 
-### 8. Sleep validity can silently resolve to NA — status: `open`
-**Where:** `r/pipeline/03_build_summaries.R`
+### 8. Sleep validity can silently resolve to NA — status: `fixed`
 
-Observed live: `Sleep validity: efficiency column not found in part4 — meets_sleep_criteria
-set to NA`. Expected on small test runs (too little data for GGIR to compute sleep
-efficiency). Unconfirmed whether this also happens on full-scale real data — needs
-checking once the pipeline is re-run on the real dataset (i.e. confirm GGIR's
-real-data part4 output includes whatever efficiency column name
-`03_build_summaries.R` looks for).
+**Reclassified from Low to Medium/High during investigation** — this gates a real
+inclusion/exclusion criterion for the study's sleep analysis, not just a diagnostic
+or export path like most other items at this severity level. Left in its original
+list position for history, but should be read as more consequential than "Low."
+
+**Investigated before fixing — this was not what the original bug log guessed.**
+The original entry assumed this was "too little test data for GGIR to compute
+sleep efficiency" and would likely resolve itself on real data. Checked GGIR's
+actual real-data output directly instead of assuming: confirmed via header
+inspection that **no column matching "efficiency" exists anywhere** in this GGIR
+version's Part 4 output, regardless of dataset size — `03_build_summaries.R` was
+looking for a column (`SleepEfficiencyInSpt`) that was never going to exist.
+
+**A deeper methodological question surfaced during the fix, and was resolved
+against the primary source.** This project's own documentation disagreed with
+itself about what the "≥50% valid sleep" criterion actually means:
+`docs/data_info/data_dictionary.md` (citing Antczak et al. 2021) defines it as
+**data completeness** (% of the night with valid, non-missing accelerometer data);
+`r/GEBRUIKERSGIDS.md` and the code's own column search described it as **sleep
+efficiency** (time asleep ÷ time in the estimated sleep window) — a different
+concept entirely (a night can have complete data but poor sleep, or vice versa).
+Resolved by checking Veerle's original protocol email (primary source), which
+states verbatim: *"GGIR provides two estimates to determine data validity: the
+number of valid hours and the fraction (%) of the night identified as invalid...
+we will convert the fraction of the night identified as invalid to percentage of
+the night identified as valid... at least 50% valid sleep data for five nights."*
+Confirmed: **data completeness is correct**, not sleep efficiency. The
+`GEBRUIKERSGIDS.md`/code assumption was a real mix-up (understandable — both are
+"a percentage related to the night"), not a deliberate design choice.
+
+**A second, independent bug was found and fixed alongside this one** (same block,
+adjacent columns, discovered during review): `sleep_duration_h` used an unanchored
+column-name pattern (`grep("duration|SleepDurationInSpt|sleep_dur", ...)`) that,
+given GGIR's real column order, matched `SptDuration` (sleep-*window* length)
+before `SleepDurationInSpt` (actual time asleep) — confirmed live: participant
+`73044` was reporting **8.53h** (window length) instead of the correct **3.04h**
+(actual sleep), a 5.5-hour overstatement, not a rounding footnote.
+
+**Fix applied** (`r/pipeline/03_build_summaries.R`):
+- The validity gate (`meets_sleep_criteria`, `n_valid_nights`) now derives
+  `pct_night_valid = 100 × (1 − fraction_night_invalid)` from GGIR's real
+  `fraction_night_invalid` column — confirmed present and populated in real data
+  (0.365 for both real test participants) — matching Veerle's protocol exactly.
+  This also let the old 0–1-vs-0–100 "scale detection" heuristic be removed
+  entirely for this gate: `fraction_night_invalid` is unambiguously a 0–1 fraction
+  by GGIR's own naming convention, so no detection is needed. Added a one-line
+  sanity check (`message()` if any value falls outside [0,1]) as cheap insurance,
+  per review feedback.
+- A **separate** derived column, `derived_eff_ratio_pct` (`SleepDurationInSpt ÷
+  SptDuration × 100`), is still computed — but now used *only* for the
+  `sleep_efficiency_pct` reporting column / dashboard sleep tab (`mod_sleep.R`),
+  explicitly not for the validity gate. Named to avoid colliding with the existing
+  (now legacy/dead-in-practice, kept for other GGIR versions) `eff_col` grep
+  pattern, which an earlier draft's column name accidentally did collide with.
+- `sleep_duration_h`'s `dur_col` now matches `SleepDurationInSpt` exactly first,
+  only falling back to the old loose pattern for GGIR versions without that exact
+  column. The pre-existing unit-sanity heuristic (`raw_val >= 1` else warn+NA) is
+  now skipped specifically when the exact match succeeds (known column, known
+  units) — needed because two real dummy-set participants have genuine mean sleep
+  durations under 1 hour (0.81h, 0.50h) and would otherwise have been wrongly
+  nulled out with a false "unexpected value" warning.
+- Updated `r/GEBRUIKERSGIDS.md` (3 places) and `config.yaml`'s
+  `min_pct_night_valid` comment, which both still described the criterion as
+  sleep efficiency — the same mix-up that caused the bug, left uncorrected would
+  have misled the next person to touch this code the same way.
+
+**Verified three ways:**
+1. **Three rounds of independent static review**, tracking the fix through each
+   revision: round 1 (efficiency-only) approved; round 2 (added the `dur_col` fix)
+   caught nothing new beyond confirming round 1 held; round 3 (after the
+   `fraction_night_invalid` pivot, following Veerle's email) — the only round that
+   actually reviewed the final, correct validity-gate logic — found no blocking
+   issues, independently re-verified the real header/values, and confirmed the
+   `dur_col_is_known_hours` bypass correctly fixes the <1h-participants problem
+   without affecting the fallback path. Two of round 3's minor suggestions (doc
+   staleness, sanity-check message) were folded into the fix.
+2. **Live before/after run on real, clean data** (post item #16b cleanup):
+   confirmed `n_valid_nights`/`meets_sleep_criteria` were blank for every
+   participant before the fix; after, both are correctly populated (e.g. real
+   participants `1001`/`73044`: 1 valid night each — correctly `FALSE` for
+   `meets_sleep_criteria`, since 5 nights are required and these tiny test
+   recordings only have 1 — expected, not a bug). `sleep_duration_h` for `73044`
+   corrected from 8.53h to 3.04h; `5901.csv`'s genuine 0.50h no longer wrongly
+   nulled; `sleep_efficiency_pct` now shows real computed percentages (e.g. 92.8%,
+   35.7%) instead of blank.
+3. **Diffed everything else** before/after: `segment_summary.csv` byte-identical
+   (this step never touches it); every non-sleep column in `analysis_ready.csv`
+   (validity/MVPA/SB/segment columns) confirmed identical via `all.equal()` —
+   proving the fix changed only what it was meant to change.
+
+**Where:** `r/pipeline/03_build_summaries.R` (~lines 134-168 validity block,
+~lines 210-260 averages block), `r/GEBRUIKERSGIDS.md`, `config.yaml` (comment only)
 
 ---
 
