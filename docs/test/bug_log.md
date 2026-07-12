@@ -14,16 +14,19 @@ Status legend: `open` · `fixed` · `wontfix` · `deferred`
 
 ## ⏸ Session checkpoint (2026-07-12)
 
-**Progress: 7 of 16 fixed** (#16 is a new low-priority item logged during #7's fix —
-see below).
+**Progress: 9 of 17 fixed** (#16/#17 are new low-priority items logged along the way;
+#16b is a one-time manual data cleanup, not a numbered bug).
 - ✅ Fixed: #1 (config.yaml corruption), #2 (stale config.csv breaking native runs),
   #3 (dev overrides leaking into real runs), #4 (QC part4 false-fail), #5 (QC part5
   false-fail), #6 (Shiny profile not reaching pipeline), #7 (step 02 trusting a
-  possibly-stale config.yaml qwindow instead of GGIR's own recorded value).
-- ⬜ Open: #8, #9, #10, #11, #12 (doc drift), #13, #14, #15, #16.
+  possibly-stale config.yaml qwindow instead of GGIR's own recorded value), #15
+  (Shiny part5 export hardcoded WW variant, silently dropping participants), #16
+  (dummy participant IDs collided with real ID convention — renamed to a reserved
+  range).
+- ⬜ Open: #8, #9, #10, #11, #12 (doc drift), #13, #14, #17.
 
-Next open item in severity order: **#15** (Medium — Shiny "download part5" export
-hardcodes the `WW` variant), discovered during #5's review but not yet fixed.
+Next open item in severity order: **#8** (Low — sleep validity can silently resolve
+to NA). All remaining open items are Low/informational/minor severity.
 
 ### Resume prompt
 
@@ -620,6 +623,25 @@ overwrite guard/confirmation, or just document the risk clearly.
 
 ## ℹ️ Minor — status: `open`
 
+### 16b. Cleanup: `data/processed/` cross-contamination from mixed real/dummy test runs
+
+While verifying item #16's rename, found `meting_1`'s output directory contaminated with
+leftover milestones from two earlier test generations (a pre-rename dummy run and, briefly,
+a partial post-rename dummy run) mixed in alongside the real-data run — a live instance of the
+provenance gap discussed during Bug #15's investigation. Cleaned up: `meting_1` cleared and
+regenerated fresh from the two real test files only; `meting_2` (previously 100% stale dummy
+data left over from an earlier session, never run for real) replaced entirely with a clean run
+on the renamed dummy IDs. `segment_summary.csv`/`analysis_ready.csv`/`validity_summary.csv`
+regenerated from this clean state — 12 participants (2 real + 10 dummy), no phantom extras.
+`config.yaml` confirmed restored byte-for-byte identical throughout (temporarily redirected
+`data_raw`/`data_processed`/`example_mode` for isolated testing, backed up and restored each time).
+
+Does not fix the underlying gap itself (still no automated provenance check — see the
+"no provenance check" discussion under Bug #15) — this was a one-time manual cleanup of the
+state that had accumulated in this repo, not a code change.
+
+---
+
 ### 17. Deep output paths can hit Windows's 260-character MAX_PATH limit — status: `open` (non-critical)
 **Where:** GGIR's own Part 5 report-writing (`g.report.part5`, via `data.table::fwrite`), triggered from `r/pipeline/01_run_ggir.R`
 
@@ -653,16 +675,84 @@ one-line `renv::record()` or `renv::restore(packages = "renv")` fix.
 
 ## 🟡 Medium — found during Bug #5's independent review
 
-### 15. Shiny "download part5" export hardcodes the `WW` variant — status: `open`
-**Where:** `r/shiny/modules/mod_export.R:193` —
-`dl_combined(pattern = "^part5_personsummary_WW_")`
+### 15. Shiny "download part5" export hardcodes the `WW` variant — status: `fixed`
 
-Same category of bug as the original #5, in a different consumer: this dashboard
-export handler hardcodes the `WW` personsummary variant specifically, with no
-fallback. Confirmed via a real GGIR 3.3.6 run log
-(`docs/test/pipeline.md:65,118`) that a real run can produce **only** `MM` and
-`Segments` variants, no `WW` at all. In that scenario, this export handler currently
-finds nothing and silently writes an empty CSV — no error, no warning, just a
-misleadingly empty download for Veerle. Not covered by any QC check (QC 01 only
-validates inputs for steps 02/03, not Shiny's own export paths). Not fixed as part
-of Bug #5 — flagged as a follow-up.
+**Investigated before fixing:** re-verified against the live repo rather than trusting
+the original wording. Confirmed `mod_export.R:193` still hardcodes
+`dl_combined(pattern = "^part5_personsummary_WW_")`, with no fallback and no status
+badge/disabled-state on the button at all (unlike `dl_segments`, which correctly shows
+"Run stap 02 eerst" when its file is missing — this button gives no signal whatsoever).
+Reproduced live, with genuinely clean (non-contaminated) data: right now,
+`meting_1`'s real-data output only has a `Segments` file; `meting_2`'s dummy-data
+output has both `Segments` and `WW`. Clicking the button as originally written would
+silently download **meting_1's real participants dropped entirely**, not just an
+empty file — worse than the originally-logged "empty CSV" scenario. Likely cause:
+GGIR only produces the `WW` (waking-window) variant when it can reliably detect
+sleep/wake periods, which depends on data quality/quantity — plausible to recur with
+real study data, not just a testing artifact.
+
+**Key context that shaped the fix:** in the real study, the same participant ID
+appears in *both* meting_1 and meting_2 (repeated measures, not independent
+participant sets). So a variant mismatch between metingen isn't just "some
+participants missing" — it can mean the *same person's* two measurement waves get
+computed under silently different day-boundary conventions (GGIR's `WW`/`MM`/
+`Segments` variants define "a day" differently) sitting side by side in a raw CSV
+handed directly to a researcher, feeding the dashboard's own "Meting 1 vs Meting 2"
+comparison — with no downstream code to normalize or flag the difference, unlike the
+main pipeline (`03_build_summaries.R`), which already handles mixed variants
+internally via its `is_segments_file` check.
+
+**Fix applied** (`r/shiny/modules/mod_export.R`):
+- `dl_ggir()`: broadened the hardcoded `WW`-only pattern to the generic
+  `^part5_personsummary_` (matching `03_build_summaries.R`'s existing approach), and
+  attached the matched file's variant (`WW`/`MM`/`Segments`) as an R attribute on the
+  returned data.frame — mirroring the existing `attr(out, "source_path")` pattern
+  already used by `read_part4_sleep()` in `utils_ggir.R`.
+- `dl_combined()`: captures that attribute into a local variable before any column
+  mutation (to avoid depending on the attribute surviving `$<-` operations), adds it
+  as an explicit `ggir_variant` column per meting, and — critically — replaced
+  `do.call(rbind, ...)` with `rbindlist(..., fill = TRUE)` (the same idiom already
+  used in `02_label_segments.R`/`03_build_summaries.R`), since `Segments` has a
+  genuinely different column schema than `WW`/`MM` (confirmed by diffing real
+  headers: `Segments` adds a `window` column and swaps `Nvaliddays`/`Nvaliddays_WD`/
+  `Nvaliddays_WE` for `Nvalidsegments_WD`/`Nvalidsegments`/`Nvalidsegments_WE`).
+  `do.call(rbind,...)` errors outright on mismatched columns; `rbindlist(fill=TRUE)`
+  fills the gap with `NA` instead. Explicitly preserved the existing
+  "return `NULL` when nothing found" contract (checked via `length(rows) == 0` before
+  calling `rbindlist`, since an empty-list `rbindlist()` returns a valid 0-row table,
+  not `NULL`, which would have silently changed the download handler's existing
+  empty-CSV fallback behavior).
+- `dl_part5` handler: only the pattern argument changed to match `dl_ggir`'s new
+  generic pattern; everything else (filtering, `write.csv`) untouched.
+
+**Explicitly out of scope for this fix** (a real, separate gap, deliberately not
+addressed here): this button still has no status badge/disabled-state UI treatment
+at all. Worth a follow-up to match `dl_segments`'s existing pattern.
+
+**Verified three ways:**
+1. **Two rounds of independent static review.** Round 1 caught a real blocking bug in
+   the first draft: combining differently-shaped variant files via `do.call(rbind,
+   ...)` would crash (not just silently mis-tag) the instant meting_1 and meting_2
+   resolved to genuinely different variants — exactly the scenario this fix exists
+   for. Round 2 (after switching to `rbindlist(fill=TRUE)`) confirmed the fix as
+   applied is correct, traced the empty-list contract preservation, and confirmed
+   `setDT()`/`extract_school_id()` behave correctly on the `data.table` `rbindlist`
+   returns instead of the plain `data.frame` `do.call(rbind,...)` used to return.
+2. **Live run against real, clean data** (post item #16b cleanup): replicated
+   `dl_ggir`/`dl_combined`'s logic standalone against the actual
+   `data/processed/` state. Before the fix, meting_1 (real participants `1001`,
+   `73044`) would have been silently dropped entirely (no `WW` file). After the fix,
+   both metingen's participants appear in the combined result, each correctly
+   tagged `ggir_variant = "Segments"` (both metingen happened to resolve to the same
+   variant with today's data).
+3. **Synthetic fixture test forcing the actual mismatch scenario**: built minimal
+   `Segments`- and `WW`-shaped CSVs for the same participant ID (`2011`) in
+   meting_1 and meting_2 respectively (mirroring the "same person, two waves"
+   real-world case above). Confirmed no crash; the combined table correctly contains
+   both rows with `ggir_variant` set to `"Segments"` and `"WW"` respectively, and
+   `NA` filled in for each row's non-applicable columns (`Nvaliddays_WD` NA for the
+   Segments row, `window`/`Nvalidsegments_WD` NA for the WW row) — exactly the
+   intended behavior.
+
+**Where:** `r/shiny/modules/mod_export.R` (`dl_ggir`, `dl_combined`, `dl_part5`
+handler, ~lines 157-200)

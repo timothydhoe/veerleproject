@@ -160,7 +160,13 @@ mod_export_server <- function(id, shared) {
       if (!is.null(pattern)) {
         files <- list.files(results_dir, pattern = pattern, full.names = TRUE)
         if (length(files) == 0) return(NULL)
-        fread(files[1], data.table = FALSE, encoding = "UTF-8")
+        dt <- fread(files[1], data.table = FALSE, encoding = "UTF-8")
+        # Record which GGIR report variant (WW/MM/Segments) this came from —
+        # different variants use different day-boundary conventions and can
+        # have different columns (e.g. Segments vs WW/MM), so downstream
+        # consumers need to know which one they're looking at.
+        attr(dt, "ggir_variant") <- sub("^part5_personsummary_([A-Za-z]+)_.*", "\\1", basename(files[1]))
+        dt
       } else {
         fpath <- file.path(results_dir, filename)
         if (!file.exists(fpath)) return(NULL)
@@ -171,9 +177,21 @@ mod_export_server <- function(id, shared) {
     dl_combined <- function(filename = NULL, pattern = NULL) {
       rows <- lapply(shared$metingen, function(m) {
         dt <- dl_ggir(m, filename, pattern)
-        if (!is.null(dt)) { dt$meting <- m; dt } else NULL
+        if (!is.null(dt)) {
+          variant <- attr(dt, "ggir_variant")
+          dt$meting <- m
+          if (!is.null(variant)) dt$ggir_variant <- variant
+          dt
+        } else NULL
       })
-      do.call(rbind, Filter(Negate(is.null), rows))
+      rows <- Filter(Negate(is.null), rows)
+      if (length(rows) == 0) return(NULL)
+      # fill = TRUE: metingen can resolve to different GGIR report variants
+      # (e.g. one Segments, one WW) with genuinely different columns —
+      # rbind() would error on the mismatch, rbindlist(fill=TRUE) fills the
+      # gaps with NA instead, same pattern used in 02_label_segments.R /
+      # 03_build_summaries.R.
+      rbindlist(rows, fill = TRUE)
     }
 
     # ── Download handlers ────────────────────────────────────────────────────
@@ -190,7 +208,7 @@ mod_export_server <- function(id, shared) {
     output$dl_part5 <- downloadHandler(
       filename = function() paste0("part5_personsummary_", ts, ".csv"),
       content  = function(f) {
-        raw <- dl_combined(pattern = "^part5_personsummary_WW_")
+        raw <- dl_combined(pattern = "^part5_personsummary_")
         if (!is.null(raw)) {
           raw$school <- extract_school_id(raw$ID)
           raw <- shared$apply_filters(setDT(raw))
