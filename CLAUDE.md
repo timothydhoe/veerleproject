@@ -177,11 +177,15 @@ Input files are GENEActiv CSVs. Key characteristics (full spec in
 2. ~~**School schedules — schools 3 and 4**~~ **Resolved.** `config.yaml` now has
    `fallback: false` for both, with sourced schedules (school 3 has per-class overrides
    citing an email from Veerle; school 4 cites a schedule image).
-3. **Confirm a real-data re-run has happened since `qwindow` was added** — the code side
-   is ready (per-window segment intensity is read from `part5_daysummary_Segments_*.csv`,
-   not `part2_daysummary.csv` — see `02_label_segments.R`), but there's no evidence in the
-   repo of a completed full real-data run since this changed. Worth confirming with
-   Veerle/the team before trusting segment-level results at full scale.
+3. ~~**Confirm a real-data re-run has happened since `qwindow` was added**~~ **Resolved.**
+   Confirmed 2026-07-13: two real `.bin`/`.cwa` device files ran cleanly end-to-end through
+   the qwindow-aware pipeline (`02_label_segments.R` correctly reads
+   `part5_daysummary_Segments_*.csv`), verified via `qc_01_ggir.R`/`qc_02_segments.R`/
+   `qc_03_summaries.R`. Not yet tested at full study scale (~400 participants across
+   6 schools) — see `docs/test/bug_log.md` for known risks worth addressing before that
+   run (#9: segment-summary build is an unoptimized loop, likely slow at scale; #13:
+   summary CSV output paths aren't redirectable/overwrite-guarded — caused a real,
+   unrecoverable data loss once already during testing).
 
 ## MCP Servers
 
