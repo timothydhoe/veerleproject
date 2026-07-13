@@ -458,6 +458,7 @@ dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
 ready_path    <- file.path(out_dir, "analysis_ready.csv")
 validity_path <- file.path(out_dir, "validity_summary.csv")
 
+backup_if_exists(ready_path)
 fwrite(analysis_ready, ready_path)
 if (!is.null(absent_days) && nrow(absent_days) > 0) {
   participant_validity <- merge(participant_validity, absent_days,
@@ -471,6 +472,7 @@ validity_cols <- intersect(
     "n_absent_school_days"),
   names(participant_validity)
 )
+backup_if_exists(validity_path)
 fwrite(participant_validity[, validity_cols, with = FALSE], validity_path)
 
 message("\nOutputs written:")

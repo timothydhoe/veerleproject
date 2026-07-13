@@ -29,6 +29,7 @@ data/absences.csv
 data/analysis_ready.csv
 data/segment_summary.csv
 data/validity_summary.csv
+data/*.csv.bak.*
 r/_examples
 
 # OS

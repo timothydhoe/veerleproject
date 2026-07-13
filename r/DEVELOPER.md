@@ -54,6 +54,16 @@ Orchestrate the full pipeline with `pipeline/run_all.R`.
 2. Open Claude Code in the repo root
 3. Run `/blocker-check` to remind yourself where things stand
 
+### Troubleshooting: "renv X was loaded... but this project is configured to use renv Y"
+
+`renv/activate.R` pins the exact renv version (`renv.lock`'s own `"renv"` entry) the
+project expects. If a *different* renv version is already sitting in this project's
+own `renv/library/`  — e.g. left over from before the pinned version was bumped —
+R keeps using that stale copy and just warns instead of failing. Fix: run
+`renv::restore(packages = "renv")` to sync the project's own renv copy to the
+version `renv.lock` specifies, then restart R. This is a one-time environment fix,
+not a code issue — nothing in the pipeline scripts depends on renv's own version.
+
 ### Making changes
 
 | What you want to change | Where to do it |

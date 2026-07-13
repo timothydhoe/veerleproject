@@ -44,10 +44,23 @@ find_ggir_output_subdir <- function(meting_output_dir) {
   ggir_subdirs <- subdirs[grepl("^output_", basename(subdirs))]
 
   if (length(ggir_subdirs) == 0) return(NULL)
-  if (length(ggir_subdirs) > 1) {
-    message("[utils_ggir] Multiple output_ subdirs; using: ", basename(ggir_subdirs[1]))
-  }
-  ggir_subdirs[1]
+  if (length(ggir_subdirs) == 1) return(ggir_subdirs[1])
+
+  # More than one output_ subdir (e.g. a partial re-run under a renamed
+  # datadir) — list.dirs()'s order isn't guaranteed stable or chronological
+  # across filesystems, so picking ggir_subdirs[1] used to be a silent guess.
+  # Sort by modification time instead (most recently written = most likely
+  # the current, intended output) and warn loudly, since this is genuinely
+  # unusual and every downstream reader (part4/part5 loaders,
+  # resolve_ggir_qwindow()) is affected by which one gets picked.
+  mtimes  <- file.info(ggir_subdirs)$mtime
+  ordered <- ggir_subdirs[order(mtimes, decreasing = TRUE)]
+  warning("[utils_ggir] Multiple output_ subdirs found in ", meting_output_dir, ":\n  ",
+          paste(basename(ordered), collapse = "\n  "),
+          "\nUsing the most recently modified: ", basename(ordered[1]),
+          ". If this isn't the intended run, remove the stale output_* directory.",
+          call. = FALSE)
+  ordered[1]
 }
 
 #' Find the results/ directory for a given meting output directory
@@ -206,6 +219,40 @@ pick_ggir_variant_file <- function(files, prefer = c("Segments", "WW", "MM")) {
             call. = FALSE)
   }
   files[chosen_idx]
+}
+
+#' Back up a file before it gets overwritten
+#'
+#' segment_summary.csv / analysis_ready.csv / validity_summary.csv land at a
+#' fixed path derived from paths.data_processed's *parent* directory
+#' (file.path(base_out, "..", ...)), regardless of what data_processed
+#' itself points at. This means even a deliberately redirected test run
+#' (e.g. pointing data_processed at a scratch folder to avoid touching real
+#' output) can still silently overwrite the real files if that scratch
+#' folder resolves back to the same parent — confirmed to have happened
+#' once already during testing, with no git history to recover from since
+#' these files are gitignored. Backing up whatever was there before every
+#' write closes that gap regardless of how paths.data_processed is set.
+#'
+#' Keeps only the 5 most recent backups per file to avoid unbounded growth
+#' from routine dev/test iteration.
+#'
+#' @param path Path to the file about to be overwritten.
+backup_if_exists <- function(path) {
+  if (!file.exists(path)) return(invisible(NULL))
+
+  ts          <- format(Sys.time(), "%Y%m%d_%H%M%S")
+  backup_path <- paste0(path, ".bak.", ts)
+  file.copy(path, backup_path, overwrite = TRUE)
+  message("[backup] Existing ", basename(path), " backed up to ", basename(backup_path))
+
+  existing <- sort(list.files(dirname(path),
+                              pattern = paste0("^", basename(path), "\\.bak\\."),
+                              full.names = TRUE))
+  if (length(existing) > 5) {
+    file.remove(existing[seq_len(length(existing) - 5)])
+  }
+  invisible(backup_path)
 }
 
 #' Read GGIR Part 5 day summary — prefers Segments version

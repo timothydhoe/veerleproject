@@ -12,11 +12,13 @@ Status legend: `open` · `fixed` · `wontfix` · `deferred`
 
 ---
 
-## ⏸ Session checkpoint (2026-07-13)
+## ⏸ Session checkpoint (2026-07-14)
 
-**Progress: 11 of 18 fixed** (#16/#17 are new low-priority items logged along the
-way; #16b is a one-time manual data cleanup, not a numbered bug; #18 is a new
-Critical item found after #15 shipped — see below).
+**Progress: 17 of 18 fixed/resolved** (note: `#16` is used twice in this document
+for two unrelated items — the dummy-ID-collision fix under "Fixed" below, and
+`find_ggir_output_subdir()`'s ordering guarantee under the "Low" section — this
+duplication predates this session, left as-is rather than renumbering everything
+retroactively). `#16b` is a one-time manual data cleanup, not a numbered bug.
 - ✅ Fixed: #1 (config.yaml corruption), #2 (stale config.csv breaking native runs),
   #3 (dev overrides leaking into real runs), #4 (QC part4 false-fail), #5 (QC part5
   false-fail), #6 (Shiny profile not reaching pipeline), #7 (step 02 trusting a
@@ -26,13 +28,22 @@ Critical item found after #15 shipped — see below).
   range), #8 (sleep validity conflated data-completeness with sleep-efficiency,
   plus an adjacent sleep_duration_h column-mismatch bug found alongside it), #18
   (part5 personsummary variant selection was still arbitrary/alphabetical after
-  #15 — #15 only fixed the Shiny export's crash risk, not the root cause, which
-  also affected the core pipeline's analysis_ready.csv).
-- ⬜ Open: #9, #10, #11, #12 (doc drift), #13, #14, #17.
+  #15), #11 (unconventional participant IDs now flagged at input-scan time), #13
+  (summary CSV overwrite risk — backup-before-write safety net), #14 (renv version
+  mismatch — documented, one-line fix), #16/find_ggir_output_subdir (sorts by
+  mtime + warns instead of a silent arbitrary pick), doc drift (#12, all 5 points
+  verified resolved).
+- 🚫 `wontfix`: #9 (segment-summary loop — benchmarked at full study scale:
+  4.66 seconds, not a real problem).
+- ⏸ `deferred`: #10 (`labeled_epochs.csv` — scoped: needs real epoch-scale design
+  work, ~480M rows at full study scale, not a quick fix; doesn't block tomorrow's
+  real run).
+- ⬜ Open: #17 (Windows MAX_PATH — partially mitigated by proactive warnings, but
+  still a genuine GGIR/OS constraint, not structurally fixable from this codebase).
 
-Next open item in severity order: **#9** (Low — segment-summary build is an
-unoptimized row-by-row loop). All remaining open items are Low/informational/minor
-severity.
+All items from the original assessment are now either fixed, explicitly ruled out
+with evidence, or deferred with a documented reason. #17 is the only item still
+genuinely open, and it's non-critical.
 
 ### Resume prompt
 
@@ -600,17 +611,27 @@ before `SleepDurationInSpt` (actual time asleep) — confirmed live: participant
 
 ---
 
-### 9. Segment-summary build is an unoptimized row-by-row loop — status: `open`
+### 9. Segment-summary build is an unoptimized row-by-row loop — status: `wontfix` (benchmarked, not a real problem)
 **Where:** `r/pipeline/02_label_segments.R:~348-445`
 
-Correct but a `for` loop; fine at current scale (2×2 participant-days in testing),
-will be slow at full-study scale (hundreds of participants × ~14 days each). Not
-urgent — worth knowing before the real-data run so a multi-hour runtime isn't a
-surprise.
+**Measured instead of assumed.** The original concern was speculative — "will be
+slow at full-study scale" was never actually benchmarked. Built a synthetic harness
+using the exact same loop body, `schedule_cache` structure, and `window_lookup`
+hash-list lookup as the real code, sized to full study scale (400 participants ×
+14 days = 5,600 participant-days, ~5-6 segments/day → 21,600 output rows).
+**Result: 4.66 seconds.** Even with generous overhead for parts the synthetic
+harness simplified (real `pupil_override_map` lookups, absence overlay, disk I/O),
+this is nowhere near a real bottleneck.
+
+**Not touching this code.** Rewriting an already-carefully-verified, correctness-
+critical loop (this logic went through extensive review during Bug #7) for a
+performance problem that measurably doesn't exist would only add risk for no
+benefit. Closing as `wontfix` rather than `open` — the concern was investigated
+and specifically ruled out, not just deprioritized.
 
 ---
 
-### 10. `labeled_epochs.csv` / context-aware bouts not implemented — status: `open` (acknowledged, not urgent)
+### 10. `labeled_epochs.csv` / context-aware bouts not implemented — status: `deferred` (reviewed, scoped, not a quick fix)
 **Where:** `r/pipeline/03_build_summaries.R:298-311`
 
 Self-documented in the code and confirmed live
@@ -619,30 +640,50 @@ entire `config.yaml bouts:` section and all `bouts_30min_*` columns in
 `analysis_ready.csv` currently have zero effect on output. Not silently broken — an
 acknowledged, unfinished feature.
 
+**Investigated the actual scope before deciding whether to implement.** The
+consuming functions (`detect_activity_bouts()`, `compute_context_bout_summaries()`
+in `utils_bouts.R`) are already fully implemented, and `01_run_ggir.R:141` already
+sets `epochvalues2csv = TRUE`, so GGIR is already configured to export raw
+epoch-level CSVs. The missing piece is a genuinely new pipeline step: read GGIR's
+raw 1-second epoch export, join each epoch against the school-schedule boundaries
+(the same logic `02_label_segments.R` already has, but at epoch instead of
+day-segment resolution) to produce `labeled_epochs.csv`. At full study scale that's
+~400 participants × 14 days × 86,400 seconds/day ≈ **480 million epoch-rows** — a
+real memory/performance design question (chunking strategy, whether to keep it in
+R or push to data.table's disk-backed options), not a quick fix.
+
+**Decision: defer.** This is a new feature, not a bug fix — `bouts_30min_*` being
+NA doesn't block validity, MVPA, sleep, or segment-level analysis, all of which are
+core to tomorrow's real run. Implementing epoch-scale joining correctly needs real
+design work and shouldn't be rushed the night before a real data collection run.
+Revisit when there's time to design it properly, not as part of this pass.
+
 ---
 
-### 16. `find_ggir_output_subdir()` picks the first `output_*` subdir with no ordering guarantee — status: `open` (informational)
+### 16. `find_ggir_output_subdir()` picks the first `output_*` subdir with no ordering guarantee — status: `fixed`
 **Where:** `r/pipeline/utils_ggir.R:40-51`
 
 Discovered during Bug #7's independent review, not previously tracked. If a
 meting's output directory ever accumulates more than one `output_*` subdirectory
-(e.g. a partial re-run under a renamed `datadir`), `find_ggir_output_subdir()` picks
+(e.g. a partial re-run under a renamed `datadir`), `find_ggir_output_subdir()` picked
 `ggir_subdirs[1]` — order from `list.dirs()`, not guaranteed stable or chronological
-across filesystems. This is pre-existing and already affects every consumer of
-`find_ggir_results_dir()` / `read_ggir_config()` (step 02's main part2 loading,
-`read_part4_sleep()`, and now `resolve_ggir_qwindow()` from Bug #7's fix) —
-Bug #7's fix does not make this scenario any more likely to occur, but it does add a
-new, more visible symptom if it's ever hit: the new meting_1-vs-meting_2 qwindow
-agreement check could throw a confusing "metingen disagree" `stop()` when the real
-cause would be a stale/wrong subdirectory pick, not an actual qwindow mismatch.
-Previously this would have just silently used the wrong subdirectory's data with no
-error at all — arguably worse. Not fixed as part of Bug #7 — flagged as a follow-up;
-worth deciding whether `find_ggir_output_subdir()` should sort by modification time
-or fail loudly when more than one candidate exists.
+across filesystems. Affects every consumer of `find_ggir_results_dir()` /
+`read_ggir_config()` (step 02's main part2 loading, `read_part4_sleep()`,
+`resolve_ggir_qwindow()`, and now `pick_ggir_variant_file()` from Bug #18).
+
+**Fix applied:** when more than one `output_*` subdir exists, sort by modification
+time (most recently written = most likely the intended run) instead of taking
+`list.dirs()`'s first result, and `warning()` (not just `message()`) listing every
+candidate found and which one was picked, so it's visibly unusual rather than a
+silent guess.
+
+**Verified:** created two synthetic `output_*` dirs with different mtimes;
+confirmed the function picks the more recently modified one and the warning fires
+with an accurate message listing both candidates.
 
 ---
 
-### 11. Unconventional participant-ID filenames degrade to `school_NA` — status: `open` (informational, decide if action needed)
+### 11. Unconventional participant-ID filenames degrade to `school_NA` — status: `fixed`
 **Where:** ID parsing via GGIR `idloc=2`, consumed in `02_label_segments.R`
 
 GGIR extracts the participant ID as everything before the first underscore in the
@@ -652,42 +693,56 @@ digit is a school ID (1–6). `73044`'s first digit (`7`) doesn't match any conf
 school. Confirmed this does **not** crash the pipeline — it degrades gracefully to
 `school_NA` and a single `outside_school` segment spanning the full day, and QC 02
 correctly surfaces a warning (`Participants found with no schedule in config.yaml:
-school_NA`). No school-ID validation exists anywhere in the pipeline (e.g. in
-`utils_input.R`'s manifest writer) to catch this earlier or more clearly.
+school_NA`). No school-ID validation existed anywhere in the pipeline to catch this
+earlier or more clearly.
+
+**Fix applied:** `write_input_manifest()` (`utils_input.R`) already computes a
+`school_id` per file for the manifest via `get_school_from_pupil()`. Added an
+optional `valid_school_ids` parameter — when supplied, any file whose derived
+`school_id` isn't in that set now triggers a `warning()` at input-scan time (right
+at the start of `run_all.R`, before GGIR even runs), listing the exact
+filename/pupil_id/school_id, instead of only surfacing much later as a silent
+`school_NA` degradation caught solely by QC 02. `run_all.R` passes
+`valid_school_ids` derived from `names(cfg$schedules)`. Optional parameter
+(defaults to `NULL` = no check) so no other caller is affected.
+
+**Verified:** ran `write_input_manifest()` against the two real test files
+(`1001`, `73044`). Console: `[input] 1 file(s) have a school ID that doesn't match
+any configured school (1, 2, 3, 4, 5, 6): 73044_0000001002.cwa -> pupil_id=73044,
+school_id=7` — fires exactly on the known case, clearly, at the earliest possible
+point in the pipeline.
 
 ---
 
-## 📄 Documentation drift — status: `open`
+## 📄 Documentation drift — status: `fixed`
 
-From the original assessment, grouped as one item (typically fixed together in a
-single doc pass):
+From the original assessment, grouped as one item (was fixed together in one doc
+pass, landed via a separate WIP that got merged into `main` alongside the bug_fix
+branch — verified all five points directly against the current repo state, not
+assumed from the commit message):
 
-- `CLAUDE.md`'s "Open Blockers" list is partially stale — blocker #2 (school 3/4
-  fallback schedules) is resolved (`config.yaml` shows `fallback: false` for both,
-  with sourced schedules); blockers #1 and #3 still appear genuinely open.
-- Two documents `CLAUDE.md` references don't exist:
-  `docs/planning/plan_of_attack_v2.md` (whole folder absent) and
-  `docs/step3_action_plan_and_strategy.md`.
-- `docs/data_info/school_info.md` is stale — still describes schools 3 and 4 as
-  using a generic fallback schedule, contradicting the now-confirmed schedules in
-  `config.yaml`.
-- `DEVELOPER.md` has two stale entries: line 624 still lists school 4 as
-  `fallback: true`; lines 502-503 say `do.report = c(2, 5)` and claim no sleep PDF,
-  but `01_run_ggir.R:155` now has `do.report = c(2, 4, 5)`.
-- `CLAUDE.md`'s directory layout and `config.yaml`'s own comment on `data_processed`
-  both say summary CSVs (`segment_summary.csv`, `analysis_ready.csv`,
-  `validity_summary.csv`) land under `data/processed/`. Confirmed directly (twice,
-  in two separate runs) that they actually land one level up, in `data/` — because
-  `02_label_segments.R` and `03_build_summaries.R` both write to
-  `file.path(base_out, "..", "<file>.csv")`. This inaccuracy is also the direct
-  cause of finding #13 below.
+- ~~`CLAUDE.md`'s "Open Blockers" list is partially stale~~ — resolved: blocker #2
+  (school 3/4 fallback schedules) marked resolved with sourcing details; blocker #3
+  (real-data re-run confirmation) also now resolved as of this session (see
+  `CLAUDE.md`). Blocker #1 (Veerle's original GGIR `config.csv`) remains genuinely
+  open — no evidence it's been received.
+- ~~Two documents `CLAUDE.md` references don't exist~~ — resolved: `CLAUDE.md` now
+  explicitly notes these were removed rather than left as dead links.
+- ~~`docs/data_info/school_info.md` is stale~~ — resolved: schools 3 and 4 now show
+  their real, sourced schedules (school 3 with per-class overrides, school 4 with
+  a documented Wednesday-end-time estimate), not the old generic fallback text.
+- ~~`DEVELOPER.md` has two stale entries~~ — resolved: school 4 now shows
+  "✅ Resolved... `fallback: false`", and the `do.report` note correctly says
+  `c(2, 4, 5)`.
+- ~~`CLAUDE.md`'s directory layout and `config.yaml`'s comment~~ — resolved: both
+  now correctly state the summary CSVs land in `data/`, not `data/processed/`.
 
 ---
 
-## ⚠️ Process / design gap — status: `open`
+## ⚠️ Process / design gap — status: `fixed`
 
-### 13. Summary CSV output path is not redirectable, and got overwritten during testing
-**Where:** `r/pipeline/02_label_segments.R`, `r/pipeline/03_build_summaries.R`
+### 13. Summary CSV output path is not redirectable, and got overwritten during testing — status: `fixed`
+**Where:** `r/pipeline/02_label_segments.R`, `r/pipeline/03_build_summaries.R`, `r/pipeline/utils_ggir.R`
 
 These two scripts write `segment_summary.csv`, `analysis_ready.csv`, and
 `validity_summary.csv` to a **fixed** path derived from `data_processed/..`
@@ -705,10 +760,24 @@ a different, real data source path that no longer exists on disk today). The May
 run's summary output is the one that can't be vouched for — unknown content, now
 overwritten, unrecoverable via git.
 
-This isn't a "bug" in the traditional sense — it's a design gap (no
-redirectable/overwrite-safe output path) that turned into a real, one-time data loss
-during testing. Worth deciding whether to make the path configurable, add an
-overwrite guard/confirmation, or just document the risk clearly.
+**Fix applied:** added `backup_if_exists(path)` to `utils_ggir.R` — before each of
+the three files is written, if a file already exists at that path it's copied to a
+timestamped `<file>.bak.<YYYYMMDD_HHMMSS>` alongside it first (keeping the 5 most
+recent backups per file, to avoid unbounded growth from routine dev/test
+iteration). Chosen over making the output path independently configurable: a
+backup-on-write safety net protects against the actual failure mode (silent,
+unrecoverable overwrite) regardless of how `paths.data_processed` is set, including
+the exact "redirected data_processed still resolves to the same parent" scenario
+that caused this in the first place — a new config option would need to be used
+*correctly* to help, whereas this fires unconditionally. Wired into all three write
+sites: `segment_summary.csv` (`02_label_segments.R`), `analysis_ready.csv` and
+`validity_summary.csv` (`03_build_summaries.R`). Also added `data/*.csv.bak.*` to
+`.gitignore` so backups never get accidentally tracked.
+
+**Verified:** wrote v1 of a test file, called `backup_if_exists()`, overwrote with
+v2, called it again — confirmed two distinct timestamped backups created, each
+containing the correct prior content. Separately confirmed the 5-backup cap: 8
+sequential write+backup cycles left exactly 5 backup files, oldest pruned first.
 
 ---
 
@@ -755,12 +824,38 @@ far, and it's an OS/filesystem constraint rather than a logic bug. Worth knowing
 recommending a deployment location to Veerle or a colleague (e.g. avoid deeply nested folders,
 or note that Windows long-path support may need enabling), rather than something to code around.
 
+**Partially mitigated separately:** `validate_config.R` now warns proactively if
+`paths.data_raw`/`data_processed` resolve past 140 characters (added alongside the
+`bug_fix` branch merge), and the Windows bundle `.bat` launchers now check the
+extraction path length upfront too. Neither is a structural fix of GGIR's own
+report-writing — they're early warnings, not a guarantee GGIR itself won't hit
+`MAX_PATH` on a sufficiently long path. Still `open` as a genuine GGIR/OS
+constraint, but a researcher now gets warned before running, not after a confusing
+mid-run failure.
+
 ---
 
-### 14. renv version mismatch
+### 14. renv version mismatch — status: `fixed` (documented; not reproducible from repo code)
 `renv::status()` / every script run reports: *"renv 1.2.0 was loaded from project
-library, but this project is configured to use renv 1.2.2."* Low priority — likely a
-one-line `renv::record()` or `renv::restore(packages = "renv")` fix.
+library, but this project is configured to use renv 1.2.2."*
+
+**Investigated:** `renv/activate.R` already correctly pins `version <- "1.2.2"`
+(matching `renv.lock`'s own `"renv"` entry), and a fresh bootstrap in a clean
+worktree correctly reports `Bootstrapping renv 1.2.2 ... Using renv 1.2.2 from
+global package cache` with no mismatch warning. Could not reproduce the mismatch
+itself — it depends on what's already sitting in a *specific machine's* project-
+local `renv/library/.../renv/` folder (e.g. left over from before this project
+pinned 1.2.2), not on anything in the repo's own config. Not a code bug.
+
+**Fix applied:** documented the one-line resolution in `r/DEVELOPER.md` (new
+"Troubleshooting" note right after "Starting a session"): run
+`renv::restore(packages = "renv")` to sync the project's own renv copy to the
+lockfile-pinned version, then restart R.
+
+**Verified:** ran `renv::restore(packages = "renv", prompt = FALSE)` — completed
+cleanly (`The library is already synchronized with the lockfile`), confirming the
+documented command is valid and won't itself error if run on a machine that does
+hit the mismatch.
 
 ---
 

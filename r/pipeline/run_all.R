@@ -50,7 +50,8 @@ write_input_manifest(
     meting_1 = file.path(raw_base, "meting_1"),
     meting_2 = file.path(raw_base, "meting_2")
   ),
-  logs_dir = "logs"
+  logs_dir = "logs",
+  valid_school_ids = suppressWarnings(as.integer(sub("^school_", "", names(cfg$schedules))))
 )
 
 message("")

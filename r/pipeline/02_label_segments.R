@@ -529,6 +529,7 @@ if (length(fallback_schools) > 0) {
 # ── Write output ──────────────────────────────────────────────────────────────
 out_path <- file.path(base_out, "..", "segment_summary.csv")
 dir.create(dirname(out_path), recursive = TRUE, showWarnings = FALSE)
+backup_if_exists(out_path)
 fwrite(segment_summary, out_path)
 
 message(sprintf("\nSegment summary written: %s", normalizePath(out_path)))

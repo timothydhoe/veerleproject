@@ -83,8 +83,15 @@ get_school_from_pupil <- function(pupil_id) {
 #' @param data_dirs Named list of measurement wave directories.
 #'   Example: list(meting_1 = "../data/raw/meting_1", meting_2 = "../data/raw/meting_2")
 #' @param logs_dir Path to the logs directory (will be created if absent).
+#' @param valid_school_ids Integer vector of configured school IDs (e.g. 1:6,
+#'   derived from names(cfg$schedules)). If supplied, files whose derived
+#'   school_id isn't in this set are flagged here — at input-scan time,
+#'   before GGIR even runs — instead of only surfacing much later as a
+#'   silent school_NA / outside_school degradation in 02_label_segments.R,
+#'   caught only by QC 02's own warning. Optional (NULL = no check) so
+#'   existing callers aren't forced to pass config.
 #' @return Invisibly returns the manifest data.frame.
-write_input_manifest <- function(data_dirs, logs_dir = "logs") {
+write_input_manifest <- function(data_dirs, logs_dir = "logs", valid_school_ids = NULL) {
   rows <- list()
 
   for (meting in names(data_dirs)) {
@@ -139,6 +146,19 @@ write_input_manifest <- function(data_dirs, logs_dir = "logs") {
   if (n_bypass > 0) {
     warning("[input] Pre-processed epoch files detected — these bypass GGIR (no calibration, no validated sleep):\n  ",
             paste(manifest$filename[!manifest$ggir_compatible], collapse = "\n  "))
+  }
+
+  if (!is.null(valid_school_ids)) {
+    unknown <- manifest[is.na(manifest$school_id) | !manifest$school_id %in% valid_school_ids, ,
+                        drop = FALSE]
+    if (nrow(unknown) > 0) {
+      warning("[input] ", nrow(unknown), " file(s) have a school ID that doesn't match any ",
+              "configured school (", paste(valid_school_ids, collapse = ", "), "):\n  ",
+              paste0(unknown$filename, " -> pupil_id=", unknown$pupil_id,
+                    ", school_id=", unknown$school_id, collapse = "\n  "),
+              "\n  These participants will get school_NA / outside_school segments later ",
+              "in the pipeline — check the filename/ID convention now if this is unexpected.")
+    }
   }
 
   dir.create(logs_dir, showWarnings = FALSE, recursive = TRUE)
