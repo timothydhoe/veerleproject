@@ -74,16 +74,59 @@ jobs:
             Set-Content -Path $cfgPath -NoNewline
 
           $batPath = Join-Path $bundleRoot "1 - Pipeline uitvoeren.bat"
-          Push-Location $bundleRoot
-          try {
-            # "< nul" makes the .bat's `pause` prompts return immediately
-            # instead of hanging the runner waiting for a keypress.
-            cmd /c "`"$batPath`" < nul"
-            if ($LASTEXITCODE -ne 0) {
-              throw "Pipeline .bat exited with code $LASTEXITCODE"
-            }
-          } finally {
-            Pop-Location
+          if (-not (Test-Path $batPath)) {
+            throw "Pipeline .bat not found at: $batPath"
+          }
+
+          # Invoke via System.Diagnostics.Process with ArgumentList (a real
+          # array) instead of `cmd /c "`"$batPath`" < nul"` (a hand-built,
+          # manually-quoted string). That string form failed twice in CI with
+          # the exact same symptom — the .bat exiting in ~3s with zero
+          # output, even after the .bat's own logic was independently fixed
+          # and verified correct by manual inspection — which points to
+          # PowerShell's own argument tokenization mis-parsing a string that
+          # mixes embedded quotes with a space-containing path before cmd.exe
+          # ever saw a well-formed command line (this project hit the same
+          # class of quoting bug once before, in the Shiny smoke test).
+          # ArgumentList lets .NET build the command line the way
+          # CreateProcess expects, with no manual quoting at all. Closing
+          # StandardInput immediately (EOF) has the same effect as the
+          # original "< nul" — the .bat's `pause` prompts return immediately
+          # instead of hanging the runner waiting for a keypress. stdout/
+          # stderr are captured and printed explicitly so a future failure
+          # shows the .bat's own output instead of just an exit code.
+          $psi = New-Object System.Diagnostics.ProcessStartInfo
+          $psi.FileName               = "cmd.exe"
+          $psi.ArgumentList.Add("/c")
+          $psi.ArgumentList.Add($batPath)
+          $psi.WorkingDirectory       = $bundleRoot
+          $psi.RedirectStandardInput  = $true
+          $psi.RedirectStandardOutput = $true
+          $psi.RedirectStandardError  = $true
+          $psi.UseShellExecute        = $false
+
+          $proc = [System.Diagnostics.Process]::Start($psi)
+          $proc.StandardInput.Close()
+          # Read both streams asynchronously *before* WaitForExit() — reading
+          # them sequentially (stdout fully, then stderr) can deadlock if the
+          # child fills the OS pipe buffer on one stream while we're blocked
+          # reading the other, and GGIR alone produces plenty of console
+          # output even for the quick dummy-data test this step runs.
+          $stdoutTask = $proc.StandardOutput.ReadToEndAsync()
+          $stderrTask = $proc.StandardError.ReadToEndAsync()
+          $proc.WaitForExit()
+          $stdout = $stdoutTask.Result
+          $stderr = $stderrTask.Result
+
+          Write-Host "--- .bat stdout ---"
+          Write-Host $stdout
+          if ($stderr) {
+            Write-Host "--- .bat stderr ---"
+            Write-Host $stderr
+          }
+
+          if ($proc.ExitCode -ne 0) {
+            throw "Pipeline .bat exited with code $($proc.ExitCode)"
           }
           Write-Host "OK: pipeline .bat completed successfully against dummy example data"
 
