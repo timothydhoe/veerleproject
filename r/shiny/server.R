@@ -62,7 +62,7 @@ server <- function(input, output, session) {
     showModal(modalDialog(
       title = tagList(icon("play"), " Pipeline uitvoeren"),
       p("Dit voert alle pipeline-stappen uit (GGIR → segmenten → samenvattingen).",
-        "Dit kan enkele minuten duren."),
+        "Dit kan 30-60 minuten of langer duren, afhankelijk van het aantal deelnemers."),
       p(class = "text-muted small", "Of run handmatig in de terminal:",
         tags$code("Rscript --vanilla r/pipeline/run_all.R")),
       footer = tagList(
@@ -95,10 +95,10 @@ server <- function(input, output, session) {
                if (has_ggir) "✔ GGIR" else "✗ GGIR niet gevonden"),
       ar   = tags$span(class = if (has_ar) "check-ok" else "check-miss",
                if (has_ar) "✔ Samenvattingen"
-               else "✗ Samenvattingen niet gevonden — run stap 03"),
+               else "✗ Samenvattingen niet gevonden — voer de pipeline uit"),
       seg  = tags$span(class = if (has_seg) "check-ok" else "check-warn",
                if (has_seg) "✔ Segmenten"
-               else "⚠ Segmenten niet gevonden — run stap 02")
+               else "⚠ Segmenten niet gevonden — voer de pipeline uit")
     )
     if (length(FALLBACK_SCHOOLS) > 0)
       checks$fallback <- tags$span(class = "check-warn",

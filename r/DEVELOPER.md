@@ -245,7 +245,7 @@ Applies school schedule context to GGIR Part 2 day summaries. For each participa
   to proportional day-level approximation.
 - Schools with `fallback: true` in config are flagged in output and in QC 02.
 
-Output: `../data/processed/segment_summary.csv` — one row per participant × day × segment.
+Output: `../data/segment_summary.csv` — one row per participant × day × segment.
 
 ---
 
@@ -271,8 +271,8 @@ if `labeled_epochs.csv` exists (epoch-level data). Otherwise uses GGIR-native
 day-level bout columns.
 
 Outputs:
-- `../data/processed/analysis_ready.csv` — one row per participant × meting
-- `../data/processed/validity_summary.csv` — inclusion/exclusion subset
+- `../data/analysis_ready.csv` — one row per participant × meting
+- `../data/validity_summary.csv` — inclusion/exclusion subset
 
 ---
 
@@ -465,19 +465,13 @@ choices = c("Alle scholen" = "all", setNames(names(SCHOOL_LABELS), SCHOOL_LABELS
 
 ## UX Debt
 
-The following known issues were identified during the UX review (2026-05-04). Full details, root causes, and fixes in `UX_REVIEW.md`.
-
-| ID | Severity | Location | Description |
-|----|----------|----------|-------------|
-| U0 | 🔴 | global.R / server.R | Module sources with `local=TRUE` prevent app from starting — modules must be sourced in global.R |
-| U1 | 🔴 | ui.R:448 | `SCHOOL_LABELS` names/values swapped in `selectInput` choices — filter displays IDs, sends wrong values |
-| U2 | 🔴 | mod_participants.R:244 | `fifelse(is.na(exclusion_reason), "—", exclusion_reason)` — type mismatch when all-NA column read as logical |
-| U3 | 🟡 | 02_label_segments.R:33 | `sub("\\.csv$", ...)` only strips `.csv` — dummy `.bin`/`.cwa` IDs produce `school_NA` |
-| U4 | 🟡 | server.R:77–96 | "Start pipeline" modal: button label misleading, post-click ✔ implies success, duration "enkele minuten" wrong |
-| U5 | 🟡 | mod_participants.R | Explorer plot cards show blank white space when no participant selected — missing `req()` guard |
-| U6 | 🟡 | mod_schoolday.R | "herrun stap 03" in empty-state message exposes internal step reference |
-| U7 | 🟡 | mod_comparison.R | `datatable()` missing `language` option — "No data available in table" in English |
-| U8 | 🟡 | mod_overview.R | Duplicate legend in MVPA dumbbell chart (subtitle + ggplot legend both present) |
+All issues identified during the UX review (2026-05-04, full history in `UX_REVIEW.md`)
+are resolved as of the 2026-07-11 bundle-readiness pass: U0–U3 and U5 were already fixed
+in the code; U4, U6, U7, and U8 were fixed in that pass (misleading pipeline-duration
+wording, internal step references leaking into user-facing messages, English DataTables
+fallback text, and the redundant chart subtitle, respectively). `UX_REVIEW.md`'s U9
+(pupil-ID dropdown showing raw filenames) was also fixed in the same pass. No open UX
+debt is currently tracked here — if new issues are found, log them in this section.
 
 ---
 
@@ -499,8 +493,9 @@ The following known issues were identified during the UX review (2026-05-04). Fu
     output_meting_2/results/  (same structure)
 ```
 
-Note: `do.report = c(2, 5)` in `01_run_ggir.R` does **not** include Part 4, so
-`visualisation_sleep.pdf` is not produced. Add `4` to `do.report` if the PDF is needed.
+Note: `01_run_ggir.R` now uses `do.report = c(2, 4, 5)` (Part 4 was added — the
+sleep night-summary CSV and `visualisation_sleep.pdf` are both now produced;
+this doc previously said `c(2, 5)`, which was stale).
 
 Part 5 filenames embed the cut-point values (`L56.3M191.6V695.8`) and HDCZA parameters
 (`T5A5` = timethreshold 5, anglethreshold 5). `utils_ggir.R` finds them with regex
@@ -621,8 +616,8 @@ uncorrected drift. This is an accepted trade-off; revisit if Veerle provides `.b
 
 | Item | Status | Notes |
 |------|--------|-------|
-| School 4 timetable | ⚠ Fallback | `config.yaml` school_4 is `fallback: true` — reconstructed from an image. Update when Veerle provides the confirmed timetable (use `/add-schedule`) |
-| Real participant data | Pending | Pipeline tested on dummy data; see pre-production checklist below before switching |
+| School 4 timetable | ✅ Resolved | `config.yaml` school_4 is now `fallback: false` (Mon/Tue/Thu/Fri confirmed; Wednesday end time is still a documented estimate — see `docs/data_info/school_info.md`) |
+| Real participant data | Pending | Pipeline tested on dummy data and directly against real `.bin`/`.cwa` device files; confirm a full real-scale run has happened before trusting results at 400-participant scale |
 | Sleep log availability | Unknown | If children kept a diary, it improves GGIR sleep detection — ask Veerle |
 
 ### Pre-production checklist (before switching to real data)

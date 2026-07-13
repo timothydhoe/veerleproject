@@ -4,21 +4,39 @@ SchoolMove — Draagbare versie
 Deze map bevat alles wat nodig is om SchoolMove te draaien: R, alle
 benodigde R-pakketten, en de code. Je hoeft niets te installeren.
 
-BELANGRIJK: pak deze map uit naar een korte locatie, bijvoorbeeld
-C:\SchoolMove\ — niet naar een netwerkschijf of OneDrive-map. Windows heeft
-een padlengte-limiet, en een netwerkschijf kan de pipeline laten mislukken.
+BELANGRIJK: pak deze map uit naar een korte locatie, bijvoorbeeld C:\SM\ —
+niet naar een netwerkschijf of OneDrive-map. Windows heeft een
+padlengte-limiet (260 tekens voor een volledig bestandspad), en bestanden
+diep in de R-bibliotheek kunnen die limiet raken. Gebruik bij voorkeur
+7-Zip om uit te pakken, niet de ingebouwde Windows-uitpakker — die slaat
+bestanden met een te lang pad soms stil over, zonder foutmelding, wat
+zich later uit als ontbrekende of corrupte bestanden. Beide .bat-bestanden
+tonen zelf een waarschuwing als het pad te lang is.
 
 Stappen
 -------
 
-1. Zet je databestanden in:
+1. Kopieer je databestanden naar:
      data\raw\meting_1\
      data\raw\meting_2\
+   Staan je bestanden op een netwerkschijf of gedeelde drive? Kopieer ze dan
+   eerst hierheen — verwerk ze niet rechtstreeks vanaf de netwerkschijf. Dat
+   kan dezelfde padlengte-limiet raken als hierboven beschreven, ook als
+   SchoolMove zelf wel lokaal staat.
 
-2. Dubbelklik op "1 - Pipeline uitvoeren.bat"
+2. Voor je de volledige dataset (30-60 min) start, een paar controles:
+   - Voldoende vrije schijfruimte? Ruwe data + verwerkte resultaten kunnen
+     samen tientallen GB innemen bij de volledige dataset.
+   - Slaapstand van Windows uitgeschakeld voor de duur van de run?
+   - Geen geplande Windows Update-herstart op til?
+   (Wordt de pipeline toch onderbroken: gewoon opnieuw
+   "1 - Pipeline uitvoeren.bat" starten. Reeds verwerkte bestanden worden
+   niet opnieuw gedaan.)
+
+3. Dubbelklik op "1 - Pipeline uitvoeren.bat"
    Dit verwerkt de data. Duurt 30-60 minuten voor de volledige dataset.
 
-3. Dubbelklik op "2 - Dashboard starten.bat"
+4. Dubbelklik op "2 - Dashboard starten.bat"
    Dit opent het dashboard in je browser.
 
 Voor de volledige uitleg over wat elk tabblad doet en hoe je parameters

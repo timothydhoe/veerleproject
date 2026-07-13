@@ -18,6 +18,7 @@ r/renv/sandbox/
 .Rhistory
 .RData
 .Rproj.user/
+r/logs/
 
 # Data (GDPR + processed output)
 data/raw/

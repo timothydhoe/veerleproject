@@ -67,8 +67,7 @@ modOverviewUI <- function(id) {
         header   = "MVPA verandering per school: Meting 1 → Meting 2",
         plot_id  = ns("plot_activity_stacked"),
         dl_id    = ns("dl_plot_overview"),
-        height   = "500px",
-        subtitle = "Grijs = M1 · kleur = M2 · groen = toename MVPA · enkel geldige deelnemers"
+        height   = "500px"
       ),
       card(
         class       = "shadow-sm",
@@ -251,9 +250,20 @@ mod_overview_server <- function(id, shared) {
       }, by = .(school_label, meting)]
 
       wide <- dcast(agg, school_label ~ meting, value.var = c("mean_mvpa", "ci95", "n"))
-      n_schools_total <- nrow(wide)
-      wide <- wide[!is.na(mean_mvpa_meting_1) & !is.na(mean_mvpa_meting_2)]
-      n_excl_schools  <- n_schools_total - nrow(wide)
+      # dcast() only creates a "_meting_2" (or "_meting_1") column suffix if at
+      # least one row of agg actually has that meting value — e.g. if zero
+      # participants meet validity criteria for meting_2 in the current
+      # filter, mean_mvpa_meting_2 simply doesn't exist, and referencing it
+      # directly would error instead of falling back to the single-meting view.
+      has_both_metingen <- all(c("mean_mvpa_meting_1", "mean_mvpa_meting_2") %in% names(wide))
+      if (has_both_metingen) {
+        n_schools_total <- nrow(wide)
+        wide <- wide[!is.na(mean_mvpa_meting_1) & !is.na(mean_mvpa_meting_2)]
+        n_excl_schools  <- n_schools_total - nrow(wide)
+      } else {
+        wide <- wide[0]
+        n_excl_schools  <- 0
+      }
 
       if (nrow(wide) == 0) {
         ggplot(agg, aes(y = reorder(school_label, mean_mvpa), x = mean_mvpa,
@@ -311,7 +321,7 @@ mod_overview_server <- function(id, shared) {
           scale_x_continuous(expand = expansion(add = c(6, 6))) +
           labs(x = "Gem. MVPA (min/dag)", y = NULL,
                subtitle = paste0(
-                 "Grijs = Meting 1 · kleur = Meting 2 · enkel geldige deelnemers · foutbalken = 95% BI",
+                 "Enkel geldige deelnemers · foutbalken = 95% BI",
                  if (n_excl_schools > 0)
                    paste0(" · ", n_excl_schools, " school(s) uitgesloten (ontbreekt ≥1 meting)")
                  else "")) +

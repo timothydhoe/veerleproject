@@ -19,6 +19,19 @@
 #   about unknown aesthetics; we accept this trade-off.
 # ─────────────────────────────────────────────────────────────────────────────
 
+# DT falls back to English UI strings ("No data available in table", etc.)
+# unless a language list is supplied — the rest of the dashboard is Dutch.
+.dt_lang_nl <- list(
+  search       = "Zoeken:",
+  lengthMenu   = "Toon _MENU_ rijen",
+  info         = "_START_ tot _END_ van _TOTAL_ rijen",
+  infoEmpty    = "Geen rijen om te tonen",
+  infoFiltered = "(gefilterd uit _MAX_ rijen)",
+  zeroRecords  = "Geen resultaten gevonden",
+  emptyTable   = "Geen data beschikbaar",
+  paginate     = list(previous = "Vorige", `next` = "Volgende")
+)
+
 #' Comparison tab UI
 modComparisonUI <- function(id) {
   ns <- NS(id)
@@ -307,14 +320,14 @@ mod_comparison_server <- function(id, shared) {
     # ── Wilcoxon stats table ──────────────────────────────────────────────────
     output$table_stats <- renderDT({
       dt <- comp_data()
-      if (is.null(dt)) return(datatable(data.frame(Bericht = "Geen data")))
+      if (is.null(dt)) return(datatable(data.frame(Bericht = "Geen data"), options = list(language = .dt_lang_nl)))
       mc <- metric_col_pure(input$comp_metric, dt, shared$mvpa_col())
       if (is.null(mc) || !mc %in% names(dt))
-        return(datatable(data.frame(Bericht = "Kolom niet gevonden.")))
+        return(datatable(data.frame(Bericht = "Kolom niet gevonden."), options = list(language = .dt_lang_nl)))
 
       wide <- dcast(dt[!is.na(get(mc))], ID + school_label ~ meting, value.var = mc)
       if (!all(c("meting_1","meting_2") %in% names(wide)))
-        return(datatable(data.frame(Bericht = "Onvoldoende data.")))
+        return(datatable(data.frame(Bericht = "Onvoldoende data."), options = list(language = .dt_lang_nl)))
       wide <- wide[!is.na(meting_1) & !is.na(meting_2)]
 
       results <- wide[, {
@@ -349,7 +362,7 @@ mod_comparison_server <- function(id, shared) {
                c("School","M1 gem.","M2 gem.","Δ gem.","95% BI",
                  "p-waarde","Sig.?","r (effectgrootte)"))
 
-      datatable(results, rownames = FALSE, options = list(dom = "t", pageLength = 10)) |>
+      datatable(results, rownames = FALSE, options = list(dom = "t", pageLength = 10, language = .dt_lang_nl)) |>
         formatStyle("Δ gem.", color = styleInterval(0, c("#C0392B","#27AE60"))) |>
         formatStyle("p-waarde",
                     color = styleEqual(c("<0.001"), c("#C0392B")),
@@ -361,7 +374,7 @@ mod_comparison_server <- function(id, shared) {
     # ── School comparison summary table ───────────────────────────────────────
     output$table_school_comparison <- renderDT({
       mc <- shared$mvpa_col()
-      if (is.null(analysis_ready) || is.null(mc)) return(datatable(data.frame(Bericht = "Geen data")))
+      if (is.null(analysis_ready) || is.null(mc)) return(datatable(data.frame(Bericht = "Geen data"), options = list(language = .dt_lang_nl)))
 
       dt <- copy(analysis_ready[meets_sedentary_criteria == TRUE])
       dt[, school_label := SCHOOL_LABELS[school]]
@@ -382,7 +395,7 @@ mod_comparison_server <- function(id, shared) {
       }, by = .(School = school_label, Meting = meting_label)]
 
       datatable(agg[order(School, Meting)], rownames = FALSE,
-                options = list(dom = "t", pageLength = 20)) |>
+                options = list(dom = "t", pageLength = 20, language = .dt_lang_nl)) |>
         formatStyle("% WHO-norm",
                     color = styleInterval(c("50%"), c("#C0392B", "#27AE60")))
     })
@@ -411,10 +424,10 @@ mod_comparison_server <- function(id, shared) {
     output$table_participant_comp <- renderDT({
       dt <- participant_comp_data()
       if (is.null(dt) || nrow(dt) == 0)
-        return(datatable(data.frame(Bericht = "Geen data beschikbaar.")))
+        return(datatable(data.frame(Bericht = "Geen data beschikbaar."), options = list(language = .dt_lang_nl)))
       delta_col <- "Δ (M2−M1)"
       datatable(dt, rownames = FALSE, filter = "top",
-                options = list(pageLength = 20, dom = "frtip", scrollX = TRUE)) |>
+                options = list(pageLength = 20, dom = "frtip", scrollX = TRUE, language = .dt_lang_nl)) |>
         formatStyle(delta_col,
                     color = styleInterval(0, c("#C0392B", "#27AE60")),
                     fontWeight = "bold")

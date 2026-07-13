@@ -363,9 +363,9 @@ mod_settings_server <- function(id, shared) {
     observe({
       ids <- character(0)
       if (!is.null(analysis_ready) && "ID" %in% names(analysis_ready))
-        ids <- sort(unique(as.character(analysis_ready$ID)))
+        ids <- sort(unique(tools::file_path_sans_ext(as.character(analysis_ready$ID))))
       else if (nrow(part2) > 0 && "ID" %in% names(part2))
-        ids <- sort(unique(as.character(part2$ID)))
+        ids <- sort(unique(tools::file_path_sans_ext(as.character(part2$ID))))
       updateSelectInput(session, "abs_pupil", choices = ids)
     })
 

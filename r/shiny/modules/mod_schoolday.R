@@ -132,7 +132,7 @@ mod_schoolday_server <- function(id, shared) {
         }
       }
       if (is.null(metric_col_name) || is.na(metric_col_name))
-        return(no_data_plot("Activiteitskolom niet gevonden — herrun stap 03."))
+        return(no_data_plot("Activiteitskolom niet gevonden — voer de volledige pipeline opnieuw uit."))
 
       school_day_segs <- c("before_school","in_class","recess","lunch","after_school")
       agg <- dt[segment %in% school_day_segs, {
@@ -222,6 +222,7 @@ mod_schoolday_server <- function(id, shared) {
       mod_c <- grep("^dur_MOD", names(dt), value = TRUE)[1]
       vig_c <- grep("^dur_VIG", names(dt), value = TRUE)[1]
       if (is.na(mod_c) || is.na(vig_c)) return(no_data_plot())
+      if (!all(c("date", "weekday") %in% names(dt))) return(no_data_plot())
       dt[, mvpa_val := get(mod_c) + get(vig_c)]
 
       daily <- dt[, .(mvpa_day = sum(mvpa_val, na.rm = TRUE)),
@@ -313,7 +314,7 @@ mod_schoolday_server <- function(id, shared) {
     # ── Sedentary bouts dumbbell ──────────────────────────────────────────────
     bouts_plot <- reactive({
       if (is.null(analysis_ready) || !"bouts_30min_day" %in% names(analysis_ready))
-        return(no_data_plot("Sedentaire boutdata niet beschikbaar — herrun stap 03."))
+        return(no_data_plot("Sedentaire boutdata niet beschikbaar — voer de volledige pipeline opnieuw uit."))
       dt <- copy(analysis_ready[meets_sedentary_criteria == TRUE & !is.na(bouts_30min_day)])
       dt <- shared$apply_filters(dt)
       if (nrow(dt) == 0) return(no_data_plot("Geen data voor huidige filter."))

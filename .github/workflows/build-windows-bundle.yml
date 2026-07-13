@@ -52,6 +52,41 @@ jobs:
             -RDir (Join-Path $bundleRoot "r") `
             -RscriptPath $rscript
 
+      # Exercise the real .bat launcher end-to-end through cmd.exe, the way
+      # Veerle will actually invoke it. The smoke test above only drives R
+      # directly and would miss bugs in the .bat file's own logic (quoting,
+      # errorlevel handling, pause behaviour).
+      - name: Run the bundled pipeline .bat end-to-end
+        shell: pwsh
+        run: |
+          $bundleRoot = Join-Path "${{ runner.temp }}/bundle_verify" "SchoolMove"
+
+          # Point the extracted bundle's config.yaml at the dummy example
+          # data so the run completes in CI time — same trick as
+          # scripts/ci/run_example_pipeline.R, but driven through the real
+          # .bat file this time instead of `source()`. This edits the
+          # throwaway copy of config.yaml inside the extracted bundle, not
+          # the repo's.
+          $cfgPath = Join-Path $bundleRoot "config.yaml"
+          (Get-Content $cfgPath -Raw) `
+            -replace 'example_mode: false', 'example_mode: true' `
+            -replace 'quick_test_n: ~', 'quick_test_n: 2' |
+            Set-Content -Path $cfgPath -NoNewline
+
+          $batPath = Join-Path $bundleRoot "1 - Pipeline uitvoeren.bat"
+          Push-Location $bundleRoot
+          try {
+            # "< nul" makes the .bat's `pause` prompts return immediately
+            # instead of hanging the runner waiting for a keypress.
+            cmd /c "`"$batPath`" < nul"
+            if ($LASTEXITCODE -ne 0) {
+              throw "Pipeline .bat exited with code $LASTEXITCODE"
+            }
+          } finally {
+            Pop-Location
+          }
+          Write-Host "OK: pipeline .bat completed successfully against dummy example data"
+
       - name: Upload bundle artifact
         uses: actions/upload-artifact@v4
         with:

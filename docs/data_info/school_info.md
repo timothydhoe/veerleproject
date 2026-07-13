@@ -64,41 +64,55 @@
 
 ### School 3
 
-> **Note:** Detailed timetables not yet available. Using generic Belgian primary school schedule as fallback. Update this file when the actual schedule is received.
+> **Update:** confirmed schedule now in `config.yaml` (`fallback: false`) — this
+> was previously a generic fallback; that note is outdated.
 
-**Fallback schedule**
+**School hours**
 
 | Day | Start | End |
 |---|---|---|
-| Mon / Tue / Thu / Fri | 08:30 | 15:30 |
-| Wednesday | 08:30 | 12:00 |
+| Monday | 08:25 | 15:35 |
+| Tuesday | 08:25 | 15:35 |
+| Wednesday | 08:25 | 12:00 |
+| Thursday | 08:25 | 15:35 |
+| Friday | 08:25 | 15:35 |
 
-**Fallback breaks**
+**Breaks**
 
-| Break | Time |
-|---|---|
-| Morning break | 10:15–10:30 |
-| Lunch | 12:00–13:00 |
+| Day | Break 1 | Lunch | Break 2 |
+|---|---|---|---|
+| Mon / Tue / Thu / Fri | 10:05–10:20 | 12:00–12:50 | 14:30–14:45 |
+| Wednesday | 10:05–10:20 | — | — |
+
+**Per-class overrides:** 2nd-year classes (2Aa, 2Ab, 2Ba, 2Bb) have an 8th
+lesson period on certain days, ending 16:25 instead of 15:35 — see
+`config.yaml`'s `class_overrides` for the exact pupils/days (sourced from an
+email from Veerle + `Info_metingen.docx`).
 
 ---
 
 ### School 4
 
-> **Note:** Detailed timetable provided as an image in the source document and could not be fully parsed. Using generic extended-day schedule. Update this file when confirmed.
+> **Update:** confirmed schedule now in `config.yaml` (`fallback: false`) —
+> the Wednesday end time is still an estimate (see note below), but Mon/Tue/
+> Thu/Fri is confirmed.
 
-**Fallback schedule**
+**School hours**
 
 | Day | Start | End |
 |---|---|---|
-| Mon / Tue / Thu / Fri | 08:30 | 16:30 |
-| Wednesday | 08:30 | 12:00 |
+| Monday | 08:40 | 16:35 |
+| Tuesday | 08:40 | 16:35 |
+| Wednesday | 08:40 | 12:15 (estimated — 4th period end; source timetable was image-only) |
+| Thursday | 08:40 | 16:35 |
+| Friday | 08:40 | 16:35 |
 
-**Fallback breaks**
+**Breaks**
 
-| Break | Time |
-|---|---|
-| Morning break | 10:15–10:30 |
-| Lunch | 12:00–13:30 |
+| Day | Break | Lunch |
+|---|---|---|
+| Mon / Tue / Thu / Fri | 10:20–10:35 | 12:15–13:15 |
+| Wednesday | 10:20–10:35 | — |
 
 ---
 

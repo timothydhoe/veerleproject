@@ -85,9 +85,9 @@ data/
     ggir/
       meting_1/           # GGIR output for wave 1
       meting_2/           # GGIR output for wave 2
-    segment_summary.csv   # Output of 02_label_segments.R
-    analysis_ready.csv    # Output of 03_build_summaries.R
-    validity_summary.csv  # Output of 03_build_summaries.R
+  segment_summary.csv     # Output of 02_label_segments.R — lands directly in data/, NOT data/processed/
+  analysis_ready.csv      # Output of 03_build_summaries.R — same
+  validity_summary.csv    # Output of 03_build_summaries.R — same
   example/                # Fictional test data (safe to commit)
     dummy_data/
       meting_1/
@@ -108,7 +108,7 @@ docs/                     # Detailed reference documents — read before impleme
 |------|--------|--------------|------------|
 | **01** | `01_run_ggir.R` | GGIR Parts 1–5: load CSVs, ENMO, non-wear, cut-point classification, sleep detection, day summaries | `part2_daysummary.csv`, `part4_nightsummary.csv`, `part5_daysummary_WW_*.csv` |
 | **QC 01** | `qc/qc_01_ggir.R` | Verify GGIR outputs: required files present, correct columns, participant counts | Console report |
-| **02** | `02_label_segments.R` | Apply school schedule labels to GGIR output: for each participant × day, distribute per-qwindow GGIR columns across school context segments (in_class / recess / lunch / before_school / after_school). Falls back to proportional day-level approximation if qwindow columns are not present. | `segment_summary.csv` |
+| **02** | `02_label_segments.R` | Apply school schedule labels to GGIR output: for each participant × day, distribute per-qwindow activity (read from `part5_daysummary_Segments_*.csv`, not `part2_daysummary.csv`) across school context segments (in_class / recess / lunch / before_school / after_school). Falls back to wear-time-only if that Part 5 Segments file is missing. | `segment_summary.csv` |
 | **QC 02** | `qc/qc_02_segments.R` | Verify segment coverage: all pupils labeled, no missing school day windows, fallback school warnings | Console report |
 | **03** | `03_build_summaries.R` | Join all outputs into analysis-ready wide table; compute validity flags per participant | `analysis_ready.csv`, `validity_summary.csv` |
 | **QC 03** | `qc/qc_03_summaries.R` | Verify inclusion/exclusion counts, check MVPA distributions, confirm cut-points match config | Console report |
@@ -172,15 +172,16 @@ Input files are GENEActiv CSVs. Key characteristics (full spec in
 ## Open Blockers
 
 1. **GGIR config** — Full parameter set from Veerle's original GGIR runs (she may have a
-   `config.csv` from a previous run). Needed to ensure new results stay comparable.
-2. **School schedules — schools 3 and 4** — Current config has fallback approximations
-   (`fallback: true`). School 3 schedule not yet received; school 4 timetable was
-   image-only and could not be fully parsed. Confirmed timetables needed from Veerle
-   before results for these schools can be trusted.
-3. **Re-run `01_run_ggir.R`** — `qwindow` has now been added to `config.yaml` and the
-   GGIR call. Existing GGIR output was generated without it, so `part2_daysummary.csv`
-   does not yet contain per-window columns. Step 02 will fall back to proportional
-   approximation until the pipeline is re-run on real (or dummy) data.
+   `config.csv` from a previous run). Needed to ensure new results stay comparable. Still
+   open — no evidence in the repo that this has been received.
+2. ~~**School schedules — schools 3 and 4**~~ **Resolved.** `config.yaml` now has
+   `fallback: false` for both, with sourced schedules (school 3 has per-class overrides
+   citing an email from Veerle; school 4 cites a schedule image).
+3. **Confirm a real-data re-run has happened since `qwindow` was added** — the code side
+   is ready (per-window segment intensity is read from `part5_daysummary_Segments_*.csv`,
+   not `part2_daysummary.csv` — see `02_label_segments.R`), but there's no evidence in the
+   repo of a completed full real-data run since this changed. Worth confirming with
+   Veerle/the team before trusting segment-level results at full scale.
 
 ## MCP Servers
 
@@ -224,6 +225,9 @@ All files in `docs/` should be read before implementing any pipeline component:
 
 - `step1_data_format_reference.md` — CSV format specification
 - `step2_ggir_pipeline_reference.md` — GGIR pipeline internals
-- `step3_action_plan_and_strategy.md` — Earlier action plan (partially outdated but useful for domain context)
-- `planning/plan_of_attack_v2.md` — Current project vision and phased plan
 - `meeting-notes/monday_meeting_prep.md` — Open questions and context from client meetings
+
+(A `step3_action_plan_and_strategy.md` and `planning/plan_of_attack_v2.md` were
+referenced here previously but don't exist in the repo — removed rather than
+left as dead links. If they existed at some point, they'd need to be
+recovered or rewritten from scratch, not just re-added as references.)

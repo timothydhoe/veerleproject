@@ -11,7 +11,8 @@
 paths:
   data_raw:       "../data/raw"           # Invoermap voor echte data. Bevat submappen meting_1/ en meting_2/.
                                           # Mag ook een absoluut pad zijn, bv. "C:/Data/SchoolMove".
-  data_processed: "../data/processed"     # Uitvoermap voor GGIR-resultaten en samenvattingsbestanden.
+  data_processed: "../data/processed"     # Uitvoermap voor ruwe GGIR-resultaten (analysis_ready.csv,
+                                          # segment_summary.csv en validity_summary.csv landen in data/, één niveau hoger).
   data_example:   "../data/example"       # Fictieve testdata — veilig om te committen.
   absences:       "../data/absences.csv"  # Afwezigheidsregister, beheerd via het dashboard.
 

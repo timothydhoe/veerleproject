@@ -87,6 +87,10 @@ Dit doorloopt drie stappen:
 
 > **Sneller verwerken:** Zet `ggir.maxNcores` in `config.yaml` op 2–4 als je op een moderne laptop werkt (meer cores = sneller; gebruik nooit meer cores dan je machine heeft). Op een laptop met 4 cores is `maxNcores: 2` een veilige keuze.
 
+> **Data op een netwerkschijf?** Kopieer de bestanden eerst naar een lokale map (bv. `C:\SchoolMove\data\raw\`) in plaats van `paths.data_raw` rechtstreeks naar de netwerkschijf te laten wijzen. Windows heeft een padlengte-limiet van 260 tekens, en GGIR's eigen geneste mapstructuur kan die limiet samen met een lang netwerkpad overschrijden — de pipeline valideert dit nu vooraf en toont een duidelijke waarschuwing als een pad verdacht lang is, maar de veiligste aanpak blijft: werk lokaal.
+
+> **Voor je de volledige dataset start:** controleer of er voldoende vrije schijfruimte is (ruwe data + verwerkte resultaten kunnen samen tientallen GB innemen), schakel de slaapstand van Windows uit voor de duur van de run, en zorg dat er geen Windows Update-herstart gepland staat. Wordt de run toch onderbroken, dan volstaat gewoon opnieuw `run_all.R` draaien (zie hierboven).
+
 ### 2b-bis. Snelle test met échte data (aanbevolen vóór de volledige run)
 
 Wil je eerst controleren of de pipeline correct omgaat met jouw bestanden zonder een uur te wachten? Zet dan de **quick-test modus** aan: de pipeline verwerkt dan alleen de eerste 2 of 3 deelnemers en is klaar in enkele minuten.

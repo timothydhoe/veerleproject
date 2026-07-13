@@ -21,6 +21,8 @@
 
 library(yaml)
 
+`%||%` <- function(a, b) if (!is.null(a)) a else b
+
 source("pipeline/validate_config.R", local = TRUE)
 
 message("═══ SchoolMove Pipeline ══════════════════════════════════════════")
