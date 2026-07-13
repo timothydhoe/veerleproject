@@ -3,7 +3,20 @@ setlocal
 set BUNDLE_DIR=%~dp0
 set R_HOME=%BUNDLE_DIR%R-portable
 
-for /f %%L in ('powershell -NoProfile -Command "$env:BUNDLE_DIR.Length"') do set BUNDLE_PATH_LEN=%%L
+REM Pure-batch string length (no external process) — a nested powershell call
+REM here previously crashed the whole script with an unhelpful "GTR was
+REM unexpected at this time" if that subprocess produced no output for any
+REM reason (quoting/encoding across the pwsh->cmd->powershell chain, missing
+REM Windows PowerShell 5.1, etc.), since an empty BUNDLE_PATH_LEN makes the
+REM next line a batch syntax error, not a normal "false" comparison.
+set "BD=%BUNDLE_DIR%"
+set BUNDLE_PATH_LEN=0
+:count_bundle_dir_len
+if defined BD (
+    set "BD=%BD:~1%"
+    set /a BUNDLE_PATH_LEN+=1
+    goto count_bundle_dir_len
+)
 if %BUNDLE_PATH_LEN% GTR 90 (
     echo ============================================================
     echo  WAARSCHUWING: het pad naar deze map is lang ^(%BUNDLE_PATH_LEN% tekens^).
