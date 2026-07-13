@@ -348,7 +348,7 @@ Dit zijn de Hildebrand-grenswaarden voor polshorloge bij kinderen (2014/2017) en
 
 GGIR schat voor elke nacht het slaapperiodevenster (SPT — Sleep Period Time). Het gebruikt hiervoor het HDCZA-algoritme: als de polsbeweging langer dan 5 minuten niet meer dan 5 graden kantelt, wordt aangenomen dat de drager slaapt. Dit algoritme is gevalideerd voor kinderen die een polshorloge dragen.
 
-De nachtresultaten staan in `part4_nightsummary_sleep_cleaned.csv`. De kolom `SleepDurationInSpt` geeft de geschatte slaapduur in uren; `SleepEfficiencyInSpt` geeft het percentage van het slaapvenster dat daadwerkelijk geslapen werd.
+De nachtresultaten staan in `part4_nightsummary_sleep_cleaned.csv`. De kolom `SleepDurationInSpt` geeft de geschatte slaapduur in uren. GGIR levert geen kant-en-klare "slaapefficiëntie"-kolom — de pipeline berekent die zelf (`SleepDurationInSpt` gedeeld door `SptDuration`, het slaapvenster) als `sleep_efficiency_pct`, enkel voor rapportage/dashboard, niet voor het geldigheidscriterium hieronder (zie sectie 11).
 
 ### GGIR-stap 5 — Dagsamenvattingen per persoon
 
@@ -365,7 +365,7 @@ De koppeling is een benadering: GGIR geeft dagsamenvattingen per tijdsblok (via 
 Het derde script voegt alle outputs samen tot één rij per deelnemer × meting. Het berekent ook of een deelnemer voldoet aan de geldigheidsdrempels:
 
 - **Sedentaire geldigheid**: minimaal X draaguren per dag, op minimaal Y geldige dagen (optioneel inclusief een weekenddag)
-- **Slaapgeldigheid**: minimaal Z nachten met ≥ 50% slaapefficiëntie
+- **Slaapgeldigheid**: minimaal Z nachten met ≥ 50% *valide slaapdata* (percentage van de nacht zonder ontbrekende/niet-gedragen data — dit is **niet** hetzelfde als slaapefficiëntie; zie Veerle's protocol en sectie 11)
 
 ---
 
@@ -408,8 +408,12 @@ De pipeline verwerkt één bestand tegelijk; het piekgeheugenverbruik is laag (<
 **Geen autokalibratie**
 De GENEActiv-CSV-bestanden bevatten pre-berekende epochen, niet de ruwe 100 Hz-signalen. Daardoor kan GGIR geen autokalibratie uitvoeren (sphere-fitting). Kleine sensorafwijkingen worden dus niet gecorrigeerd. Dit is een geaccepteerde beperking zolang er geen .bin-bestanden beschikbaar zijn.
 
-**Slaapefficiëntie-schaal**
-GGIR-versies rapporteren slaapefficiëntie soms als percentage (0–100) en soms als fractie (0–1). De pipeline detecteert dit automatisch op basis van de maximale waarde. Controleer bij een eerste echte run of `sleep_efficiency_pct` in het dashboard realistische waarden toont (typisch 80–95% voor schoolkinderen).
+**Slaapgeldigheid vs. slaapefficiëntie**
+Twee verschillende dingen die makkelijk verward worden, omdat beide "een percentage over de nacht" zijn:
+- **`meets_sleep_criteria`** (geldigheidscriterium) is gebaseerd op GGIR's `fraction_night_invalid` — het percentage van de nacht met ontbrekende/niet-gedragen data, omgezet naar % geldig (`100 - fraction_night_invalid × 100`). Dit is Veerle's protocolcriterium (≥50% valide slaapdata), **geen** slaapkwaliteitsmaat.
+- **`sleep_efficiency_pct`** (rapportagekolom, dashboard "Slaaptabblad") is wél een echte slaapkwaliteitsmaat: `SleepDurationInSpt / SptDuration`, oftewel hoeveel van het geschatte slaapvenster daadwerkelijk geslapen werd. Wordt nergens gebruikt voor in-/exclusie.
+
+Controleer bij een eerste echte run of `sleep_efficiency_pct` in het dashboard realistische waarden toont (typisch 80–95% voor schoolkinderen).
 
 **Schoolcontext is een benadering**
 De verdeling van activiteitsminuten over segmenten (les, speeltijd enz.) is proportioneel op basis van de tijdsduur van het segment. Een exacte verdeling per seconde vereist GGIR epoch-level uitvoer gekoppeld aan de schoolsegmenten — dit is nog niet geïmplementeerd.

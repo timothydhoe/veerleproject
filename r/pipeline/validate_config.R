@@ -36,6 +36,55 @@ read_config_yaml <- function(path) {
   )
 }
 
+#' Merge the active configuration profile over cfg
+#'
+#' Profiles let a researcher save named parameter presets (validity, bouts,
+#' cut-points) via the Shiny "Instellingen" tab and apply them without
+#' editing config.yaml directly. Only overrides keys the profile actually
+#' specifies (via modifyList) — config.yaml's own values remain the base for
+#' anything a profile omits, so partial profiles (e.g. saved profiles that
+#' only cover some bouts fields) work correctly.
+#'
+#' @param cfg Named list produced by read_config_yaml().
+#' @param profiles_dir Path to the profiles directory. If NULL, resolved
+#'   from cfg$profiles$directory (default "profiles"), relative to the
+#'   caller's own working directory — correct for scripts run from r/.
+#'   Callers running from a different working directory (e.g. shiny/global.R,
+#'   which runs from r/shiny/) must pass an already-resolved path explicitly.
+#' @return cfg, with validity/bouts/ggir.cut_points_mg overridden by the
+#'   active profile's values where present.
+apply_active_profile <- function(cfg, profiles_dir = NULL) {
+  if (is.null(profiles_dir)) {
+    profiles_dir <- cfg$profiles$directory
+    if (is.null(profiles_dir)) profiles_dir <- "profiles"
+  }
+  active_name <- cfg$profiles$active
+  if (is.null(active_name)) active_name <- "default"
+  profile_path <- file.path(profiles_dir, paste0(active_name, ".yaml"))
+
+  if (!file.exists(profile_path)) {
+    message("[profile] Profile not found: '", profile_path,
+            "' — using base config.yaml values.")
+    return(cfg)
+  }
+
+  profile <- yaml::read_yaml(profile_path)
+  for (section in c("validity", "bouts")) {
+    if (!is.null(profile[[section]])) {
+      base <- cfg[[section]]
+      if (is.null(base)) base <- list()
+      cfg[[section]] <- modifyList(base, profile[[section]])
+    }
+  }
+  if (!is.null(profile$ggir$cut_points_mg)) {
+    base_cp <- cfg$ggir$cut_points_mg
+    if (is.null(base_cp)) base_cp <- list()
+    cfg$ggir$cut_points_mg <- modifyList(base_cp, profile$ggir$cut_points_mg)
+  }
+  message("[profile] Loaded: '", active_name, "' from ", profile_path)
+  cfg
+}
+
 #' Validate the SchoolMove config list
 #'
 #' @param cfg Named list produced by yaml::read_yaml("config.yaml").
@@ -87,7 +136,33 @@ validate_config <- function(cfg) {
     }
   }
 
-  # ── 3. Schedule validation ───────────────────────────────────────────────────
+  # ── 3. Path length (Windows 260-char MAX_PATH) ───────────────────────────────
+  # GGIR creates deeply nested output folders and long filenames on top of
+  # whatever data_raw/data_processed already resolves to — a data folder deep
+  # on a network/shared drive can silently exceed Windows' path limit well
+  # before GGIR's own additions are even factored in. Warn early and clearly
+  # rather than let this fail deep inside GGIR's internals. mustWork = FALSE
+  # since the directory may not exist yet (e.g. data_processed pre-run).
+  path_len_threshold <- 140
+  for (path_field in c("data_raw", "data_processed")) {
+    p <- cfg$paths[[path_field]]
+    if (!is.null(p)) {
+      resolved_len <- nchar(normalizePath(p, mustWork = FALSE))
+      if (resolved_len > path_len_threshold) {
+        add_warn(sprintf(
+          paste0("paths.%s resolves to a %d-character path — Windows has a ",
+                 "260-character limit, and GGIR adds nested subfolders and ",
+                 "long filenames on top. If this is on a network/shared ",
+                 "drive, copy the data to a short local path instead ",
+                 "(e.g. C:/SchoolMove/data/raw/) to avoid failures partway ",
+                 "through a run."),
+          path_field, resolved_len
+        ))
+      }
+    }
+  }
+
+  # ── 4. Schedule validation ───────────────────────────────────────────────────
   is_valid_hhmm <- function(x) {
     !is.null(x) && grepl("^([01]?[0-9]|2[0-3]):[0-5][0-9]$", as.character(x))
   }
@@ -138,7 +213,7 @@ validate_config <- function(cfg) {
     }
   }
 
-  # ── 4. Report ────────────────────────────────────────────────────────────────
+  # ── 5. Report ────────────────────────────────────────────────────────────────
   if (length(warnings) > 0) {
     for (w in warnings) message("[config] WARN: ", w)
   }

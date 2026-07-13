@@ -52,25 +52,30 @@ for (meting in metingen) {
     }
   }
 
-  # part4: name varies by GGIR version (≥2.6 uses *_sleep_cleaned.csv)
-  part4_files <- list.files(results_dir, pattern = "^part4.*\\.csv$", full.names = TRUE)
-  if (length(part4_files) == 0) {
-    fail("part4 nightsummary CSV not found (expected ^part4.*\\.csv)")
+  # part4: filename and directory (results/ vs results/QC/) vary by GGIR
+  # version and by whether any night passed sleep validity criteria — reuse
+  # the production helper so QC checks the same file production would use.
+  part4 <- tryCatch(read_part4_sleep(results_dir), error = function(e) NULL)
+  if (is.null(part4)) {
+    fail("part4 nightsummary CSV not found (checked results/ and results/QC/)")
   } else {
-    dt4 <- tryCatch(fread(part4_files[1], data.table = TRUE), error = function(e) NULL)
-    if (is.null(dt4)) {
-      fail(paste(basename(part4_files[1]), "exists but could not be read"))
-    } else {
-      pass(sprintf("%s — %d rows, %d columns", basename(part4_files[1]), nrow(dt4), ncol(dt4)))
-    }
+    src <- attr(part4, "source_path")
+    label <- if (!is.null(src)) basename(src) else "part4 nightsummary CSV"
+    pass(sprintf("%s — %d rows, %d columns", label, nrow(part4), ncol(part4)))
   }
 
-  # Part 5 uses a dynamic filename — search by pattern
-  part5_files <- list.files(results_dir, pattern = "^part5_daysummary_WW_", full.names = TRUE)
-  part5_pers  <- list.files(results_dir, pattern = "^part5_personsummary_WW_", full.names = TRUE)
+  # Part 5 uses a dynamic filename — search by pattern.
+  # Daysummary: 02_label_segments.R hard-requires the Segments variant
+  # specifically (no fallback). Personsummary: 03_build_summaries.R accepts
+  # any variant (WW/MM/Segments), so check generically to match.
+  part5_files <- list.files(results_dir, pattern = "^part5_daysummary_Segments_",
+                            full.names = TRUE)
+  part5_pers  <- list.files(results_dir, pattern = "^part5_personsummary_",
+                            full.names = TRUE)
 
   if (length(part5_files) == 0) {
-    fail("part5_daysummary_WW_*.csv not found")
+    fail(paste("part5_daysummary_Segments_*.csv not found",
+               "(required by 02_label_segments.R)"))
   } else {
     dt5 <- tryCatch(fread(part5_files[1], data.table = TRUE), error = function(e) NULL)
     if (is.null(dt5)) {
@@ -81,11 +86,16 @@ for (meting in metingen) {
   }
 
   if (length(part5_pers) == 0) {
-    warn("part5_personsummary_WW_*.csv not found (may appear after more participants are processed)")
+    warn("part5_personsummary_*.csv not found (may appear after more participants are processed)")
   } else {
-    dtp <- tryCatch(fread(part5_pers[1], data.table = TRUE), error = function(e) NULL)
+    # Multiple report variants (WW/MM/Segments) can exist side by side with
+    # very different participant coverage — use the same preference/coverage
+    # check the pipeline and Shiny export use, instead of just part5_pers[1],
+    # so QC doesn't report a false PASS off the least-complete variant.
+    chosen_pers <- pick_ggir_variant_file(part5_pers)
+    dtp <- tryCatch(fread(chosen_pers, data.table = TRUE), error = function(e) NULL)
     if (!is.null(dtp)) {
-      pass(sprintf("%s — %d participants", basename(part5_pers[1]), nrow(dtp)))
+      pass(sprintf("%s — %d participants", basename(chosen_pers), nrow(dtp)))
     }
   }
 

@@ -23,6 +23,7 @@ source("pipeline/utils_bouts.R", local = TRUE)
 source("pipeline/validate_config.R", local = TRUE)
 
 cfg      <- read_config_yaml("../config.yaml")
+cfg      <- apply_active_profile(cfg)
 base_out <- cfg$paths$data_processed
 metingen <- c("meting_1", "meting_2")
 val_cfg  <- cfg$validity
@@ -130,22 +131,48 @@ participant_validity[, exclusion_reason := fcase(
   default = NA_character_
 )]
 
+# ── Derive per-night values GGIR doesn't provide directly ─────────────────────
+# Validity gate uses % of the night with valid (non-missing/non-nonwear) data —
+# confirmed against Veerle's original protocol email: "we will convert the
+# fraction of the night identified as invalid to percentage of the night
+# identified as valid... at least 50% valid sleep data for five nights."
+# This is data completeness, NOT sleep efficiency (time asleep / time in bed)
+# — an earlier version of this code conflated the two, since both are "a
+# percentage related to the night," and ended up looking for a
+# SleepEfficiencyInSpt column that GGIR never actually produces.
+if (nrow(part4) > 0) {
+  invalid_col <- grep("^fraction_night_invalid$", names(part4), value = TRUE)
+  if (length(invalid_col) > 0) {
+    invalid_vals <- part4[[invalid_col[1]]]
+    if (any(invalid_vals < 0 | invalid_vals > 1, na.rm = TRUE)) {
+      message("[sleep] fraction_night_invalid has values outside [0,1] — check GGIR version/units before trusting pct_night_valid.")
+    }
+    part4[, pct_night_valid := 100 * (1 - get(invalid_col[1]))]
+  }
+
+  # Separate, purely for the dashboard's own sleep-efficiency report/plot
+  # (mod_sleep.R) — NOT used for the validity gate below. Efficiency = time
+  # actually asleep (SleepDurationInSpt) / time in the estimated per-night
+  # sleep window (SptDuration), the standard actigraphy definition.
+  spt_col <- grep("^SptDuration$",         names(part4), value = TRUE)
+  slp_col <- grep("^SleepDurationInSpt$",  names(part4), value = TRUE)
+  if (length(spt_col) > 0 && length(slp_col) > 0) {
+    part4[, derived_eff_ratio_pct := ifelse(
+      !is.na(get(spt_col[1])) & get(spt_col[1]) > 0,
+      get(slp_col[1]) / get(spt_col[1]) * 100,
+      NA_real_
+    )]
+  }
+}
+
 # ── Sleep validity (from part4 nightsummary) ──────────────────────────────────
 min_nights    <- val_cfg$min_valid_nights_sleep %||% 5L
 min_pct_valid <- val_cfg$min_pct_night_valid    %||% 50
 
 if (nrow(part4) > 0) {
-  seff_col <- grep("SleepEfficiencyInSpt|sleep_efficiency",
-                   names(part4), value = TRUE, ignore.case = TRUE)
-  if (length(seff_col) > 0) {
-    # Efficiency reported as 0–1 fraction in some GGIR versions, 0–100 in others
-    eff_vals <- part4[[seff_col[1]]]
-    scale    <- if (all(is.na(eff_vals))) {
-      message("[sleep] All efficiency values are NA — scale detection skipped, defaulting to 1.")
-      1
-    } else if (max(eff_vals, na.rm = TRUE) <= 1) 100 else 1
+  if ("pct_night_valid" %in% names(part4)) {
     sleep_nights_valid <- part4[
-      !is.na(get(seff_col[1])) & get(seff_col[1]) * scale >= min_pct_valid,
+      !is.na(pct_night_valid) & pct_night_valid >= min_pct_valid,
       .(n_valid_nights = .N),
       by = .(ID, meting)
     ]
@@ -153,12 +180,12 @@ if (nrow(part4) > 0) {
                                    by = c("ID", "meting"), all.x = TRUE)
     participant_validity[is.na(n_valid_nights), n_valid_nights := 0L]
     participant_validity[, meets_sleep_criteria := n_valid_nights >= min_nights]
-    message(sprintf("Sleep validity: ≥%d%% efficiency threshold, ≥%d nights required",
+    message(sprintf("Sleep validity: ≥%d%% valid-data threshold, ≥%d nights required",
                     min_pct_valid, min_nights))
   } else {
     participant_validity[, n_valid_nights := NA_integer_]
     participant_validity[, meets_sleep_criteria := NA]
-    message("Sleep validity: efficiency column not found in part4 — meets_sleep_criteria set to NA")
+    message("Sleep validity: fraction_night_invalid column not found in part4 — meets_sleep_criteria set to NA")
   }
 } else {
   participant_validity[, n_valid_nights := NA_integer_]
@@ -209,10 +236,21 @@ if (nrow(part5) > 0) {
 # ── Per-participant sleep averages ────────────────────────────────────────────
 # Priority: part4 nightsummary > part5 SPT sleep estimate
 if (nrow(part4) > 0) {
-  dur_col <- grep("duration|SleepDurationInSpt|sleep_dur",
-                  names(part4), value = TRUE, ignore.case = TRUE)
+  # Exact match first: SleepDurationInSpt is the real "time actually asleep"
+  # column. The old unanchored fallback ("duration|SleepDurationInSpt|sleep_dur")
+  # matched SptDuration (sleep-WINDOW length) first by column order, silently
+  # reporting the wrong number as sleep_duration_h. Only fall back to the loose
+  # pattern for GGIR versions/configs that don't have the exact column.
+  dur_col <- grep("^SleepDurationInSpt$", names(part4), value = TRUE)
+  dur_col_is_known_hours <- length(dur_col) > 0
+  if (length(dur_col) == 0) {
+    dur_col <- grep("sleep_dur", names(part4), value = TRUE, ignore.case = TRUE)
+  }
   eff_col <- grep("efficiency|SleepEfficiencyInSpt|sleep_eff",
                   names(part4), value = TRUE, ignore.case = TRUE)
+  if (length(eff_col) == 0 && "derived_eff_ratio_pct" %in% names(part4)) {
+    eff_col <- "derived_eff_ratio_pct"
+  }
 
   sleep_summary <- part4[
     , .(
@@ -220,6 +258,7 @@ if (nrow(part4) > 0) {
         sleep_duration_h      = if (length(dur_col) > 0) {
           raw_val <- mean(get(dur_col[1]), na.rm = TRUE)
           if (is.na(raw_val)) NA_real_
+          else if (dur_col_is_known_hours) round(raw_val, 2)  # known column, known units — trust it
           else if (raw_val > 24) round(raw_val / 60, 2)   # minutes → hours
           else if (raw_val >= 1) round(raw_val, 2)          # already hours
           else { message("[sleep] Unexpected duration value: ", raw_val,

@@ -84,7 +84,7 @@ load_ggir_file <- function(meting_output_dir, meting,
   if (!is.null(pattern)) {
     files <- list.files(results_dir, pattern = pattern, full.names = TRUE)
     if (length(files) == 0) return(NULL)
-    path <- files[1]
+    path <- pick_ggir_variant_file(files)
   } else if (!is.null(filename)) {
     path <- file.path(results_dir, filename)
   } else {
@@ -127,7 +127,9 @@ read_part4_sleep <- function(results_dir) {
     if (file.exists(p)) {
       message("[utils_ggir] Part 4 sleep: ", basename(p),
               if (dirname(p) != results_dir) paste0(" (", basename(dirname(p)), "/)") else "")
-      return(read.csv(p, stringsAsFactors = FALSE))
+      out <- read.csv(p, stringsAsFactors = FALSE)
+      attr(out, "source_path") <- p
+      return(out)
     }
   }
 
@@ -136,11 +138,74 @@ read_part4_sleep <- function(results_dir) {
                           pattern = "^part4.*\\.csv$", full.names = TRUE))
   if (length(any_p4) > 0) {
     message("[utils_ggir] Part 4 sleep (fallback): ", basename(any_p4[1]))
-    return(read.csv(any_p4[1], stringsAsFactors = FALSE))
+    out <- read.csv(any_p4[1], stringsAsFactors = FALSE)
+    attr(out, "source_path") <- any_p4[1]
+    return(out)
   }
 
   message("[utils_ggir] No Part 4 sleep CSV found. Sleep data may be in Part 5.")
   NULL
+}
+
+#' Pick the preferred file when a pattern matches multiple GGIR report variants
+#'
+#' GGIR can emit several part5 report variants side by side in the same
+#' results/ directory (WW = waking-window, MM = midnight-to-midnight,
+#' Segments = qwindow-based) whenever more than one succeeds for a given run.
+#' They are not interchangeable: each defines "a day" differently, and their
+#' participant coverage can differ drastically — e.g. MM requires a full
+#' clean midnight-to-midnight day and can silently cover only a fraction of
+#' the participants that Segments or WW cover. Taking list.files()'s first
+#' (alphabetical) match ignores all of this and can silently drop most
+#' participants' activity data with no warning (confirmed live: a real test
+#' run produced part5_personsummary_MM_*.csv covering 1 of 10 participants,
+#' part5_personsummary_Segments_*.csv covering 7 of 10 — MM sorts first
+#' alphabetically and was being picked unconditionally).
+#'
+#' Segments is preferred by default because this study's whole design is
+#' built around qwindow/school-day segments (02_label_segments.R already
+#' hard-requires the Segments daysummary file for the same reason).
+#'
+#' @param files Character vector of candidate file paths already filtered by
+#'   a pattern (e.g. "^part5_personsummary_").
+#' @param prefer Character vector of variant tokens in priority order.
+#' @return The chosen file path, or NULL if `files` is empty.
+pick_ggir_variant_file <- function(files, prefer = c("Segments", "WW", "MM")) {
+  if (length(files) == 0) return(NULL)
+  if (length(files) == 1) return(files[1])
+
+  variants <- sub("^part5_(?:personsummary|daysummary)_([A-Za-z]+)_.*", "\\1",
+                   basename(files), perl = TRUE)
+
+  # Participant coverage per candidate — read once so a silent under-coverage
+  # pick is caught even if the "preferred" variant happens to be present.
+  n_ids <- vapply(files, function(f) {
+    tryCatch({
+      length(unique(data.table::fread(f, select = "ID")[["ID"]]))
+    }, error = function(e) NA_integer_)
+  }, integer(1))
+
+  chosen_idx <- NA_integer_
+  for (v in prefer) {
+    hit <- which(variants == v)
+    if (length(hit) > 0) { chosen_idx <- hit[1]; break }
+  }
+  if (is.na(chosen_idx)) chosen_idx <- 1L
+
+  message("[ggir] Multiple part5 report variants found (",
+          paste(paste0(variants, "=", n_ids, "p"), collapse = ", "),
+          ") — using '", variants[chosen_idx], "': ", basename(files[chosen_idx]))
+
+  best_idx <- which.max(n_ids)
+  if (!is.na(n_ids[chosen_idx]) && !is.na(n_ids[best_idx]) &&
+      n_ids[best_idx] > n_ids[chosen_idx]) {
+    warning("[ggir] Chosen variant '", variants[chosen_idx], "' covers ",
+            n_ids[chosen_idx], " participant(s), but '", variants[best_idx],
+            "' covers ", n_ids[best_idx], " for the same run — participants ",
+            "may be silently missing from this meting's activity summary.",
+            call. = FALSE)
+  }
+  files[chosen_idx]
 }
 
 #' Read GGIR Part 5 day summary — prefers Segments version
@@ -156,4 +221,30 @@ read_ggir_config <- function(meting_output_dir) {
   cfg_path <- file.path(subdir, "config.csv")
   if (!file.exists(cfg_path)) return(NULL)
   read.csv(cfg_path, stringsAsFactors = FALSE)
+}
+
+#' Resolve the qwindow actually used by GGIR for a given meting output
+#'
+#' Reads GGIR's own persisted config.csv (via read_ggir_config()) and parses
+#' the qwindow argument's value string (e.g. "c(0,8.5,10,12,13,15.5,24)")
+#' into a numeric vector. This is the ground truth of what GGIR actually used
+#' for this run — independent of whatever config.yaml currently says, which
+#' may be stale (edited without a step-01 rerun) or irrelevant
+#' (qwindow_strategy: "auto" derives boundaries from schedules instead).
+#'
+#' @param meting_output_dir The outputdir passed to GGIR for this meting.
+#' @return Numeric vector of qwindow boundaries, or NULL if config.csv is
+#'   missing, has no qwindow row, or the value can't be parsed.
+resolve_ggir_qwindow <- function(meting_output_dir) {
+  ggir_cfg <- read_ggir_config(meting_output_dir)
+  if (is.null(ggir_cfg) || !"argument" %in% names(ggir_cfg)) return(NULL)
+  row <- ggir_cfg[ggir_cfg$argument == "qwindow", ]
+  if (nrow(row) == 0) return(NULL)
+  # Defensive: GGIR writes one config.csv per run, so this should never have
+  # more than one qwindow row — but take the last one if it ever does.
+  val_str <- tail(row$value, 1)
+  val_str <- gsub("^c\\(|\\)$", "", val_str)
+  parsed  <- suppressWarnings(as.numeric(strsplit(val_str, ",")[[1]]))
+  if (length(parsed) == 0 || anyNA(parsed)) return(NULL)
+  parsed
 }
