@@ -136,7 +136,33 @@ validate_config <- function(cfg) {
     }
   }
 
-  # ── 3. Schedule validation ───────────────────────────────────────────────────
+  # ── 3. Path length (Windows 260-char MAX_PATH) ───────────────────────────────
+  # GGIR creates deeply nested output folders and long filenames on top of
+  # whatever data_raw/data_processed already resolves to — a data folder deep
+  # on a network/shared drive can silently exceed Windows' path limit well
+  # before GGIR's own additions are even factored in. Warn early and clearly
+  # rather than let this fail deep inside GGIR's internals. mustWork = FALSE
+  # since the directory may not exist yet (e.g. data_processed pre-run).
+  path_len_threshold <- 140
+  for (path_field in c("data_raw", "data_processed")) {
+    p <- cfg$paths[[path_field]]
+    if (!is.null(p)) {
+      resolved_len <- nchar(normalizePath(p, mustWork = FALSE))
+      if (resolved_len > path_len_threshold) {
+        add_warn(sprintf(
+          paste0("paths.%s resolves to a %d-character path — Windows has a ",
+                 "260-character limit, and GGIR adds nested subfolders and ",
+                 "long filenames on top. If this is on a network/shared ",
+                 "drive, copy the data to a short local path instead ",
+                 "(e.g. C:/SchoolMove/data/raw/) to avoid failures partway ",
+                 "through a run."),
+          path_field, resolved_len
+        ))
+      }
+    }
+  }
+
+  # ── 4. Schedule validation ───────────────────────────────────────────────────
   is_valid_hhmm <- function(x) {
     !is.null(x) && grepl("^([01]?[0-9]|2[0-3]):[0-5][0-9]$", as.character(x))
   }
@@ -187,7 +213,7 @@ validate_config <- function(cfg) {
     }
   }
 
-  # ── 4. Report ────────────────────────────────────────────────────────────────
+  # ── 5. Report ────────────────────────────────────────────────────────────────
   if (length(warnings) > 0) {
     for (w in warnings) message("[config] WARN: ", w)
   }
