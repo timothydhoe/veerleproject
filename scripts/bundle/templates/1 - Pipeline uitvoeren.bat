@@ -3,7 +3,7 @@ setlocal
 set BUNDLE_DIR=%~dp0
 set R_HOME=%BUNDLE_DIR%R-portable
 
-REM Pure-batch string length (no external process) — a nested powershell call
+REM Pure-batch string length (no external process) -- a nested powershell call
 REM here previously crashed the whole script with an unhelpful "GTR was
 REM unexpected at this time" if that subprocess produced no output for any
 REM reason (quoting/encoding across the pwsh->cmd->powershell chain, missing
