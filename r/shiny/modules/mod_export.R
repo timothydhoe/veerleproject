@@ -160,12 +160,17 @@ mod_export_server <- function(id, shared) {
       if (!is.null(pattern)) {
         files <- list.files(results_dir, pattern = pattern, full.names = TRUE)
         if (length(files) == 0) return(NULL)
-        dt <- fread(files[1], data.table = FALSE, encoding = "UTF-8")
+        # Multiple report variants (WW/MM/Segments) can exist side by side —
+        # pick_ggir_variant_file() (utils_ggir.R) prefers Segments and warns
+        # if the chosen variant covers fewer participants than an alternative
+        # that was available, instead of blindly taking files[1].
+        chosen <- pick_ggir_variant_file(files)
+        dt <- fread(chosen, data.table = FALSE, encoding = "UTF-8")
         # Record which GGIR report variant (WW/MM/Segments) this came from —
         # different variants use different day-boundary conventions and can
         # have different columns (e.g. Segments vs WW/MM), so downstream
         # consumers need to know which one they're looking at.
-        attr(dt, "ggir_variant") <- sub("^part5_personsummary_([A-Za-z]+)_.*", "\\1", basename(files[1]))
+        attr(dt, "ggir_variant") <- sub("^part5_personsummary_([A-Za-z]+)_.*", "\\1", basename(chosen))
         dt
       } else {
         fpath <- file.path(results_dir, filename)

@@ -84,7 +84,7 @@ load_ggir_file <- function(meting_output_dir, meting,
   if (!is.null(pattern)) {
     files <- list.files(results_dir, pattern = pattern, full.names = TRUE)
     if (length(files) == 0) return(NULL)
-    path <- files[1]
+    path <- pick_ggir_variant_file(files)
   } else if (!is.null(filename)) {
     path <- file.path(results_dir, filename)
   } else {
@@ -145,6 +145,67 @@ read_part4_sleep <- function(results_dir) {
 
   message("[utils_ggir] No Part 4 sleep CSV found. Sleep data may be in Part 5.")
   NULL
+}
+
+#' Pick the preferred file when a pattern matches multiple GGIR report variants
+#'
+#' GGIR can emit several part5 report variants side by side in the same
+#' results/ directory (WW = waking-window, MM = midnight-to-midnight,
+#' Segments = qwindow-based) whenever more than one succeeds for a given run.
+#' They are not interchangeable: each defines "a day" differently, and their
+#' participant coverage can differ drastically — e.g. MM requires a full
+#' clean midnight-to-midnight day and can silently cover only a fraction of
+#' the participants that Segments or WW cover. Taking list.files()'s first
+#' (alphabetical) match ignores all of this and can silently drop most
+#' participants' activity data with no warning (confirmed live: a real test
+#' run produced part5_personsummary_MM_*.csv covering 1 of 10 participants,
+#' part5_personsummary_Segments_*.csv covering 7 of 10 — MM sorts first
+#' alphabetically and was being picked unconditionally).
+#'
+#' Segments is preferred by default because this study's whole design is
+#' built around qwindow/school-day segments (02_label_segments.R already
+#' hard-requires the Segments daysummary file for the same reason).
+#'
+#' @param files Character vector of candidate file paths already filtered by
+#'   a pattern (e.g. "^part5_personsummary_").
+#' @param prefer Character vector of variant tokens in priority order.
+#' @return The chosen file path, or NULL if `files` is empty.
+pick_ggir_variant_file <- function(files, prefer = c("Segments", "WW", "MM")) {
+  if (length(files) == 0) return(NULL)
+  if (length(files) == 1) return(files[1])
+
+  variants <- sub("^part5_(?:personsummary|daysummary)_([A-Za-z]+)_.*", "\\1",
+                   basename(files), perl = TRUE)
+
+  # Participant coverage per candidate — read once so a silent under-coverage
+  # pick is caught even if the "preferred" variant happens to be present.
+  n_ids <- vapply(files, function(f) {
+    tryCatch({
+      length(unique(data.table::fread(f, select = "ID")[["ID"]]))
+    }, error = function(e) NA_integer_)
+  }, integer(1))
+
+  chosen_idx <- NA_integer_
+  for (v in prefer) {
+    hit <- which(variants == v)
+    if (length(hit) > 0) { chosen_idx <- hit[1]; break }
+  }
+  if (is.na(chosen_idx)) chosen_idx <- 1L
+
+  message("[ggir] Multiple part5 report variants found (",
+          paste(paste0(variants, "=", n_ids, "p"), collapse = ", "),
+          ") — using '", variants[chosen_idx], "': ", basename(files[chosen_idx]))
+
+  best_idx <- which.max(n_ids)
+  if (!is.na(n_ids[chosen_idx]) && !is.na(n_ids[best_idx]) &&
+      n_ids[best_idx] > n_ids[chosen_idx]) {
+    warning("[ggir] Chosen variant '", variants[chosen_idx], "' covers ",
+            n_ids[chosen_idx], " participant(s), but '", variants[best_idx],
+            "' covers ", n_ids[best_idx], " for the same run — participants ",
+            "may be silently missing from this meting's activity summary.",
+            call. = FALSE)
+  }
+  files[chosen_idx]
 }
 
 #' Read GGIR Part 5 day summary — prefers Segments version

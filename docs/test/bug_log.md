@@ -12,10 +12,11 @@ Status legend: `open` · `fixed` · `wontfix` · `deferred`
 
 ---
 
-## ⏸ Session checkpoint (2026-07-12)
+## ⏸ Session checkpoint (2026-07-13)
 
-**Progress: 10 of 17 fixed** (#16/#17 are new low-priority items logged along the
-way; #16b is a one-time manual data cleanup, not a numbered bug).
+**Progress: 11 of 18 fixed** (#16/#17 are new low-priority items logged along the
+way; #16b is a one-time manual data cleanup, not a numbered bug; #18 is a new
+Critical item found after #15 shipped — see below).
 - ✅ Fixed: #1 (config.yaml corruption), #2 (stale config.csv breaking native runs),
   #3 (dev overrides leaking into real runs), #4 (QC part4 false-fail), #5 (QC part5
   false-fail), #6 (Shiny profile not reaching pipeline), #7 (step 02 trusting a
@@ -23,7 +24,10 @@ way; #16b is a one-time manual data cleanup, not a numbered bug).
   (Shiny part5 export hardcoded WW variant, silently dropping participants), #16
   (dummy participant IDs collided with real ID convention — renamed to a reserved
   range), #8 (sleep validity conflated data-completeness with sleep-efficiency,
-  plus an adjacent sleep_duration_h column-mismatch bug found alongside it).
+  plus an adjacent sleep_duration_h column-mismatch bug found alongside it), #18
+  (part5 personsummary variant selection was still arbitrary/alphabetical after
+  #15 — #15 only fixed the Shiny export's crash risk, not the root cause, which
+  also affected the core pipeline's analysis_ready.csv).
 - ⬜ Open: #9, #10, #11, #12 (doc drift), #13, #14, #17.
 
 Next open item in severity order: **#9** (Low — segment-summary build is an
@@ -843,3 +847,88 @@ at all. Worth a follow-up to match `dl_segments`'s existing pattern.
 
 **Where:** `r/shiny/modules/mod_export.R` (`dl_ggir`, `dl_combined`, `dl_part5`
 handler, ~lines 157-200)
+
+---
+
+## 🔴 Critical — found after #15 shipped, still live in the core pipeline
+
+### 18. part5 personsummary variant selection was arbitrary/alphabetical — status: `fixed`
+
+**Context: this is why the delivered pipeline was silently excluding activity
+data.** #15 treated the WW/MM/Segments mismatch as a Shiny-export-only
+crash/mislabeling risk and fixed it there (safe `rbindlist(fill=TRUE)` +
+`ggir_variant` tagging). It never asked *why* a meting would resolve to a
+different variant in the first place, and it never touched the core pipeline
+(`03_build_summaries.R`), which reads part5 personsummary through the exact
+same "grab the first pattern match" logic.
+
+**Investigated by actually running the fixed branch, not just re-reading the
+log.** Ran the full pipeline against the bundled dummy data (`example_mode:
+true`). GGIR produced **three** part5 personsummary files side by side in
+`meting_1`'s own results directory — `MM`, `Segments`, `WW` — because
+`do.report = c(2,4,5)` with `qwindow` set makes GGIR attempt all three
+day-boundary conventions, and more than one can succeed for the same run.
+`load_ggir_file()` (`r/pipeline/utils_ggir.R:85-87`, used by
+`03_build_summaries.R:77` via `load_ggir(pattern = "^part5_personsummary_")`)
+and `mod_export.R`'s `dl_ggir()` both did `list.files(...)[1]` — whichever
+sorts first alphabetically, with zero regard for which one actually has data
+for most participants.
+
+**Confirmed live, in `analysis_ready.csv`:** `meting_1`'s alphabetically-first
+file was `MM` (requires a full midnight-to-midnight day), which GGIR only
+produced for **1 of 10** dummy participants. `Segments` (this study's actual
+qwindow/school-day variant — the one `02_label_segments.R` already
+hard-requires) covered **7 of 10**. The pipeline silently picked `MM`,
+leaving `mvpa_min_day_avg`/`sb_min_day`/`lpa_min_day` blank for the other 9
+participants in `analysis_ready.csv` — the file the whole study's scientific
+output depends on — with no warning anywhere. `meting_2` (no `MM` file that
+run) happened to resolve to `Segments` by the same alphabetical accident, so
+the same participant's two measurement waves could also end up built from
+different day-boundary conventions with nothing to catch it, same risk #15
+already flagged for the Shiny export but never checked for in the pipeline.
+
+**Fix applied:** added `pick_ggir_variant_file(files, prefer = c("Segments",
+"WW", "MM"))` to `r/pipeline/utils_ggir.R`. When a pattern matches more than
+one file it reads each candidate's participant count (`length(unique(ID))`),
+picks the first variant present from the preference list (Segments first,
+matching this study's design and `02_label_segments.R`'s own requirement),
+`message()`s every candidate's coverage so the choice is visible in logs, and
+`warning()`s if a non-chosen candidate actually covers *more* participants
+than the one picked — so a wrong preference-list assumption on some future
+dataset still surfaces instead of failing silently again. Wired into all
+three call sites that had the ambiguous pattern:
+- `load_ggir_file()` (used by `03_build_summaries.R`'s `load_ggir()`) —
+  the core pipeline path that was silently dropping participants.
+- `mod_export.R`'s `dl_ggir()` — replaces its own `files[1]`.
+- `qc/qc_01_ggir.R`'s part5 personsummary check — was reporting a false
+  `[PASS] ... — 1 participants` off whichever file sorted first; now reports
+  the actually-chosen variant's real count.
+
+`length(files) == 1` (the common case — most real runs won't have multiple
+variants survive) short-circuits before any of this runs, so behavior is
+unchanged whenever there's nothing ambiguous to resolve.
+
+**Verified three ways:**
+1. **Dummy data (`example_mode: true`), full pipeline re-run.** Console:
+   `[ggir] Multiple part5 report variants found (MM=1p, Segments=7p, WW=2p) —
+   using 'Segments'` for meting_1, `(Segments=8p, WW=4p) — using 'Segments'`
+   for meting_2. `analysis_ready.csv`'s meting_1 activity columns went from
+   1/10 participants populated to 7/10 (the remaining 3 genuinely have no
+   valid Segments window in this short dummy data — not a selection
+   artifact, confirmed by checking their raw Segments-file presence).
+2. **Real native data** (`73044_0000001002.cwa`,
+   `1001_left wrist_109488_2026-04-27 11-10-01.bin`, `example_mode: false`,
+   copied into both metingen for a quick two-participant run): GGIR only
+   produced a `Segments` file for either meting this run (no `MM`/`WW`
+   survived) — confirms the `length(files) == 1` short-circuit path, no
+   spurious warnings, both participants' MVPA/SB/LPA/sleep populated
+   correctly in `analysis_ready.csv`.
+3. **Shiny export, both datasets:** downloaded "Activiteitsprofiel per
+   deelnemer" via the running dashboard in both scenarios above. Dummy-data
+   export correctly shows `ggir_variant = "Segments"` for all rows, both
+   metingen. Real-data export contains both real participants (`1001`,
+   `73044`), both metingen, both tagged `Segments`.
+
+**Where:** `r/pipeline/utils_ggir.R` (new `pick_ggir_variant_file()`,
+`load_ggir_file()`), `r/shiny/modules/mod_export.R` (`dl_ggir()`),
+`r/qc/qc_01_ggir.R` (part5 personsummary check)

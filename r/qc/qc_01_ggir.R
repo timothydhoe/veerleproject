@@ -88,9 +88,14 @@ for (meting in metingen) {
   if (length(part5_pers) == 0) {
     warn("part5_personsummary_*.csv not found (may appear after more participants are processed)")
   } else {
-    dtp <- tryCatch(fread(part5_pers[1], data.table = TRUE), error = function(e) NULL)
+    # Multiple report variants (WW/MM/Segments) can exist side by side with
+    # very different participant coverage — use the same preference/coverage
+    # check the pipeline and Shiny export use, instead of just part5_pers[1],
+    # so QC doesn't report a false PASS off the least-complete variant.
+    chosen_pers <- pick_ggir_variant_file(part5_pers)
+    dtp <- tryCatch(fread(chosen_pers, data.table = TRUE), error = function(e) NULL)
     if (!is.null(dtp)) {
-      pass(sprintf("%s — %d participants", basename(part5_pers[1]), nrow(dtp)))
+      pass(sprintf("%s — %d participants", basename(chosen_pers), nrow(dtp)))
     }
   }
 
