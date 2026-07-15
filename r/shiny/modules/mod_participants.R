@@ -179,9 +179,9 @@ mod_participants_server <- function(id, shared) {
       dt <- explorer_day_data()
       if (is.null(dt)) return(no_data_plot("Selecteer een deelnemer."))
       daily <- dt[, .(mvpa_day = sum(mvpa_seg, na.rm = TRUE)),
-                  by = .(calendar_date, meting)]
+                  by = .(date, meting)]
       daily[, meting_label := METINGEN_LABELS[meting]]
-      daily[, date_f := as.Date(calendar_date)]
+      daily[, date_f := as.Date(date)]
       if (nrow(daily) == 0) return(no_data_plot("Geen dagdata beschikbaar."))
       ggplot(daily, aes(x = date_f, y = mvpa_day, colour = meting_label, group = meting_label)) +
         geom_line(linewidth = 0.9) +
