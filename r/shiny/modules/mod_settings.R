@@ -192,6 +192,12 @@ mod_settings_server <- function(id, shared) {
 
     # ── Profile manager ──────────────────────────────────────────────────────
 
+    # "none" is a reserved sentinel, not a profile file — it means the
+    # pipeline uses config.yaml's own values directly (see
+    # apply_active_profile() in validate_config.R). It always appears first
+    # in the dropdown regardless of what's saved in profiles_dir.
+    NO_PROFILE_LABEL <- "Geen (config.yaml)"
+
     profile_list <- reactiveFileReader(
       intervalMillis = 5000,
       session        = session,
@@ -202,24 +208,32 @@ mod_settings_server <- function(id, shared) {
       }
     )
 
+    is_no_profile <- function(name) {
+      is.null(name) || tolower(trimws(name)) %in% c("", "none")
+    }
+
     observe({
-      choices <- profile_list()
-      if (length(choices) == 0) choices <- "default"
+      real_profiles <- profile_list()
+      choices <- c(setNames("none", NO_PROFILE_LABEL),
+                   setNames(real_profiles, real_profiles))
+      selected <- shared$cfg$profiles$active
+      if (is_no_profile(selected)) selected <- "none"
       updateSelectInput(session, "settings_profile_select", choices = choices,
-                        selected = shared$cfg$profiles$active %||% "default")
+                        selected = selected)
     })
 
     output$settings_active_profile_badge <- renderUI({
-      active <- shared$cfg$profiles$active %||% "default"
+      active <- shared$cfg$profiles$active
+      label  <- if (is_no_profile(active)) NO_PROFILE_LABEL else active
       div(
         class = "alert alert-info py-2 small mb-2",
-        icon("check-circle"), " Actief profiel: ", strong(active)
+        icon("check-circle"), " Actief profiel: ", strong(label)
       )
     })
 
     output$settings_profile_notes <- renderUI({
       selected <- input$settings_profile_select
-      if (is.null(selected)) return(NULL)
+      if (is.null(selected) || is_no_profile(selected)) return(NULL)
       path <- file.path(profiles_dir, paste0(selected, ".yaml"))
       if (!file.exists(path)) return(NULL)
       prof <- tryCatch(yaml::read_yaml(path), error = function(e) NULL)
@@ -229,13 +243,21 @@ mod_settings_server <- function(id, shared) {
 
     observeEvent(input$settings_load_profile, {
       selected <- input$settings_profile_select
-      path <- file.path(profiles_dir, paste0(selected, ".yaml"))
-      if (!file.exists(path)) {
-        showNotification("Profiel niet gevonden.", type = "error"); return()
-      }
-      prof <- tryCatch(yaml::read_yaml(path), error = function(e) NULL)
-      if (is.null(prof)) {
-        showNotification("Kon profiel niet lezen.", type = "error"); return()
+      if (is_no_profile(selected)) {
+        prof <- tryCatch(yaml::read_yaml("../../config.yaml"),
+                         error = function(e) NULL)
+        if (is.null(prof)) {
+          showNotification("Kon config.yaml niet lezen.", type = "error"); return()
+        }
+      } else {
+        path <- file.path(profiles_dir, paste0(selected, ".yaml"))
+        if (!file.exists(path)) {
+          showNotification("Profiel niet gevonden.", type = "error"); return()
+        }
+        prof <- tryCatch(yaml::read_yaml(path), error = function(e) NULL)
+        if (is.null(prof)) {
+          showNotification("Kon profiel niet lezen.", type = "error"); return()
+        }
       }
       v  <- prof$validity %||% list()
       cp <- (prof$ggir$cut_points_mg) %||% list()
@@ -260,7 +282,8 @@ mod_settings_server <- function(id, shared) {
                          value = b$sedentary_min %||% 30)
       updateCheckboxInput(session, "settings_bout_split_context",
                           value = isTRUE(b$split_at_context_boundary %||% TRUE))
-      showNotification(paste0("Profiel '", selected, "' geladen."), type = "message")
+      loaded_label <- if (is_no_profile(selected)) NO_PROFILE_LABEL else selected
+      showNotification(paste0("'", loaded_label, "' geladen."), type = "message")
     })
 
     observeEvent(input$settings_save_profile, {

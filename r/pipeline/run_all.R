@@ -37,6 +37,7 @@ t_start <- proc.time()
 source("pipeline/utils_input.R", local = TRUE)
 
 cfg <- read_config_yaml("../config.yaml")
+cfg <- apply_active_profile(cfg)
 validate_config(cfg)
 
 if (isTRUE(cfg$dev$example_mode)) {

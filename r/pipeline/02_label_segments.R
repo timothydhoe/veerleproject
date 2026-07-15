@@ -25,6 +25,7 @@ source("pipeline/validate_config.R", local = TRUE)
 
 cfg         <- read_config_yaml("../config.yaml")
 cfg         <- apply_active_profile(cfg)
+validate_config(cfg)
 base_out    <- cfg$paths$data_processed
 metingen    <- c("meting_1", "meting_2")
 tz          <- cfg$output$timezone

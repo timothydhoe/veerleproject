@@ -238,10 +238,17 @@ reproducibility:
 # ── Configuratieprofielen ─────────────────────────────────────────────────────
 # Profielen laten je benoemde parametersets opslaan (geldigheidsdrempels,
 # grenswaarden, boutduren) zonder dit bestand rechtstreeks te bewerken.
-# Het actieve profiel wordt geladen door de Shiny-app bij het opstarten.
 # Profielen worden beheerd via tabblad "Instellingen" in het dashboard.
+#
+# active: "none" (standaard) — er is geen profiel actief en de pipeline
+#   gebruikt de waarden in dit bestand rechtstreeks. Bewerk je bv.
+#   ggir.cut_points_mg hierboven, dan telt die wijziging meteen mee.
+# active: "<profielnaam>" — de pipeline laadt profiles/<profielnaam>.yaml en
+#   overschrijft validity/bouts/ggir.cut_points_mg met de waarden daarin, ook
+#   als je dit bestand nadien nog bewerkt. Activeer je via "Instellingen" >
+#   "Activeer".
 profiles:
-  active:    "default"
+  active:    "none"
   directory: "profiles/"    # relatief aan de r/ werkdirectory
 
 # ── Uitvoerinstellingen ───────────────────────────────────────────────────────

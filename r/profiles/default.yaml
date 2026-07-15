@@ -1,11 +1,16 @@
 # SchoolMove — Configuration Profile
 # ─────────────────────────────────────────────────────────────────────────────
-# This profile captures the researcher-tunable parameters for a named analysis.
-# It is loaded by the Shiny app (Tab 7 "Instellingen") and merged over the
-# base values in config.yaml. The pipeline uses these values when running.
+# This profile captures a named, saved parameter preset. It only takes effect
+# once deliberately activated (config.yaml's profiles.active: "default") via
+# Tab 7 "Instellingen" > "Activeer" — while active, it is merged over the base
+# values in config.yaml and the pipeline uses the merged values when running.
+# With profiles.active: "none" (the project's default), this file is inert
+# and config.yaml's own values govern directly.
 #
 # To create a new profile: open Tab 7, adjust parameters, click "Opslaan als".
 # To activate a profile for the pipeline: click "Activeer" in Tab 7.
+# To go back to using config.yaml directly: select "Geen (config.yaml)" in
+# Tab 7 and click "Activeer".
 # ─────────────────────────────────────────────────────────────────────────────
 
 profile_name: "Standaard"

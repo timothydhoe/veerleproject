@@ -32,6 +32,16 @@ source("../pipeline/validate_config.R", local = TRUE)
 
 cfg <- read_config_yaml("../../config.yaml")
 
+# Load the active configuration profile and merge it over the base config
+# *before* validating — validation must check the values actually in effect,
+# not the pre-merge base (otherwise an invalid active profile would ship to
+# the dashboard completely unchecked). Profiles live in r/profiles/ and are
+# managed via Tab 7 "Instellingen". Shared with the pipeline scripts via
+# apply_active_profile() in validate_config.R, so the dashboard and real runs
+# agree on effective values.
+profiles_dir <- resolve_cfg_path(cfg$profiles$directory %||% "profiles/")
+cfg <- apply_active_profile(cfg, profiles_dir)
+
 CONFIG_VALID <- tryCatch({
   validate_config(cfg)
   TRUE
@@ -39,13 +49,6 @@ CONFIG_VALID <- tryCatch({
   message("[config] Validation errors — dashboard may show incomplete data:\n", e$message)
   FALSE
 })
-
-# Load the active configuration profile and merge it over the base config.
-# Profiles live in r/profiles/ and are managed via Tab 7 "Instellingen".
-# Shared with the pipeline scripts via apply_active_profile() in
-# validate_config.R, so the dashboard and real runs agree on effective values.
-profiles_dir <- resolve_cfg_path(cfg$profiles$directory %||% "profiles/")
-cfg <- apply_active_profile(cfg, profiles_dir)
 base_out       <- resolve_cfg_path(cfg$paths$data_processed)
 metingen       <- c("meting_1", "meting_2")
 METINGEN_LABELS <- c(meting_1 = "Meting 1", meting_2 = "Meting 2")

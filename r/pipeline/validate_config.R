@@ -52,14 +52,23 @@ read_config_yaml <- function(path) {
 #'   Callers running from a different working directory (e.g. shiny/global.R,
 #'   which runs from r/shiny/) must pass an already-resolved path explicitly.
 #' @return cfg, with validity/bouts/ggir.cut_points_mg overridden by the
-#'   active profile's values where present.
+#'   active profile's values where present. Unchanged if profiles.active is
+#'   unset or "none" — config.yaml's own values are the default and are never
+#'   silently overridden unless a profile is deliberately activated.
 apply_active_profile <- function(cfg, profiles_dir = NULL) {
+  active_name <- cfg$profiles$active
+  no_profile  <- is.null(active_name) ||
+    (is.character(active_name) &&
+      tolower(trimws(active_name)) %in% c("", "none"))
+  if (no_profile) {
+    message("[profile] No active profile (profiles.active: none) — using config.yaml values directly.")
+    return(cfg)
+  }
+
   if (is.null(profiles_dir)) {
     profiles_dir <- cfg$profiles$directory
     if (is.null(profiles_dir)) profiles_dir <- "profiles"
   }
-  active_name <- cfg$profiles$active
-  if (is.null(active_name)) active_name <- "default"
   profile_path <- file.path(profiles_dir, paste0(active_name, ".yaml"))
 
   if (!file.exists(profile_path)) {

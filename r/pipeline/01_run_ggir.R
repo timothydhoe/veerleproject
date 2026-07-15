@@ -20,6 +20,7 @@ source("pipeline/validate_config.R", local = TRUE)
 
 cfg <- read_config_yaml("../config.yaml")
 cfg <- apply_active_profile(cfg)
+validate_config(cfg)
 cp  <- cfg$ggir$cut_points_mg
 dev <- cfg$dev
 
