@@ -190,7 +190,8 @@ schedules:
         - { label: recess, start: "10:10", end: "10:25" }
         - { label: lunch,  start: "12:05", end: "13:10" }
         - { label: recess, start: "14:50", end: "15:05" }
-      wednesday: []               # geen namidag
+      wednesday: 
+        - { label: recess, start: "10:10", end: "10:25" }            # geen namidag
 
   school_6:
     fallback: false
