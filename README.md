@@ -47,8 +47,8 @@ by movement researchers. GGIR does the heavy lifting:
 - It **classifies every second** of the recording as one of: sedentary (SB), light
   physical activity (LPA), moderate-to-vigorous physical activity (MVPA), non-wear, or
   sleep.
-- It flags **invalid days** — days where the child wore the sensor for fewer than 16
-  hours — and marks **invalid recordings** — where a child has fewer than 3 valid days,
+- It flags **invalid days** — days where the child wore the sensor for fewer than 9
+  hours — and marks **invalid recordings** — where a child has fewer than 4 valid days,
   including at least one weekend day.
 - It produces **summary tables** as CSV files, ready for further analysis.
 
@@ -105,15 +105,15 @@ You should not need to edit any `.R` files. Everything is controlled through
 
 ### 4. Run the pipeline
 
-Open `r/pipeline/01_run_ggir.R` and click **Source**. GGIR will process all the sensor
-files and write results to `data/processed/ggir/`. This may take some time depending on
-how many files there are.
+Open `r/pipeline/run_all.R` and click **Source**. This runs the full pipeline in one go
+— GGIR processing, school-context labeling, and building the analysis-ready summary
+tables. This may take some time depending on how many files there are.
 
 ### 5. Check the output
 
-Open `r/validation/check_outputs.R` and click **Source**. This runs a quick set of
-checks and prints a summary to the console — letting you know if everything looks
-correct before opening the dashboard.
+The QC scripts in `r/qc/` (`qc_01_ggir.R`, `qc_02_segments.R`, `qc_03_summaries.R`) each
+run a set of checks after their corresponding pipeline step and print a summary to the
+console — letting you know if everything looks correct before opening the dashboard.
 
 ### 6. Open the dashboard
 
@@ -139,15 +139,20 @@ SchoolMove/
 │   ├── install.R                 ← Run once to install packages
 │   │
 │   ├── pipeline/
-│   │   └── 01_run_ggir.R         ← Runs the full GGIR analysis pipeline
+│   │   ├── run_all.R             ← Researcher entry point: runs the full pipeline
+│   │   ├── 01_run_ggir.R         ← GGIR processing
+│   │   ├── 02_label_segments.R   ← School-context labeling
+│   │   └── 03_build_summaries.R  ← Analysis-ready summary tables
 │   │
-│   ├── shiny/
-│   │   ├── global.R              ← Shared setup for the dashboard
-│   │   ├── ui.R                  ← Dashboard layout and tabs
-│   │   └── server.R              ← Dashboard logic
+│   ├── qc/
+│   │   ├── qc_01_ggir.R          ← Verify GGIR output
+│   │   ├── qc_02_segments.R      ← Verify segment labels
+│   │   └── qc_03_summaries.R     ← Verify analysis-ready summaries
 │   │
-│   └── validation/
-│       └── check_outputs.R       ← Sanity checks after running the pipeline
+│   └── shiny/
+│       ├── global.R              ← Shared setup for the dashboard
+│       ├── ui.R                  ← Dashboard layout and tabs
+│       └── server.R              ← Dashboard logic
 │
 ├── data/
 │   ├── raw/                      ← Input CSV files (NOT included in this repository
@@ -156,6 +161,9 @@ SchoolMove/
 │   ├── processed/                ← GGIR output (generated automatically)
 │   └── example/                  ← Fictional test data (safe to share)
 │
+├── to_be_built/                  ← Backlog of unbuilt research features (not wired
+│                                    into the pipeline — see to_be_built/README.md)
+├── .claude/                      ← Claude Code hooks and slash commands
 └── docs/                         ← Background documentation and reference material
 ```
 
@@ -179,16 +187,13 @@ Here is a quick guide to the sections:
 | `output`       | Timezone and locale settings                                                                  |
 
 > **Note on cut-points**: The activity thresholds (how many mg counts as "light" vs
-> "moderate" activity) are not yet filled in — they are waiting for confirmation from
-> the
-> research protocol. They appear as commented-out lines (`# cut_points_mg: ...`) and
-> will
-> be added once confirmed.
+> "moderate" activity) are confirmed and set in `config.yaml`'s `cut_points_mg` block
+> (Hildebrand et al. 2014, wrist-worn, children).
 
-> **Note on school schedules**: Schools 3 and 4 are marked `fallback: true` in the
-> config — their timetables are approximate because the detailed schedules were not yet
-> available. The pipeline will still run, but results for those schools should be
-> interpreted with care until the confirmed schedules are added.
+> **Note on school schedules**: All 6 schools now have confirmed schedules
+> (`fallback: false`) in `config.yaml`. Schools 3 and 4 have some estimated details
+> (school 3's per-class late-dismissal overrides; school 4's Wednesday end time) — see
+> `docs/data_info/school_info.md` for sourcing details on each.
 
 ---
 
@@ -198,8 +203,6 @@ The following items are still to be resolved before the analysis can be complete
 
 | Item                       | Why it matters                                                                    | Who to ask                                        |
 |----------------------------|-----------------------------------------------------------------------------------|---------------------------------------------------|
-| Activity cut-points        | Without exact ENMO thresholds, the SB/LPA/MVPA classification cannot be finalised | Veerle (referenced as citation 7 in the protocol) |
-| Schools 3 and 4 timetables | Current schedules are approximate fallbacks                                       | Veerle                                            |
 | Day-segment definitions    | Agreement needed on which time windows to use (lessons, recess, lunch, PE, etc.)  | Veerle + research team                            |
 | Sleep log availability     | If children kept a sleep diary, it can improve sleep detection accuracy           | Veerle                                            |
 

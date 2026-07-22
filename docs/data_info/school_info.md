@@ -184,7 +184,7 @@ ELSE
   → context = "unknown"
 ```
 
-These rules are stored in `config/school_schedules.yaml` and loaded at runtime. Schools with missing timetable data use the fallback schedule and are flagged with `schedule_source = "fallback"` in the output.
+These rules are stored in `config.yaml`'s `schedules:` section and loaded at runtime. Schools with missing timetable data use the fallback schedule and are flagged with `schedule_source = "fallback"` in the output.
 
 ---
 

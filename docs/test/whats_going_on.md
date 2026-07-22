@@ -70,6 +70,57 @@ a bigger structural change to make GGIR genuinely per-school. Needs a decision b
 
 ---
 
+### 4. Hooks likely non-functional on any machine other than the original author's — status: `open`
+
+**Where:** `.claude/settings.json` (all three hook `command` entries)
+
+All three hooks (GDPR guard, config guard, R syntax check) are wired up as:
+```
+"command": "python3 /Users/timothydhoe/Code/veerle-project/.claude/hooks/gdpr_guard.py"
+```
+— a hardcoded absolute path to the original author's Mac, invoked via `python3`.
+
+Confirmed on a second machine (Windows, this checkout at
+`C:\Users\astri\Desktop\Data_Scientist\Projects\veerleproject`): that path doesn't
+exist, and `python3` isn't even resolvable on PATH (only `python`, via Anaconda
+3.13.5). Net effect: none of the three hooks fire here — the GDPR guard, config guard,
+and R syntax check are all silently inactive on this machine, contrary to `CLAUDE.md`'s
+"Hooks (automatic) ... Fire without any invocation" framing.
+
+**Fix direction (researched, not applied):** Claude Code's Hooks Reference documents
+`${CLAUDE_PROJECT_DIR}` as the portable project-root variable for hook `command`
+entries — this replaces the hardcoded path regardless of machine/OS. The Python
+interpreter name still needs runtime selection rather than a hardcoded choice, since
+Mac (`python3` typically present) and this Windows setup (`python` present, `python3`
+absent) disagree: a single-execution wrapper like
+`sh -c 'command -v python3 >/dev/null 2>&1 && python3 "$0" || python "$0"' "${CLAUDE_PROJECT_DIR}/.claude/hooks/<script>.py"`
+picks the right one without double-running the hook (a plain `cmd1 || cmd2` fallback
+would mask a real non-zero exit from a working interpreter). Not yet confirmed whether
+Claude Code's hook runner invokes `command` through a shell that can resolve `sh` on
+Windows — needs live testing once applied.
+
+**Impact:** currently no GDPR guard, config-file validation, or R syntax checking on
+any machine except the original author's, if even that path is still current there.
+
+---
+
+### 5. `.claude/commands/pipeline-status.md` checks the wrong output path — status: `open`
+
+**Where:** `.claude/commands/pipeline-status.md:15,17`
+
+Checks `data/processed/segment_summary.csv`, `data/processed/analysis_ready.csv`, and
+`data/processed/validity_summary.csv` — but these three files actually land in `data/`
+directly (confirmed via `config.yaml`'s own comment and the write-path code in
+`02_label_segments.R:531` / `03_build_summaries.R:459-460`, both of which write to
+`file.path(base_out, "..", "<file>.csv")` where `base_out` is `data/processed`).
+
+**Impact:** running `/pipeline-status` today would report these three outputs as
+missing even when the pipeline has completed through step 03 — under-reports real
+progress. The GGIR raw-output checks in the same command (under
+`data/processed/ggir/...`) are correct and unaffected.
+
+---
+
 ## ⚪ Informational
 
 ### 2. `bouts.split_at_context_boundary` — confirmed correct in design, but inert — status: `deferred`
@@ -98,7 +149,17 @@ decision per the config comment ("wacht op methodologische beslissing").
 
 ---
 
-### 3. `CLAUDE.md` mischaracterizes `min_wear_hours_per_day` as a "waking hours" criterion — status: `open`
+### 3. `CLAUDE.md` mischaracterizes `min_wear_hours_per_day` as a "waking hours" criterion — status: `fixed`
+
+**Fixed** in the CLAUDE.md documentation-sync pass: the "Key Domain Concepts" table's
+"Validity criteria" row now states the correct mechanism (24h calendar-day valid-wear
+hours via GGIR's `includedaycrit`, distinct from the non-configurable waking-hours
+`includedaycrit.part5`), the correct current numbers (≥9h/≥4 days, matching Veerle's
+protocol citation and `config.yaml`), and notes that the old ≥16h/≥3-day figure was an
+earlier, superseded email figure. See `CLAUDE.md`'s Key Domain Concepts table.
+
+<details>
+<summary>Original finding (kept for context)</summary>
 
 **Where:** `CLAUDE.md` ("Key Domain Concepts" table, "Validity criteria" row),
 `config.yaml:65` (`validity.min_wear_hours_per_day`), `r/pipeline/01_run_ggir.R:94-95`
@@ -136,5 +197,41 @@ being measured.
 understanding. Should be corrected in `CLAUDE.md` to describe the criterion accurately
 (24h calendar-day valid-wear hours via GGIR's `includedaycrit`, distinct from the
 non-configurable waking-hours `includedaycrit.part5` used internally by Part 5).
+
+</details>
+
+---
+
+### 6. `.claude/settings.local.json` has the same class of stale Mac-specific path — status: `open`
+
+**Where:** `.claude/settings.local.json` (permissions allowlist)
+
+Contains `"Bash(/Users/timothydhoe/Syntra/.venv/bin/python3 *)"` — same root cause as
+item #4, but harmless in practice since it's an unused allowlist pattern, not something
+that executes on its own.
+
+---
+
+### 7. Stale `data/processed/` path in pipeline code comments (comment-only, no behavior bug) — status: `open`
+
+**Where:** `r/pipeline/02_label_segments.R:14`, `r/pipeline/03_build_summaries.R:9-10`
+
+Header comments describe output paths as `data/processed/segment_summary.csv` etc. —
+the code itself correctly writes to `data/` directly (same actual location `#5` and
+`whats_going_on.md`'s CLAUDE.md-directory-layout note both confirm). Comment-only
+drift, no functional impact.
+
+---
+
+### 8. `Makefile`'s `py-*` targets are dead — status: `open`
+
+**Where:** `Makefile:1-11`
+
+`py-install`, `py-lint`, `py-test` all `cd python && ...`, but no `python/` directory
+exists anywhere in the repo — it predates the Python-deferred architecture decision and
+the `to_be_built/` reorganization (which relocated the only Python files in the repo,
+an unbuilt attendance-prediction backlog feature, to `to_be_built/`, not `python/`).
+Running any of these three targets fails immediately with "no such file or directory."
+Only `r-install` (`cd r && Rscript install.R`) is real.
 
 ---

@@ -116,6 +116,11 @@ The specific cut-point values depend on the population (children vs adults), dev
 
 Part 2 also determines which days are valid for inclusion in the analysis based on wear time.
 
+> **Superseded** — this was an early figure from Veerle's initial email, since replaced
+> by the formal protocol citation: ≥9 valid hours of wear on ≥4 days (≥1 weekend day),
+> matching `config.yaml`'s `min_wear_hours_per_day`/`min_valid_days` and `CLAUDE.md`'s
+> Key Domain Concepts table. Kept below as a historical record, not current guidance.
+>
 > **⚠️ VEERLE'S PROTOCOL — VALIDITY CRITERIA** (from her email):
 >
 > - A **valid day** requires **≥ 16 hours** of accelerometer wear time
@@ -232,7 +237,7 @@ Facilitates circadian rhythm analysis (cosinor fitting, inter-daily stability, i
 | Clipping detection | Part 2 | Low | Fraction of samples at ±8g |
 | Non-wear detection | Part 2 | Medium | Rolling window std dev + range check |
 | Cut-point classification | Part 2 | Low | Threshold comparisons (need exact values from Veerle) |
-| Day validity | Part 2 | Low | ≥16h wear, ≥3 valid days incl. 1 weekend |
+| Day validity | Part 2 | Low | ≥9h wear, ≥4 valid days incl. 1 weekend |
 | Per-day summaries | Part 5 | Low | Aggregation of classified epochs |
 | Day-segment analysis | Part 5 | Low | Filter by school schedule time windows |
 

@@ -54,11 +54,23 @@ them through `config.yaml`, not as hardcoded values in scripts.
 ### Directory Layout
 
 ```
+README.md                 # Non-technical project overview (front door for GitHub visitors)
+ARCHITECTURE.md           # Deep state/data-flow reference (mermaid diagrams, file-based state)
+AUDIT.md, UX_REVIEW.md    # Historical, point-in-time audit reports — findings now largely
+                          # resolved/tracked in r/DEVELOPER.md; not living documentation
+scripts/
+  bundle/                 # Builds the portable Windows distribution (see r/GEBRUIKERSGIDS.md)
+  ci/                     # CI helpers (dummy-data pipeline run, Shiny smoke test)
+.github/workflows/        # CI: pipeline + dashboard verification on push/PR, bundle build
+
 r/
   SchoolMove.Rproj        # Open in RStudio to start working
   install.R               # Run once: renv::restore(), then installs packages
   .Rprofile               # renv auto-activation
   renv/ + renv.lock       # Package environment (do not edit)
+  DEVELOPER.md            # ← The current, actively-maintained technical reference for r/ —
+                          # read this for anything beyond what CLAUDE.md covers
+  GEBRUIKERSGIDS.md       # Dutch end-user guide (install, dashboard, troubleshooting)
 
   pipeline/
     run_all.R             # ← Researcher entry point: sources 01, 02, 03 in sequence
@@ -93,20 +105,24 @@ data/
       meting_1/
       meting_2/
 docs/                     # Detailed reference documents — read before implementing
+to_be_built/              # Backlog of unbuilt research features (RQ4, RQ5) — not wired
+                          # into r/. See to_be_built/README.md.
 .claude/
   settings.json           # Hooks configuration (see Claude Code Tooling below)
   hooks/                  # Hook scripts (GDPR guard, config guard, R syntax check)
   commands/               # Custom slash commands for Claude Code
 ```
 
-> **Note on Python directory**: A `python/` directory may exist in the repo from an
-> earlier plan. It is vestigial — ignore it unless Python work is explicitly requested.
+> **Note on Python**: Python is not part of the active pipeline. `to_be_built/` contains
+> two standalone Python files (an unbuilt attendance-prediction feature) that are not
+> imported or run by anything in `r/` — see `to_be_built/README.md`. Do not build new
+> Python components unless explicitly asked.
 
 ### Pipeline Steps
 
 | Step | Script | What happens | Key output |
 |------|--------|--------------|------------|
-| **01** | `01_run_ggir.R` | GGIR Parts 1–5: load CSVs, ENMO, non-wear, cut-point classification, sleep detection, day summaries | `part2_daysummary.csv`, `part4_nightsummary.csv`, `part5_daysummary_WW_*.csv` |
+| **01** | `01_run_ggir.R` | GGIR Parts 1–5: load CSVs, ENMO, non-wear, cut-point classification, sleep detection, day summaries | `part2_daysummary.csv`, `part4_nightsummary_sleep_cleaned.csv`, `part5_daysummary_WW_*.csv` |
 | **QC 01** | `qc/qc_01_ggir.R` | Verify GGIR outputs: required files present, correct columns, participant counts | Console report |
 | **02** | `02_label_segments.R` | Apply school schedule labels to GGIR output: for each participant × day, distribute per-qwindow activity (read from `part5_daysummary_Segments_*.csv`, not `part2_daysummary.csv`) across school context segments (in_class / recess / lunch / before_school / after_school). Falls back to wear-time-only if that Part 5 Segments file is missing. | `segment_summary.csv` |
 | **QC 02** | `qc/qc_02_segments.R` | Verify segment coverage: all pupils labeled, no missing school day windows, fallback school warnings | Console report |
@@ -124,7 +140,7 @@ Run the full pipeline at once with `r/pipeline/run_all.R` (source in RStudio or
 | Part 1 | Load CSV data, ENMO + anglez derivation, epoch aggregation | `.RData` milestone files |
 | Part 2 | Non-wear detection, clipping, cut-point classification, day/segment summaries | `part2_daysummary.csv` |
 | Part 3 | Rest period estimation (feeds sleep detection) | `.RData` |
-| Part 4 | Sleep detection (HDCZA algorithm) | `part4_nightsummary.csv` |
+| Part 4 | Sleep detection (HDCZA algorithm) | `part4_nightsummary_sleep_cleaned.csv` (primary; falls back to `_sleep_full.csv`, then bare `part4_nightsummary.csv`) |
 | Part 5 | Full behavioral timeline, bouts, fragmentation, day-segment analysis | `part5_daysummary_WW_*.csv`, `part5_personsummary_WW_*.csv` |
 
 GGIR persists all parameters in a `config.csv` per output directory, enabling
@@ -151,7 +167,7 @@ pre-converted CSV rather than raw `.bin`.
 | **Cut-points** | ENMO thresholds classifying activity intensity. Hildebrand 2014/2017, wrist, children: SB < 56.3 mg, LPA 56.3–191.6 mg, MPA 191.6–695.8 mg, VPA > 695.8 mg. |
 | **Autocalibration** | Corrects sensor drift via sphere-fitting on stationary periods. **Not applicable with pre-converted CSVs.** |
 | **Non-wear detection** | SD < 13 mg and range < 50 mg on ≥2 of 3 axes, over 60-min blocks assessed every 15 min. |
-| **Validity criteria** | Sedentary analysis: ≥16 valid waking hours on ≥3 days (≥1 weekend). Sleep: ≥50% valid sleep on ≥5 nights. |
+| **Validity criteria** | Sedentary analysis: ≥9 valid hours of wear on ≥4 days (≥1 weekend), per Veerle's protocol citation — matches `config.yaml`'s `min_wear_hours_per_day`/`min_valid_days`. The "hours" here are 24h calendar-day valid-wear hours (GGIR's `includedaycrit`), not a waking-only window — a separate, non-configurable waking-hours parameter (`includedaycrit.part5`, hardcoded to 2/3) exists only for Part 5 internals. An earlier ≥16h/≥3-day figure (from an early email from Veerle, later superseded) still lingers in `docs/step2_ggir_pipeline_reference.md`'s historical quote. Sleep: ≥50% valid sleep on ≥5 nights. |
 | **GGIR** | R package for the canonical 6-part accelerometer pipeline. Parts 1–5 are in scope. |
 | **Meting** | Dutch for "measurement". Meting 1 and meting 2 are the two measurement waves per school. |
 | **Segment** | School day context label: `before_school`, `in_class`, `recess`, `lunch`, `after_school`, `weekend`. |
@@ -182,10 +198,10 @@ Input files are GENEActiv CSVs. Key characteristics (full spec in
    the qwindow-aware pipeline (`02_label_segments.R` correctly reads
    `part5_daysummary_Segments_*.csv`), verified via `qc_01_ggir.R`/`qc_02_segments.R`/
    `qc_03_summaries.R`. Not yet tested at full study scale (~400 participants across
-   6 schools) — see `docs/test/bug_log.md` for known risks worth addressing before that
-   run (#9: segment-summary build is an unoptimized loop, likely slow at scale; #13:
-   summary CSV output paths aren't redirectable/overwrite-guarded — caused a real,
-   unrecoverable data loss once already during testing).
+   6 schools), but the two risks previously flagged here are both now resolved: see
+   `docs/test/bug_log.md` #9 (segment-summary loop — benchmarked at full study scale,
+   4.66s, not a real problem — `wontfix`) and #13 (summary CSV output paths now
+   backed up before every overwrite — `fixed`).
 
 ## MCP Servers
 
@@ -193,6 +209,8 @@ Input files are GENEActiv CSVs. Key characteristics (full spec in
   - GGIR docs: library ID `/wadpac/ggir`
   - R Shiny docs: library ID `shiny_posit_co`
     (source: `https://context7.com/websites/shiny_posit_co`)
+- **playwright** (`npx @playwright/mcp@latest`) — Browser automation, used to drive the
+  Shiny dashboard for UX review (e.g. `UX_REVIEW.md` was produced this way).
 
 ## Claude Code Tooling
 
@@ -230,6 +248,14 @@ All files in `docs/` should be read before implementing any pipeline component:
 - `step1_data_format_reference.md` — CSV format specification
 - `step2_ggir_pipeline_reference.md` — GGIR pipeline internals
 - `meeting-notes/monday_meeting_prep.md` — Open questions and context from client meetings
+- `data_info/data_dictionary.md` — Field/unit/derived-variable spec for all pipeline outputs
+- `data_info/research_questions.md` — The study's research questions the pipeline answers
+- `data_info/school_info.md` — Per-school schedules and context-labeling rules
+- `info/GENEAread_bin_to_csv.md` — `.bin`→CSV conversion notes
+- `info/*.docx` — Veerle's original source documents (schools, study, metingen — cited
+  directly by `config.yaml` and `school_info.md`)
+
+(The Dutch end-user guide lives at `r/GEBRUIKERSGIDS.md`, not under `docs/`.)
 
 (A `step3_action_plan_and_strategy.md` and `planning/plan_of_attack_v2.md` were
 referenced here previously but don't exist in the repo — removed rather than
