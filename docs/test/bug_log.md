@@ -1232,7 +1232,7 @@ verified to touch nothing else.
 
 ---
 
-### 25. `Makefile`'s `py-*` targets are dead — status: `open`
+### 25. `Makefile`'s `py-*` targets are dead — status: `fixed`
 
 **Where:** `Makefile:1-11`
 
@@ -1242,3 +1242,14 @@ the `to_be_built/` reorganization (which relocated the repo's only Python files,
 unbuilt attendance-prediction backlog feature, to `to_be_built/`, not `python/`).
 Running any of these three targets fails immediately with "no such file or directory."
 Only `r-install` (`cd r && Rscript install.R`) is real.
+
+**Verified 2026-07-22:** confirmed via git history, not just the bug's original
+wording — a real `python/` scaffold (`pyproject.toml`, `src/accel_pipeline/...`,
+`uv`-managed) existed and was deliberately deleted in commit `2b78651`
+("remove python scaffold... Python deferred; R-only going forward"), matching
+`CLAUDE.md`'s current stance. The Makefile was simply missed by that cleanup —
+confirmed no other commit has touched `Makefile` since the initial `init` commit.
+`to_be_built/`'s Python files are unrelated standalone scripts, not a target these
+rules could ever point to.
+
+**Fix applied:** removed the three dead `py-*` targets; only `r-install` remains.
