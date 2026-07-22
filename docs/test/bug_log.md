@@ -1142,31 +1142,39 @@ issues live.
 
 ---
 
-### 21. Claude Code hooks hardcoded to the original author's Mac path — status: `open`
+### 21. Claude Code hooks hardcoded to the original author's Mac path — status: `fixed`
 
 **Where:** `.claude/settings.json` (all three hook `command` entries)
 
-All three hooks (GDPR guard, config guard, R syntax check) are wired to
+All three hooks (GDPR guard, config guard, R syntax check) were wired to
 `python3 /Users/timothydhoe/Code/veerle-project/.claude/hooks/<script>.py` — a
 hardcoded absolute Mac path invoked via `python3`. Confirmed on this Windows machine:
 the path doesn't exist and `python3` isn't resolvable on PATH (only `python`, via
-Anaconda). None of the three hooks fire here, silently — contrary to `CLAUDE.md`'s
+Anaconda). None of the three hooks fired here, silently — contrary to `CLAUDE.md`'s
 "Hooks (automatic) ... Fire without any invocation" framing.
 
-**Fix direction (researched, not applied):** use `${CLAUDE_PROJECT_DIR}` (Claude
-Code's documented portable project-root variable) instead of the hardcoded path, plus
-a runtime interpreter-selection wrapper — e.g.
-`sh -c 'command -v python3 >/dev/null 2>&1 && python3 "$0" || python "$0"'
-"${CLAUDE_PROJECT_DIR}/.claude/hooks/<script>.py"` — since Mac (`python3` typically
-present) and this Windows setup (`python` present, `python3` absent) disagree on which
-interpreter exists. A plain `cmd1 || cmd2` fallback would mask a real non-zero exit
-from a working interpreter, so the `command -v` check matters. Not yet confirmed
-whether Claude Code's hook runner invokes `command` through a shell that can resolve
-`sh` on Windows — needs live testing once applied.
+**Fix applied (commit `8835844`):** each hook command now resolves the interpreter at
+runtime (`if command -v python3 >/dev/null 2>&1; then PY=python3; else PY=python; fi`)
+and invokes the script via `"${CLAUDE_PROJECT_DIR}/.claude/hooks/<script>.py"`, with
+`"shell": "bash"` set explicitly on each hook entry so the `if`/`command -v` syntax has
+a POSIX shell to run under regardless of the platform default.
 
-**Impact:** no GDPR guard, config-file validation, or R syntax checking currently
-active on any machine but the original author's, if even that path is still current
-there.
+**Verified 2026-07-22:**
+- Interpreter fallback: `command -v python3` fails on this machine as expected, falls
+  back to `python` (Anaconda) — confirmed by running the resolution logic directly.
+- `${CLAUDE_PROJECT_DIR}` resolves to the correct repo root.
+- End-to-end: force-staged a dummy file in `data/raw/`, ran `gdpr_guard.py` with a
+  realistic Windows-style `cwd` (`C:/Users/...`) piped in as the hook payload would
+  provide, and confirmed it blocks the commit (exit code 2) with the expected message;
+  confirmed it passes clean (exit 0) when nothing forbidden is staged.
+
+**Caveat (not a live bug, just a fragile assumption):** `gdpr_guard.py` passes the
+JSON payload's `cwd` straight into `subprocess.run(cwd=...)`. This only works because
+Claude Code's harness supplies a native Windows-style path on this platform — a
+POSIX-style `cwd` (e.g. `/c/Users/...`, as bash's own `$(pwd)` would produce) crashes
+that call with `NotADirectoryError: [WinError 267]`. Confirmed this failure mode during
+testing when a POSIX-style `cwd` was substituted; not something the fix needs to
+handle unless the harness's `cwd` format ever changes on this platform.
 
 ---
 
@@ -1188,13 +1196,18 @@ GGIR raw-output path checks in the same command are correct and unaffected.
 
 ---
 
-### 23. `.claude/settings.local.json` has the same stale Mac-specific path, in the permissions allowlist — status: `open` (informational, low priority)
+### 23. `.claude/settings.local.json` has the same stale Mac-specific path, in the permissions allowlist — status: `fixed`
 
 **Where:** `.claude/settings.local.json`
 
-Contains `"Bash(/Users/timothydhoe/Syntra/.venv/bin/python3 *)"` — same root cause as
-#21, but harmless in practice: it's an unused allowlist pattern, not something that
-executes on its own.
+Contained `"Bash(/Users/timothydhoe/Syntra/.venv/bin/python3 *)"` — same root cause as
+#21, but harmless in practice: it was an unused allowlist pattern, not something
+that executed on its own. The #21 fix (commit `8835844`) only touched
+`.claude/settings.json`, so this entry was missed by that pass.
+
+**Fix applied 2026-07-22:** removed the stale line from the `permissions.allow` array.
+`"Bash(python3 *)"` (a few lines above it, still present) already covers the general
+case portably.
 
 ---
 

@@ -13,7 +13,6 @@
       "WebFetch(domain:www.atlassian.com)",
       "WebFetch(domain:developer.atlassian.com)",
       "Bash(python3 *)",
-      "Bash(/Users/timothydhoe/Syntra/.venv/bin/python3 *)",
       "WebFetch(domain:styleguide.ugent.be)",
       "Bash(grep *)",
       "mcp__playwright__browser_evaluate",
