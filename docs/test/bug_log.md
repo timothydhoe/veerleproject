@@ -1211,13 +1211,24 @@ case portably.
 
 ---
 
-### 24. Stale `data/processed/` path in pipeline code header comments — status: `open` (comment-only, no functional impact)
+### 24. Stale `data/processed/` path in pipeline code header comments — status: `fixed`
 
 **Where:** `r/pipeline/02_label_segments.R:14`, `r/pipeline/03_build_summaries.R:9-10`
 
-Header comments describe output paths as `data/processed/segment_summary.csv` etc. —
+Header comments described output paths as `data/processed/segment_summary.csv` etc. —
 the code itself correctly writes to `data/` directly (same actual location #22
 confirms). Comment-only drift, no functional impact.
+
+**Verified 2026-07-22:** confirmed against live code, not just the bug's original
+wording — `cfg$paths$data_processed` resolves to `../data/processed`
+(`config.yaml:14`, whose own comment already documents the correct behavior), and
+both scripts write via `file.path(base_out, "..", "<file>.csv")`, landing in `data/`
+directly. Confirmed at the actual `fwrite()` call sites
+(`02_label_segments.R:531/534`, `03_build_summaries.R:456-477`).
+
+**Fix applied:** corrected both header comments to `data/segment_summary.csv`,
+`data/analysis_ready.csv`, `data/validity_summary.csv`. Comment-only change, diff
+verified to touch nothing else.
 
 ---
 

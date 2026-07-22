@@ -6,8 +6,8 @@
 # Computes validity flags per participant per meting.
 #
 # Outputs:
-#   data/processed/analysis_ready.csv   — one row per participant × meting
-#   data/processed/validity_summary.csv — inclusion/exclusion per participant
+#   data/analysis_ready.csv   — one row per participant × meting
+#   data/validity_summary.csv — inclusion/exclusion per participant
 #
 # Run from r/ directory. Requires 01 and 02 to have completed first.
 # ─────────────────────────────────────────────────────────────────────────────

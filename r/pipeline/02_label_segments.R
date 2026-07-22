@@ -11,7 +11,7 @@
 # maps GGIR's time-segment columns onto our 5 context labels using the
 # school-specific schedule from config.yaml.
 #
-# Output: data/processed/segment_summary.csv
+# Output: data/segment_summary.csv
 #
 # Run from r/ directory. Requires 01_run_ggir.R to have completed first.
 # ─────────────────────────────────────────────────────────────────────────────
