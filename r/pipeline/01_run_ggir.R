@@ -48,6 +48,14 @@ build_qwindow_from_schedules <- function(schedules_cfg) {
         if (!is.null(brk$end))   all_times <- c(all_times, brk$end)
       }
     }
+    # Class-level overrides (e.g. school_3's late-dismissal exceptions) — pool
+    # any HH:MM-shaped value found anywhere under class_overrides, not just
+    # school_end_override by name, so a future override type is picked up too.
+    if (!is.null(sch$class_overrides)) {
+      override_vals <- unlist(sch$class_overrides, use.names = FALSE)
+      is_hm <- grepl("^\\d{1,2}:\\d{2}$", override_vals)
+      all_times <- c(all_times, override_vals[is_hm])
+    }
   }
 
   decimal_h <- sapply(unique(all_times), hm_to_h)

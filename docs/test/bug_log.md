@@ -634,6 +634,12 @@ and specifically ruled out, not just deprioritized.
 ### 10. `labeled_epochs.csv` / context-aware bouts not implemented — status: `deferred` (reviewed, scoped, not a quick fix)
 **Where:** `r/pipeline/03_build_summaries.R:298-311`
 
+**Re-confirmed via `docs/test/whats_going_on.md` item #2** (separate session review): independently
+re-verified that `split_at_context_boundary`'s design/mechanism is correct (it splits a sedentary
+bout whenever the school-context label changes mid-bout, via `bout_key <- paste(is_target,
+ddata$context, sep = "|")` RLE logic in `detect_activity_bouts()`) — it's genuinely just inert
+because `labeled_epochs.csv` doesn't exist yet, same root cause as this item, not a second bug.
+
 Self-documented in the code and confirmed live
 (`[WARN] labeled_epochs.csv not found — context-aware bout columns will be NA`). The
 entire `config.yaml bouts:` section and all `bouts_30min_*` columns in
@@ -1027,3 +1033,188 @@ unchanged whenever there's nothing ambiguous to resolve.
 **Where:** `r/pipeline/utils_ggir.R` (new `pick_ggir_variant_file()`,
 `load_ggir_file()`), `r/shiny/modules/mod_export.R` (`dl_ggir()`),
 `r/qc/qc_01_ggir.R` (part5 personsummary check)
+
+---
+
+## 🆕 Additional issues — from `docs/test/whats_going_on.md` (session 2026-07-22)
+
+Consolidated in from a separate ad-hoc issue log (`docs/test/whats_going_on.md`) so
+`bug_log.md` stays the single place all tracked issues live. Cross-checked
+`docs/test/veerleproject_assessment.md` against the items above at the same time —
+every finding in that document is already reflected here (it's the document
+`bug_log.md` was originally consolidated from), so nothing new to add from it.
+
+### 19. `qwindow_strategy: auto` never pooled `class_overrides` boundaries — status: `fixed`
+
+**Where:** `r/pipeline/01_run_ggir.R:35-58` (`build_qwindow_from_schedules()`),
+`config.yaml:154-166` (school_3 `class_overrides`), `r/pipeline/02_label_segments.R:312-377`
+(per-pupil override schedule construction)
+
+**Investigated before fixing:** traced the full chain end-to-end rather than trusting
+the surface description in `docs/test/whats_going_on.md` item #1, which first raised
+this. Confirmed: `build_qwindow_from_schedules()` pools `school_start`/`school_end`/
+`breaks` from every school into one shared qwindow list used by a single `GGIR()` call
+per meting — all schools processed together, GGIR itself has no concept of "school."
+Separately, `02_label_segments.R` already builds an exact per-pupil schedule for
+school_3's 13 `class_overrides` pupils (classes 2Aa/2Ab/2Ba/2Bb), including their real
+16:25 late-dismissal boundary on override days — but `build_qwindow_from_schedules()`
+never read `class_overrides` at all, so under `qwindow_strategy: auto` the shared
+qwindow list never contained a 16:25 cut. Confirmed the practical consequence:
+`distribute_qwindow_cols()` (`02_label_segments.R:276-300`) apportions activity by
+time-overlap whenever a real segment boundary doesn't land exactly on a qwindow cut —
+so those 13 pupils' after-school segment on override days was being estimated via
+overlap-interpolation instead of exact-matched, identical treatment to `manual` mode,
+defeating `auto`'s purpose for that subset.
+
+Also confirmed **this bug was dormant in practice**: `config.yaml`'s live
+`qwindow_strategy` is `"manual"` today, and the manual `qwindow:` list also lacks a
+16:25 cut — so nothing is currently worse because of this bug. It only becomes live
+once `qwindow_strategy` is switched to `"auto"`, which the project owner confirmed is
+the intended eventual setting for the real run.
+
+**Fix applied:** extended `build_qwindow_from_schedules()` to also pool boundary times
+from `class_overrides`, generically — scans for any value shaped like `HH:MM` anywhere
+under a school's `class_overrides`, rather than hardcoding the `school_end_override`
+key name:
+```r
+if (!is.null(sch$class_overrides)) {
+  override_vals <- unlist(sch$class_overrides, use.names = FALSE)
+  is_hm <- grepl("^\\d{1,2}:\\d{2}$", override_vals)
+  all_times <- c(all_times, override_vals[is_hm])
+}
+```
+Chosen generically (scan-any-HH:MM-shaped-value) rather than special-casing
+`school_end_override` by name, per independent review feedback, so a future override
+type (e.g. a hypothetical `school_start_override` or break-time override — neither
+exists today) doesn't silently reintroduce the same gap.
+
+**Explicitly considered and not chosen:**
+- *Doc-only fix* (reword `config.yaml`'s "auto" comment to disclose the gap without
+  closing it) — rejected as insufficient once the project owner confirmed `auto` is
+  the intended real-run setting; a known, closeable precision gap shouldn't ship as a
+  documented limitation when a small, contained code fix removes it.
+- *Per-school GGIR calls* (make GGIR genuinely school-aware by splitting the single
+  shared `GGIR()` call into one per school) — rejected as disproportionate: verified
+  `02_label_segments.R:213-223` currently hard-asserts meting_1/meting_2 resolve to one
+  identical shared qwindow (`stop()` if they diverge), and the window-lookup logic is
+  keyed only by `ID date window_idx` with no school dimension anywhere — reworking
+  this would be a much larger blast radius. Also confirmed this wouldn't even fully
+  solve the class_overrides case on its own, since the overrides apply to a *subset of
+  pupils within* school_3, not the whole school — would need to go to per-class or
+  per-pupil GGIR calls to fully resolve, an even bigger change.
+
+**Verified two ways:**
+1. **Independent static review** (fresh agent, no prior context): confirmed the bug's
+   existence and mechanism by reading the actual code and `config.yaml`; separately
+   verified the proposed fix's exact R snippet by constructing/running it against the
+   real parsed `class_overrides` structure — confirmed pupil-ID integers (`3025`-`3042`)
+   are correctly excluded by the regex, all `"16:25"` values are correctly kept,
+   `hm_to_h()` is unaffected by duplicates (already deduplicated upstream via
+   `unique()`), and no degenerate-coercion risk exists in the current pupil ID range.
+2. **Live execution against the real current `config.yaml`** (post-fix, independent
+   agent run): confirmed the applied fix's actual output — auto-derived qwindow grew
+   from 34 to 35 boundaries, the new value is `16.4167` (16:25), traced specifically to
+   school_3's `class_overrides` (the only school with any), and every other school's
+   boundaries are unchanged. Confirmed the resulting vector is still valid for GGIR's
+   `qwindow` argument (numeric, strictly ascending, 0→24, no NAs, no duplicates).
+   Confirmed `config.yaml`'s live `qwindow_strategy` is still `"manual"`, so this fix
+   has zero effect on the current production setting — it activates only once/if
+   switched to `"auto"`, consistent with the config's own existing note that switching
+   strategies requires a full step-01 rerun.
+
+**Impact:** closes the one confirmed concrete precision gap in `qwindow_strategy: auto`
+for school_3's 13 `class_overrides` pupils, ahead of the project owner's planned switch
+to `auto` for the real study run.
+
+---
+
+### 20. `CLAUDE.md` mischaracterized `min_wear_hours_per_day` as a "waking hours" criterion — status: `fixed`
+
+**Where:** `CLAUDE.md` ("Key Domain Concepts" table)
+
+Documentation-only, already fixed prior to this session. `CLAUDE.md`'s validity-criteria
+row now correctly states the 24h-calendar-day valid-wear-hours mechanism (GGIR's
+`includedaycrit`), distinct from the non-configurable waking-hours `includedaycrit.part5`
+used only internally by Part 5. Full investigation detail (independent agent verification
+against GGIR's own decompiled source) preserved in `docs/test/whats_going_on.md` item #3.
+Logged here for completeness, since `bug_log.md` is now the single place all tracked
+issues live.
+
+---
+
+### 21. Claude Code hooks hardcoded to the original author's Mac path — status: `open`
+
+**Where:** `.claude/settings.json` (all three hook `command` entries)
+
+All three hooks (GDPR guard, config guard, R syntax check) are wired to
+`python3 /Users/timothydhoe/Code/veerle-project/.claude/hooks/<script>.py` — a
+hardcoded absolute Mac path invoked via `python3`. Confirmed on this Windows machine:
+the path doesn't exist and `python3` isn't resolvable on PATH (only `python`, via
+Anaconda). None of the three hooks fire here, silently — contrary to `CLAUDE.md`'s
+"Hooks (automatic) ... Fire without any invocation" framing.
+
+**Fix direction (researched, not applied):** use `${CLAUDE_PROJECT_DIR}` (Claude
+Code's documented portable project-root variable) instead of the hardcoded path, plus
+a runtime interpreter-selection wrapper — e.g.
+`sh -c 'command -v python3 >/dev/null 2>&1 && python3 "$0" || python "$0"'
+"${CLAUDE_PROJECT_DIR}/.claude/hooks/<script>.py"` — since Mac (`python3` typically
+present) and this Windows setup (`python` present, `python3` absent) disagree on which
+interpreter exists. A plain `cmd1 || cmd2` fallback would mask a real non-zero exit
+from a working interpreter, so the `command -v` check matters. Not yet confirmed
+whether Claude Code's hook runner invokes `command` through a shell that can resolve
+`sh` on Windows — needs live testing once applied.
+
+**Impact:** no GDPR guard, config-file validation, or R syntax checking currently
+active on any machine but the original author's, if even that path is still current
+there.
+
+---
+
+### 22. `.claude/commands/pipeline-status.md` checks the wrong output path — status: `open`
+
+**Where:** `.claude/commands/pipeline-status.md:15,17`
+
+Checks `data/processed/segment_summary.csv`, `data/processed/analysis_ready.csv`, and
+`data/processed/validity_summary.csv` — these three files actually land in `data/`
+directly (confirmed via `config.yaml`'s own comment and the write-path code in
+`02_label_segments.R`/`03_build_summaries.R`). Same underlying path confusion already
+fixed in `CLAUDE.md`'s directory layout and `config.yaml`'s own comment (see the
+"Documentation drift" section above) — but this specific command file was missed by
+that pass.
+
+**Impact:** running `/pipeline-status` today under-reports progress, showing these
+three outputs as missing even when the pipeline has completed through step 03. The
+GGIR raw-output path checks in the same command are correct and unaffected.
+
+---
+
+### 23. `.claude/settings.local.json` has the same stale Mac-specific path, in the permissions allowlist — status: `open` (informational, low priority)
+
+**Where:** `.claude/settings.local.json`
+
+Contains `"Bash(/Users/timothydhoe/Syntra/.venv/bin/python3 *)"` — same root cause as
+#21, but harmless in practice: it's an unused allowlist pattern, not something that
+executes on its own.
+
+---
+
+### 24. Stale `data/processed/` path in pipeline code header comments — status: `open` (comment-only, no functional impact)
+
+**Where:** `r/pipeline/02_label_segments.R:14`, `r/pipeline/03_build_summaries.R:9-10`
+
+Header comments describe output paths as `data/processed/segment_summary.csv` etc. —
+the code itself correctly writes to `data/` directly (same actual location #22
+confirms). Comment-only drift, no functional impact.
+
+---
+
+### 25. `Makefile`'s `py-*` targets are dead — status: `open`
+
+**Where:** `Makefile:1-11`
+
+`py-install`, `py-lint`, `py-test` all `cd python && ...`, but no `python/` directory
+exists anywhere in the repo — predates the Python-deferred architecture decision and
+the `to_be_built/` reorganization (which relocated the repo's only Python files, an
+unbuilt attendance-prediction backlog feature, to `to_be_built/`, not `python/`).
+Running any of these three targets fails immediately with "no such file or directory."
+Only `r-install` (`cd r && Rscript install.R`) is real.
