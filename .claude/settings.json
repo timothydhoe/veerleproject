@@ -6,7 +6,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 /Users/timothydhoe/Code/veerle-project/.claude/hooks/gdpr_guard.py"
+            "shell": "bash",
+            "command": "if command -v python3 >/dev/null 2>&1; then PY=python3; else PY=python; fi; \"$PY\" \"${CLAUDE_PROJECT_DIR}/.claude/hooks/gdpr_guard.py\""
           }
         ]
       }
@@ -17,11 +18,13 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 /Users/timothydhoe/Code/veerle-project/.claude/hooks/config_guard.py"
+            "shell": "bash",
+            "command": "if command -v python3 >/dev/null 2>&1; then PY=python3; else PY=python; fi; \"$PY\" \"${CLAUDE_PROJECT_DIR}/.claude/hooks/config_guard.py\""
           },
           {
             "type": "command",
-            "command": "python3 /Users/timothydhoe/Code/veerle-project/.claude/hooks/r_syntax_check.py"
+            "shell": "bash",
+            "command": "if command -v python3 >/dev/null 2>&1; then PY=python3; else PY=python; fi; \"$PY\" \"${CLAUDE_PROJECT_DIR}/.claude/hooks/r_syntax_check.py\""
           }
         ]
       }
