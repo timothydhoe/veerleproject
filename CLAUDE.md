@@ -94,9 +94,10 @@ data/
     meting_1/             # Pupil CSV files for wave 1
     meting_2/             # Pupil CSV files for wave 2
   processed/
-    ggir/
-      meting_1/           # GGIR output for wave 1
-      meting_2/           # GGIR output for wave 2
+    meting_1/
+      output_meting_1/    # GGIR output for wave 1
+    meting_2/
+      output_meting_2/    # GGIR output for wave 2
     summaries/
       segment_summary.csv   # Output of 02_label_segments.R
       analysis_ready.csv    # Output of 03_build_summaries.R

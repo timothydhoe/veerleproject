@@ -1388,7 +1388,7 @@ non-default `data_processed`, this class of failure is why.
 
 ---
 
-### 28. Docs describe a `data/processed/ggir/` layer that the real pipeline doesn't create — status: `open`
+### 28. Docs describe a `data/processed/ggir/` layer that the real pipeline doesn't create — status: `fixed`
 
 **Where:** `CLAUDE.md` (Directory Layout tree, pre-existing, not introduced by the
 summaries-folder migration), `.claude/commands/pipeline-status.md:9`
@@ -1407,5 +1407,22 @@ unrelated dummy-data generator bug, not from the real pipeline.
 **Impact:** low — informational drift, but confirmed to have caused at least one
 downstream mistake already (an incorrect answer given about GGIR's output path during
 the summaries-folder migration discussion, corrected once checked against the live
-disk state). Not fixed here; kept out of scope for the summaries-folder migration per
-the same reasoning as #27.
+disk state).
+
+**Fix applied 2026-07-23:** updated both docs to drop the nonexistent `ggir/` layer,
+matching `r/DEVELOPER.md`'s already-correct description:
+- `CLAUDE.md`'s directory-layout tree now shows `data/processed/meting_1/output_meting_1/`
+  and `data/processed/meting_2/output_meting_2/` directly, instead of nesting them under
+  a `ggir/` subfolder.
+- `.claude/commands/pipeline-status.md:9` now looks inside `data/processed/meting_1/`
+  and `data/processed/meting_2/` directly, instead of `data/processed/ggir/meting_1/`
+  and `data/processed/ggir/meting_2/`.
+
+**Verified:** listed the actual on-disk structure — real pipeline output sits at
+`data/processed/meting_1/output_meting_1/results/` and
+`data/processed/meting_2/output_meting_2/results/`, exactly matching the corrected
+docs and `DEVELOPER.md`'s existing note. Confirmed `data/processed/ggir/meting_1/` does
+still exist on disk, but only as the stale leftover from bug #27's dummy-data generator
+bug — not real pipeline output — so the pre-fix docs were, in effect, pointing at stale
+test artifacts rather than the real path. Doc-only change; no code, config, or pipeline
+output touched, so no before/after CSV diff was needed.

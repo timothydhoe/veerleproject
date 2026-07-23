@@ -6,7 +6,7 @@ Check the current state of the SchoolMove pipeline. Write the report in plain la
 
 Do the following:
 
-1. **GGIR output** — look inside `data/processed/ggir/meting_1/` and `data/processed/ggir/meting_2/`. For each meting, check under `output_meting_N/results/` for:
+1. **GGIR output** — look inside `data/processed/meting_1/` and `data/processed/meting_2/`. For each meting, check under `output_meting_N/results/` for:
     - `part2_daysummary.csv` — if present, report the number of rows (= participant-days)
     - `part4_nightsummary.csv` — if present, report the number of rows (= nights)
     - `part5_daysummary_WW_*.csv` — if present, report the number of rows
