@@ -11,7 +11,7 @@ library(yaml)
 library(data.table)
 
 cfg      <- yaml::read_yaml("../config.yaml")
-out_path <- file.path(cfg$paths$data_processed, "..", "segment_summary.csv")
+out_path <- file.path(cfg$paths$data_processed, "summaries", "segment_summary.csv")
 
 pass  <- function(msg) cat(sprintf("  [PASS] %s\n", msg))
 warn  <- function(msg) cat(sprintf("  [WARN] %s\n", msg))

@@ -34,9 +34,9 @@ All pipeline state is held in files on disk. No R environment persists between p
 | GGIR day summaries | `data/processed/meting_N/.../results/part2_daysummary.csv` | GGIR Part 2 | `02_label_segments.R`, `03_build_summaries.R`, `global.R` |
 | GGIR sleep summaries | `data/processed/meting_N/.../results/part4_nightsummary_*.csv` | GGIR Part 4 | `03_build_summaries.R`, `global.R` |
 | GGIR person summaries | `data/processed/meting_N/.../results/part5_personsummary_WW_*.csv` | GGIR Part 5 | `03_build_summaries.R` |
-| Segment labels | `data/segment_summary.csv` | `02_label_segments.R` | `03_build_summaries.R`, `global.R` |
-| Analysis-ready table | `data/analysis_ready.csv` | `03_build_summaries.R` | `global.R` |
-| Validity flags | `data/validity_summary.csv` | `03_build_summaries.R` | `global.R` |
+| Segment labels | `data/processed/summaries/segment_summary.csv` | `02_label_segments.R` | `03_build_summaries.R`, `global.R` |
+| Analysis-ready table | `data/processed/summaries/analysis_ready.csv` | `03_build_summaries.R` | `global.R` |
+| Validity flags | `data/processed/summaries/validity_summary.csv` | `03_build_summaries.R` | `global.R` |
 | Absence registry | `data/absences.csv` | Researcher (via Shiny or manually) | `02_label_segments.R` |
 | Active config profile | `r/profiles/<name>.yaml` | `mod_settings.R` | `global.R` |
 | Pipeline run log | `logs/pipeline_runs.csv` | `run_all.R` | `mod_export.R` (download) |
@@ -49,11 +49,11 @@ Shiny state is loaded **once at startup** in `global.R` and held in R objects fo
 | Object | Type | Loaded from |
 |--------|------|-------------|
 | `cfg` | list | `config.yaml` + active profile |
-| `analysis_ready` | data.table | `data/analysis_ready.csv` |
-| `validity_summary` | data.table | `data/validity_summary.csv` |
+| `analysis_ready` | data.table | `data/processed/summaries/analysis_ready.csv` |
+| `validity_summary` | data.table | `data/processed/summaries/validity_summary.csv` |
 | `part2` | data.table | `part2_daysummary.csv` (both metingen) |
 | `part4` | data.table | `part4_nightsummary_*.csv` (both metingen) |
-| `segment_summary` | data.table | `data/segment_summary.csv` |
+| `segment_summary` | data.table | `data/processed/summaries/segment_summary.csv` |
 
 Reactive state (user-driven) is held in Shiny's reactive graph — school filter, meting filter, selected participant, active tab — and is not persisted across sessions.
 
@@ -90,14 +90,14 @@ flowchart TD
     subgraph step02["02_label_segments.R  ─  seconds"]
         SCHED["Schedule lookup\n(config schedules + class overrides)"]
         ABS["Absence overlay\n(data/absences.csv)"]
-        SEG["data/segment_summary.csv"]
+        SEG["data/processed/summaries/segment_summary.csv"]
     end
 
     subgraph step03["03_build_summaries.R  ─  seconds"]
         JOIN["Join part2 + part4 + part5 + segments"]
         VAL["Validity flags\n(wear hours, valid days, sleep nights)"]
-        READY["data/analysis_ready.csv"]
-        VSUM["data/validity_summary.csv"]
+        READY["data/processed/summaries/analysis_ready.csv"]
+        VSUM["data/processed/summaries/validity_summary.csv"]
     end
 
     CFG --> ARGS
@@ -134,11 +134,11 @@ flowchart TD
 ```mermaid
 flowchart LR
     CFG2["config.yaml\n+ active profile"]
-    READY2["data/analysis_ready.csv"]
-    VSUM2["data/validity_summary.csv"]
+    READY2["data/processed/summaries/analysis_ready.csv"]
+    VSUM2["data/processed/summaries/validity_summary.csv"]
     P2b["part2_daysummary.csv\n(both metingen)"]
     P4b["part4_nightsummary_*.csv\n(both metingen)"]
-    SEG2["data/segment_summary.csv"]
+    SEG2["data/processed/summaries/segment_summary.csv"]
 
     subgraph global["global.R  ─  runs once at app start"]
         LOAD["Load all CSVs\ninto memory"]

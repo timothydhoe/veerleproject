@@ -6,8 +6,8 @@
 # Computes validity flags per participant per meting.
 #
 # Outputs:
-#   data/analysis_ready.csv   — one row per participant × meting
-#   data/validity_summary.csv — inclusion/exclusion per participant
+#   data/processed/summaries/analysis_ready.csv   — one row per participant × meting
+#   data/processed/summaries/validity_summary.csv — inclusion/exclusion per participant
 #
 # Run from r/ directory. Requires 01 and 02 to have completed first.
 # ─────────────────────────────────────────────────────────────────────────────
@@ -93,7 +93,7 @@ if (!"weekday" %in% names(part2) && "calendar_date" %in% names(part2)) {
 }
 
 # ── Load segment summary ──────────────────────────────────────────────────────
-seg_path <- file.path(base_out, "..", "segment_summary.csv")
+seg_path <- file.path(base_out, "summaries", "segment_summary.csv")
 if (file.exists(seg_path)) {
   message("Loading segment summary...")
   seg <- fread(seg_path, data.table = TRUE)
@@ -453,7 +453,7 @@ if (!is.null(context_bouts_wide) && nrow(context_bouts_wide) > 0) {
 }
 
 # ── Write outputs ─────────────────────────────────────────────────────────────
-out_dir <- file.path(base_out, "..")
+out_dir <- file.path(base_out, "summaries")
 dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
 
 ready_path    <- file.path(out_dir, "analysis_ready.csv")

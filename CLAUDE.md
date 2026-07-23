@@ -97,9 +97,10 @@ data/
     ggir/
       meting_1/           # GGIR output for wave 1
       meting_2/           # GGIR output for wave 2
-  segment_summary.csv     # Output of 02_label_segments.R — lands directly in data/, NOT data/processed/
-  analysis_ready.csv      # Output of 03_build_summaries.R — same
-  validity_summary.csv    # Output of 03_build_summaries.R — same
+    summaries/
+      segment_summary.csv   # Output of 02_label_segments.R
+      analysis_ready.csv    # Output of 03_build_summaries.R
+      validity_summary.csv  # Output of 03_build_summaries.R
   example/                # Fictional test data (safe to commit)
     dummy_data/
       meting_1/

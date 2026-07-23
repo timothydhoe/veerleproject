@@ -225,7 +225,7 @@ mod_export_server <- function(id, shared) {
     output$dl_segments <- downloadHandler(
       filename = function() paste0("segment_summary_", ts, ".csv"),
       content  = function(f) {
-        src <- file.path(resolve_cfg_path(shared$cfg$paths$data_processed), "..", "segment_summary.csv")
+        src <- file.path(resolve_cfg_path(shared$cfg$paths$data_processed), "summaries", "segment_summary.csv")
         if (file.exists(src)) file.copy(src, f) else write.csv(data.frame(), f)
       }
     )
@@ -233,7 +233,7 @@ mod_export_server <- function(id, shared) {
     output$dl_ready <- downloadHandler(
       filename = function() paste0("analysis_ready_", ts, ".csv"),
       content  = function(f) {
-        src <- file.path(resolve_cfg_path(shared$cfg$paths$data_processed), "..", "analysis_ready.csv")
+        src <- file.path(resolve_cfg_path(shared$cfg$paths$data_processed), "summaries", "analysis_ready.csv")
         if (file.exists(src)) file.copy(src, f) else write.csv(data.frame(), f)
       }
     )
@@ -241,7 +241,7 @@ mod_export_server <- function(id, shared) {
     output$dl_validity <- downloadHandler(
       filename = function() paste0("validity_summary_", ts, ".csv"),
       content  = function(f) {
-        src <- file.path(resolve_cfg_path(shared$cfg$paths$data_processed), "..", "validity_summary.csv")
+        src <- file.path(resolve_cfg_path(shared$cfg$paths$data_processed), "summaries", "validity_summary.csv")
         if (file.exists(src)) file.copy(src, f) else write.csv(data.frame(), f)
       }
     )

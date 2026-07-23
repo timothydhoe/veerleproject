@@ -223,16 +223,18 @@ pick_ggir_variant_file <- function(files, prefer = c("Segments", "WW", "MM")) {
 
 #' Back up a file before it gets overwritten
 #'
-#' segment_summary.csv / analysis_ready.csv / validity_summary.csv land at a
-#' fixed path derived from paths.data_processed's *parent* directory
-#' (file.path(base_out, "..", ...)), regardless of what data_processed
-#' itself points at. This means even a deliberately redirected test run
-#' (e.g. pointing data_processed at a scratch folder to avoid touching real
-#' output) can still silently overwrite the real files if that scratch
-#' folder resolves back to the same parent — confirmed to have happened
-#' once already during testing, with no git history to recover from since
-#' these files are gitignored. Backing up whatever was there before every
-#' write closes that gap regardless of how paths.data_processed is set.
+#' segment_summary.csv / analysis_ready.csv / validity_summary.csv live under
+#' paths.data_processed/summaries/ (file.path(base_out, "summaries", ...)),
+#' so a test run that redirects data_processed to a scratch folder naturally
+#' redirects these summaries too — no separate escape hatch to worry about.
+#' This used to not be true: these files previously landed at a fixed path
+#' derived from data_processed's *parent* directory, regardless of what
+#' data_processed itself pointed at, which meant a deliberately redirected
+#' test run could silently overwrite the real files if the scratch folder's
+#' parent happened to match — confirmed to have happened once. Backing up
+#' whatever was there before every write remains in place as a second safety
+#' net, since these files are gitignored and have no git history to recover
+#' from otherwise.
 #'
 #' Keeps only the 5 most recent backups per file to avoid unbounded growth
 #' from routine dev/test iteration.

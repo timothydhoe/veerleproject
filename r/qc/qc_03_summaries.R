@@ -12,7 +12,7 @@ library(yaml)
 library(data.table)
 
 cfg      <- yaml::read_yaml("../config.yaml")
-out_dir  <- file.path(cfg$paths$data_processed, "..")
+out_dir  <- file.path(cfg$paths$data_processed, "summaries")
 
 pass  <- function(msg) cat(sprintf("  [PASS] %s\n", msg))
 warn  <- function(msg) cat(sprintf("  [WARN] %s\n", msg))

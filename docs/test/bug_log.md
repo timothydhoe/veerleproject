@@ -1178,20 +1178,24 @@ handle unless the harness's `cwd` format ever changes on this platform.
 
 ---
 
-### 22. `.claude/commands/pipeline-status.md` checks the wrong output path — status: `open`
+### 22. `.claude/commands/pipeline-status.md` checks the wrong output path — status: `fixed`
 
 **Where:** `.claude/commands/pipeline-status.md:15,17`
 
-Checks `data/processed/segment_summary.csv`, `data/processed/analysis_ready.csv`, and
-`data/processed/validity_summary.csv` — these three files actually land in `data/`
-directly (confirmed via `config.yaml`'s own comment and the write-path code in
-`02_label_segments.R`/`03_build_summaries.R`). Same underlying path confusion already
-fixed in `CLAUDE.md`'s directory layout and `config.yaml`'s own comment (see the
-"Documentation drift" section above) — but this specific command file was missed by
-that pass.
+Checked `data/processed/segment_summary.csv`, `data/processed/analysis_ready.csv`, and
+`data/processed/validity_summary.csv`. Originally these three files landed in `data/`
+directly instead, so the plan was to point this command there. Superseded before that
+fix was applied: a separate, larger change (see the summaries-folder migration note
+under #24) moved the real write location to `data/processed/summaries/` instead.
+Fixed directly to the final location rather than the intermediate one.
 
-**Impact:** running `/pipeline-status` today under-reports progress, showing these
-three outputs as missing even when the pipeline has completed through step 03. The
+**Fix applied 2026-07-23:** lines 15 and 17 now point at
+`data/processed/summaries/segment_summary.csv`,
+`data/processed/summaries/analysis_ready.csv`, and
+`data/processed/summaries/validity_summary.csv`.
+
+**Impact:** running `/pipeline-status` previously under-reported progress, showing these
+three outputs as missing even when the pipeline had completed through step 03. The
 GGIR raw-output path checks in the same command are correct and unaffected.
 
 ---
@@ -1216,19 +1220,35 @@ case portably.
 **Where:** `r/pipeline/02_label_segments.R:14`, `r/pipeline/03_build_summaries.R:9-10`
 
 Header comments described output paths as `data/processed/segment_summary.csv` etc. —
-the code itself correctly writes to `data/` directly (same actual location #22
-confirms). Comment-only drift, no functional impact.
+at the time, the code itself wrote to `data/` directly instead. Comment-only drift,
+no functional impact.
 
 **Verified 2026-07-22:** confirmed against live code, not just the bug's original
-wording — `cfg$paths$data_processed` resolves to `../data/processed`
-(`config.yaml:14`, whose own comment already documents the correct behavior), and
-both scripts write via `file.path(base_out, "..", "<file>.csv")`, landing in `data/`
-directly. Confirmed at the actual `fwrite()` call sites
-(`02_label_segments.R:531/534`, `03_build_summaries.R:456-477`).
+wording — `cfg$paths$data_processed` resolved to `../data/processed`
+(`config.yaml:14`), and both scripts wrote via `file.path(base_out, "..", "<file>.csv")`,
+landing in `data/` directly.
 
-**Fix applied:** corrected both header comments to `data/segment_summary.csv`,
-`data/analysis_ready.csv`, `data/validity_summary.csv`. Comment-only change, diff
-verified to touch nothing else.
+**Superseded 2026-07-23 — summaries-folder migration:** after this comment fix landed,
+a design discussion concluded these three files belonged nested under
+`data_processed` rather than escaping it (grouping them with the raw GGIR output tree
+instead of sitting loose in `data/`, and making a redirected `data_processed` — e.g. a
+test profile — naturally redirect the summaries too, closing a gap documented in
+`utils_ggir.R`'s `backup_if_exists()` that had caused a real silent-overwrite incident
+once). Both scripts' write paths changed to `file.path(base_out, "summaries",
+"<file>.csv")`, i.e. `data/processed/summaries/<file>.csv`, and all 16 affected files
+(functional code + docs) were updated together — see the full plan and verification
+in this session's history. Verified end-to-end: pre/post pipeline runs on dummy data
+produced byte-identical CSVs at the new location; `qc_02_segments.R`, `qc_03_summaries.R`,
+and `r/tests/smoke_test.R` all pass; the Shiny dashboard loads cleanly (HTTP 200, no
+fallback/not-found messages); the GDPR guard blocks staged files at both the old and
+new locations (old location kept protected in `.gitignore` and `gdpr_guard.py` until
+the pre-migration leftover files are manually cleaned up, per the developer's choice
+not to auto-migrate them).
+
+**Fix applied:** both header comments now read
+`data/processed/summaries/segment_summary.csv` and
+`data/processed/summaries/analysis_ready.csv` /
+`data/processed/summaries/validity_summary.csv`.
 
 ---
 
@@ -1253,3 +1273,76 @@ confirmed no other commit has touched `Makefile` since the initial `init` commit
 rules could ever point to.
 
 **Fix applied:** removed the three dead `py-*` targets; only `r-install` remains.
+
+---
+
+### 26. `r/tests/smoke_test.R` had a spurious extra `".."` in its output-path resolution — status: `fixed`
+
+**Where:** `r/tests/smoke_test.R:42` (line number as of before the #27-adjacent
+summaries-folder migration)
+
+Found while migrating segment_summary.csv/analysis_ready.csv/validity_summary.csv to
+`data/processed/summaries/` (see the corresponding plan/changes). The line read
+`out_dir <- file.path("..", cfg$paths$data_processed, "..")` — one more leading `".."`
+than every other script's identical idiom (`file.path(cfg$paths$data_processed, "..")`
+in `qc_03_summaries.R`, `03_build_summaries.R`, etc.). Verified directly:
+`smoke_test.R`'s own header says "Run from r/ directory," and it reads
+`"../config.yaml"` — the same relative path used by every other script run from `r/`
+— confirming it runs from the same working directory as everything else, not a
+different one. The extra `".."` had no justification; it resolved one directory level
+too high (`parent_of_repo_root/data` instead of `repo_root/data`), meaning this smoke
+test's file-existence assertions were checking the wrong location before this fix,
+independent of the summaries-folder migration.
+
+**Impact:** `smoke_test.R`'s output-file assertions were silently checking a
+nonexistent path; unclear whether this ever surfaced as a visible failure since the
+script's own `fail()` calls just report — didn't investigate whether CI treats those
+as blocking.
+
+**Fix applied:** corrected in the same edit that changed this line for the
+summaries-folder migration — now reads `file.path(cfg$paths$data_processed,
+"summaries")`, matching the pattern used everywhere else in the codebase.
+
+---
+
+### 27. Dummy-data generator hardcodes a path that matches neither the old nor new summaries convention — status: `open`
+
+**Where:** `data/example/dummy_data/generate_ggir_outputs.py:26`
+
+Found during the same summaries-folder migration investigation. `SEG_OUT = REPO_ROOT
+/ "data" / "processed" / "segment_summary.csv"` — this doesn't match the real
+pipeline's pre-migration convention (`data/segment_summary.csv`) or its new one
+(`data/processed/summaries/segment_summary.csv`). This script also writes fake GGIR
+output to `OUT_BASE = REPO_ROOT / "data" / "processed" / "ggir"` — a `ggir/`
+subfolder that, per #28, doesn't match where the real pipeline puts GGIR output
+either. Unrelated standalone script (not sourced/imported by anything in `r/`);
+deliberately not fixed as part of the summaries-folder migration to keep that change's
+scope focused.
+
+**Impact:** running this generator produces dummy fixtures at paths the real pipeline
+and Shiny dashboard won't look for, so its "for the School Day dashboard tab" stated
+purpose (per its own docstring) may already be broken.
+
+---
+
+### 28. Docs describe a `data/processed/ggir/` layer that the real pipeline doesn't create — status: `open`
+
+**Where:** `CLAUDE.md` (Directory Layout tree, pre-existing, not introduced by the
+summaries-folder migration), `.claude/commands/pipeline-status.md:9`
+
+Both describe GGIR's raw output as landing under `data/processed/ggir/meting_N/...`.
+Verified against the actual code and a live baseline run (2026-07-23, dummy data via
+`scripts/ci/run_example_pipeline.R`): `01_run_ggir.R:110` computes `output_dir <-
+file.path(cfg$paths$data_processed, meting)`, and the resulting on-disk structure was
+confirmed to be `data/processed/meting_1/output_meting_1/results/...` — no
+intermediate `ggir/` subfolder. `r/DEVELOPER.md:38-43` already has this right ("no
+intermediate `ggir/` subdirectory"), so the docs disagree with each other, and
+`CLAUDE.md`/`pipeline-status.md` are the ones that are wrong. The `data/processed/
+ggir/meting_1/` directory that does exist on disk is stale output from #27's
+unrelated dummy-data generator bug, not from the real pipeline.
+
+**Impact:** low — informational drift, but confirmed to have caused at least one
+downstream mistake already (an incorrect answer given about GGIR's output path during
+the summaries-folder migration discussion, corrected once checked against the live
+disk state). Not fixed here; kept out of scope for the summaries-folder migration per
+the same reasoning as #27.

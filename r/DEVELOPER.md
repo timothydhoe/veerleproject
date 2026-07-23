@@ -25,22 +25,23 @@ pipeline/01_run_ggir.R                  ← GGIR Parts 1–5 for each meting
         ↓
 pipeline/02_label_segments.R            ← map GGIR output to school-day segments
         ↓
-../data/segment_summary.csv             ← one level above data/processed/ (see note)
+../data/processed/summaries/segment_summary.csv
         ↓
 pipeline/03_build_summaries.R           ← join all outputs, compute validity flags
         ↓
-../data/analysis_ready.csv
-../data/validity_summary.csv
+../data/processed/summaries/analysis_ready.csv
+../data/processed/summaries/validity_summary.csv
         ↓
 shiny/                                  ← Dashboard
 ```
 
 > **Path note:** `config.yaml` sets `data_processed: "../data/processed"`. Steps 02 and 03
-> write their output to `file.path(data_processed, "..")` = `../data/` — one directory
-> above `data/processed/`, not inside it. The GGIR output itself lands inside
-> `data/processed/meting_N/output_meting_N/` (no intermediate `ggir/` subdirectory).
-> All scripts and Shiny resolve to the same paths; this is consistent but differs from
-> what some older documentation shows.
+> write their output to `file.path(data_processed, "summaries")` =
+> `../data/processed/summaries/` — nested inside `data_processed`, so a test run that
+> redirects `data_processed` also redirects these summary files. The GGIR output itself
+> lands inside `data/processed/meting_N/output_meting_N/` (no intermediate `ggir/`
+> subdirectory). All scripts and Shiny resolve to the same paths; this is consistent but
+> differs from what some older documentation shows.
 
 Orchestrate the full pipeline with `pipeline/run_all.R`.
 
@@ -255,7 +256,7 @@ Applies school schedule context to GGIR Part 2 day summaries. For each participa
   to proportional day-level approximation.
 - Schools with `fallback: true` in config are flagged in output and in QC 02.
 
-Output: `../data/segment_summary.csv` — one row per participant × day × segment.
+Output: `../data/processed/summaries/segment_summary.csv` — one row per participant × day × segment.
 
 ---
 
@@ -281,8 +282,8 @@ if `labeled_epochs.csv` exists (epoch-level data). Otherwise uses GGIR-native
 day-level bout columns.
 
 Outputs:
-- `../data/analysis_ready.csv` — one row per participant × meting
-- `../data/validity_summary.csv` — inclusion/exclusion subset
+- `../data/processed/summaries/analysis_ready.csv` — one row per participant × meting
+- `../data/processed/summaries/validity_summary.csv` — inclusion/exclusion subset
 
 ---
 

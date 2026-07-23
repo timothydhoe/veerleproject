@@ -39,7 +39,7 @@ elapsed <- (proc.time() - t0)["elapsed"]
 cat(sprintf("\nPipeline finished in %.0f s\n\n", elapsed))
 
 # ── Output file assertions ─────────────────────────────────────────────────────
-out_dir <- file.path("..", cfg$paths$data_processed, "..")
+out_dir <- file.path(cfg$paths$data_processed, "summaries")
 
 cat("── Checking output files ──────────────────────────────────────────────\n")
 

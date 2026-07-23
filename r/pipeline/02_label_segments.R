@@ -11,7 +11,7 @@
 # maps GGIR's time-segment columns onto our 5 context labels using the
 # school-specific schedule from config.yaml.
 #
-# Output: data/segment_summary.csv
+# Output: data/processed/summaries/segment_summary.csv
 #
 # Run from r/ directory. Requires 01_run_ggir.R to have completed first.
 # ─────────────────────────────────────────────────────────────────────────────
@@ -528,7 +528,7 @@ if (length(fallback_schools) > 0) {
 }
 
 # ── Write output ──────────────────────────────────────────────────────────────
-out_path <- file.path(base_out, "..", "segment_summary.csv")
+out_path <- file.path(base_out, "summaries", "segment_summary.csv")
 dir.create(dirname(out_path), recursive = TRUE, showWarnings = FALSE)
 backup_if_exists(out_path)
 fwrite(segment_summary, out_path)

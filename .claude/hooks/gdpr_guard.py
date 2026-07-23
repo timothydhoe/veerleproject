@@ -28,7 +28,15 @@ result = subprocess.run(
 )
 
 staged = [f for f in result.stdout.strip().split("\n") if f]
-protected_files = {"data/analysis_ready.csv", "data/segment_summary.csv", "data/validity_summary.csv"}
+protected_files = {
+    "data/processed/summaries/analysis_ready.csv",
+    "data/processed/summaries/segment_summary.csv",
+    "data/processed/summaries/validity_summary.csv",
+    # Old pre-migration location — kept until leftover files there are cleaned up.
+    "data/analysis_ready.csv",
+    "data/segment_summary.csv",
+    "data/validity_summary.csv",
+}
 forbidden = [
     f for f in staged
     if "data/raw/" in f or "data/processed/" in f or f in protected_files

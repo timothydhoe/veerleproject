@@ -248,7 +248,7 @@ Profielen worden opgeslagen in `r/profiles/`. Het actieve profiel wordt bij de v
 
 ## 6. Data exporteren
 
-Alle uitvoerbestanden staan in `data/` (één map boven `data/processed/`):
+Alle uitvoerbestanden staan in `data/processed/summaries/`:
 
 | Bestand | Inhoud |
 |---------|--------|
@@ -296,7 +296,7 @@ Sla het bestand op en herstart de pipeline.
 ## 8. Veelgestelde vragen en probleemoplossing
 
 **Het dashboard laadt geen data**
-→ Controleer of de pipeline volledig is doorgelopen (`run_all.R`) en dat `analysis_ready.csv` bestaat in `data/` (één map boven `data/processed/`).
+→ Controleer of de pipeline volledig is doorgelopen (`run_all.R`) en dat `analysis_ready.csv` bestaat in `data/processed/summaries/`.
 
 **De QC meldt "part4 nightsummary not found"**
 → GGIR heeft stap 4 (slaapdetectie) niet doorlopen of de outputmap heeft een andere naam. Controleer of `data/processed/meting_1/output_meting_1/results/` de verwachte mapstructuur bevat.
@@ -371,13 +371,13 @@ Het derde script voegt alle outputs samen tot één rij per deelnemer × meting.
 
 ## 10. Uitvoerbestanden en interpretatie
 
-Na een succesvolle pipeline-run staan de volgende bestanden in `data/`:
+Na een succesvolle pipeline-run staan de samenvattingsbestanden in `data/processed/summaries/`:
 
 | Bestand | Inhoud | Gebruik |
 |---------|--------|---------|
-| `data/analysis_ready.csv` | Eén rij per deelnemer × meting. Bevat gem. MVPA/dag, sedentaire tijd, slaap, geldigheidsflags, activiteitsminuten per schoolsegment | Primaire dataset voor statistische analyse |
-| `data/validity_summary.csv` | Inclusie/exclusieoverzicht. Welke deelnemer voldoet aan de sedentaire en slaapcriterium, met reden bij exclusie | Rapportage over steekproef |
-| `data/segment_summary.csv` | Eén rij per deelnemer × dag × schoolsegment. Activiteitsminuten per context (les, speeltijd enz.) | Verdiepende analyse op segmentniveau |
+| `data/processed/summaries/analysis_ready.csv` | Eén rij per deelnemer × meting. Bevat gem. MVPA/dag, sedentaire tijd, slaap, geldigheidsflags, activiteitsminuten per schoolsegment | Primaire dataset voor statistische analyse |
+| `data/processed/summaries/validity_summary.csv` | Inclusie/exclusieoverzicht. Welke deelnemer voldoet aan de sedentaire en slaapcriterium, met reden bij exclusie | Rapportage over steekproef |
+| `data/processed/summaries/segment_summary.csv` | Eén rij per deelnemer × dag × schoolsegment. Activiteitsminuten per context (les, speeltijd enz.) | Verdiepende analyse op segmentniveau |
 | `data/processed/meting_N/output_meting_N/results/part2_daysummary.csv` | Dagsamenvattingen direct uit GGIR. Draagduur, intensiteitsminuten per dag | Ruwe controle en heatmap in dashboard |
 | `data/processed/meting_N/output_meting_N/results/part4_nightsummary_*.csv` | Nachtresultaten: slaapduur, slaapefficiëntie per nacht | Slaaptabblad in dashboard |
 | `data/processed/meting_N/output_meting_N/results/part5_personsummary_WW_*.csv` | Persoonssamenvatting over alle gemeten dagen | Bron voor MVPA en SB in analysis_ready |

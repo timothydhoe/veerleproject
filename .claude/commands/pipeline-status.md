@@ -12,9 +12,9 @@ Do the following:
     - `part5_daysummary_WW_*.csv` — if present, report the number of rows
     - `part5_personsummary_WW_*.csv` — if present, report the number of rows (= participants)
 
-2. **Segment labels** — check whether `data/processed/segment_summary.csv` exists. If it does, report how many rows it has and how many unique participants it covers.
+2. **Segment labels** — check whether `data/processed/summaries/segment_summary.csv` exists. If it does, report how many rows it has and how many unique participants it covers.
 
-3. **Analysis-ready data** — check whether `data/processed/analysis_ready.csv` and `data/processed/validity_summary.csv` exist. If so, report participant counts and how many meet validity criteria.
+3. **Analysis-ready data** — check whether `data/processed/summaries/analysis_ready.csv` and `data/processed/summaries/validity_summary.csv` exist. If so, report participant counts and how many meet validity criteria.
 
 4. Based on what you find, report:
     - Which pipeline steps have completed (01_run_ggir, 02_label_segments, 03_build_summaries)

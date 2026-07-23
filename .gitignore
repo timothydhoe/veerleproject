@@ -26,6 +26,8 @@ data/processed/
 data/veerle_processed/
 data/test_files_veerle/
 data/absences.csv
+# Old summary-file location, pre-#22/#24 migration to data/processed/summaries/ —
+# kept ignored until leftover files from before the migration are cleaned up.
 data/analysis_ready.csv
 data/segment_summary.csv
 data/validity_summary.csv
