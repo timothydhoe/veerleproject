@@ -808,7 +808,7 @@ state that had accumulated in this repo, not a code change.
 
 ---
 
-### 17. Deep output paths can hit Windows's 260-character MAX_PATH limit — status: `open` (non-critical)
+### 17. Deep output paths can hit Windows's 260-character MAX_PATH limit — status: `wontfix`
 **Where:** GGIR's own Part 5 report-writing (`g.report.part5`, via `data.table::fwrite`), triggered from `r/pipeline/01_run_ggir.R`
 
 Discovered while verifying the dummy-ID rename (item #16's fix — not caused by it). Redirecting
@@ -835,9 +835,22 @@ or note that Windows long-path support may need enabling), rather than something
 `bug_fix` branch merge), and the Windows bundle `.bat` launchers now check the
 extraction path length upfront too. Neither is a structural fix of GGIR's own
 report-writing — they're early warnings, not a guarantee GGIR itself won't hit
-`MAX_PATH` on a sufficiently long path. Still `open` as a genuine GGIR/OS
-constraint, but a researcher now gets warned before running, not after a confusing
-mid-run failure.
+`MAX_PATH` on a sufficiently long path.
+
+**Reclassified `wontfix` 2026-07-23:** this is an external Windows/filesystem
+constraint inside GGIR's own report-writing, not a logic bug in this codebase — not
+something to code around (e.g. patching long-path prefixing into an external
+package's internal `fwrite` calls would be fragile and outside this project's
+control). The existing 140-char proactive warning is considered the appropriate
+level of mitigation.
+
+**Revisit later:** there is currently no structured error-logging system in this
+codebase at all (confirmed via repo-wide search) — only ad-hoc `message()`/`warning()`
+calls to the console, plus `logs/` which holds GGIR config archives and run records
+for reproducibility, not an error log. If a general error-logging system gets built
+for other reasons, route this constraint's warning through it too (e.g. persist the
+path-length warning to a log file, not just the console) rather than treating that as
+a reason to reopen this as a code bug.
 
 ---
 
@@ -1305,23 +1318,73 @@ summaries-folder migration — now reads `file.path(cfg$paths$data_processed,
 
 ---
 
-### 27. Dummy-data generator hardcodes a path that matches neither the old nor new summaries convention — status: `open`
+### 27. Dummy-data generator hardcodes a path that matches neither the old nor new summaries convention — status: `fixed`
 
 **Where:** `data/example/dummy_data/generate_ggir_outputs.py:26`
 
 Found during the same summaries-folder migration investigation. `SEG_OUT = REPO_ROOT
 / "data" / "processed" / "segment_summary.csv"` — this doesn't match the real
 pipeline's pre-migration convention (`data/segment_summary.csv`) or its new one
-(`data/processed/summaries/segment_summary.csv`). This script also writes fake GGIR
+(`data/processed/summaries/segment_summary.csv`). This script also wrote fake GGIR
 output to `OUT_BASE = REPO_ROOT / "data" / "processed" / "ggir"` — a `ggir/`
 subfolder that, per #28, doesn't match where the real pipeline puts GGIR output
-either. Unrelated standalone script (not sourced/imported by anything in `r/`);
-deliberately not fixed as part of the summaries-folder migration to keep that change's
-scope focused.
+either.
 
-**Impact:** running this generator produces dummy fixtures at paths the real pipeline
-and Shiny dashboard won't look for, so its "for the School Day dashboard tab" stated
-purpose (per its own docstring) may already be broken.
+**Design decision (2026-07-23):** rejected the naive fix of just matching the real
+pipeline's paths exactly. The current bug has accidentally been acting as a safety
+barrier — since its paths don't match the real convention, this generator's fake
+output could never physically collide with real participant data. Bug #16b already
+recorded a real contamination incident from mixed real/dummy test runs once; naively
+"fixing" this to write into the exact real location, with zero overwrite protection
+in this script's own `write_csv()` (no `backup_if_exists()` equivalent — that's an
+R-only helper this Python script doesn't call), would have reintroduced that risk in
+a worse form. Instead: fake output now lands in `data/processed/dummy_output/` — a
+dedicated subfolder, structurally isolated from `data/processed/meting_N/` and
+`data/processed/summaries/`, so it cannot collide regardless of what config.yaml
+says. No `.gitignore` or `gdpr_guard.py` changes were needed — both already cover
+`data/processed/` recursively, so `dummy_output/` is automatically protected.
+
+**Fix applied:**
+- `OUT_BASE` → `data/processed/dummy_output` (drops the nonexistent `ggir/` layer,
+  matching #28's finding, without literally reintroducing that folder name).
+- `SEG_OUT` → `data/processed/dummy_output/summaries/segment_summary.csv`.
+- Docstring and final "Next steps" print statement updated to match, and now point
+  at a new companion script (see below) instead of the old, already-misleading
+  instruction to "run the full pipeline" (which would have run steps 01/02 against
+  real config, not this fake data).
+- New file `scripts/dev/preview_dummy_dashboard.R`: temporarily redirects
+  `config.yaml`'s `paths.data_processed` to `data/processed/dummy_output/`, sources
+  `03_build_summaries.R` unmodified (which has no hard dependency on steps 01/02
+  having run first), launches Shiny, then restores `config.yaml` byte-for-byte in a
+  `finally` block regardless of success, failure, or interruption — mirrors the
+  exact pattern already trusted in `scripts/ci/run_example_pipeline.R`.
+
+**Independent review confirmed** (before implementation): `find_ggir_output_subdir()`
+only matches on the `output_*` folder name, not its parent path, so redirecting
+`OUT_BASE` is safe; `03_build_summaries.R` re-reads `config.yaml` independently with
+no session-state dependency on 01/02; `global.R` will correctly pick up the
+redirected path while Shiny runs, since it also re-reads `config.yaml` independently.
+
+**Impact:** running this generator now produces dummy fixtures the dashboard-preview
+script actually finds, isolated from any real data regardless of what `config.yaml`'s
+`data_processed` is set to at the time.
+
+**Residual risk found during live testing (2026-07-23):** `preview_dummy_dashboard.R`'s
+`tryCatch(..., finally = ...)` restores `config.yaml` correctly on normal completion
+and on any R-level error (verified twice, including a real `library(DT)` failure) —
+but a hard process kill (the OS terminating the process before R can run any further
+code) skips `finally` entirely, since that's an R-level condition-handling mechanism,
+not something that can intercept the process being killed out from under it. Hit this
+directly during testing: the test process was cut off by the sandbox tooling between
+tool calls, leaving `config.yaml` stuck pointed at `data/processed/dummy_output` until
+manually restored from a backup (confirmed byte-identical after manual restore; no
+real data was touched in the meantime). **This is not new or specific to this
+script** — `scripts/ci/run_example_pipeline.R` uses the identical pattern and carries
+the exact same exposure; it had just never been tested against a hard kill before.
+Judged low-probability for this script's actual (manual, interactive) usage pattern
+and not worth engineering around (e.g. atomic writes, lock files) for a dev
+convenience script — but if `config.yaml` is ever found unexpectedly pointed at a
+non-default `data_processed`, this class of failure is why.
 
 ---
 

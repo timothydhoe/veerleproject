@@ -7,9 +7,13 @@ both metings) plus a segment_summary.csv for the School Day dashboard tab.
 Run from the repo root:
     python data/example/dummy_data/generate_ggir_outputs.py
 
-Outputs land in:
-    data/processed/ggir/meting_1/ and meting_2/   ← GGIR result files
-    data/processed/segment_summary.csv             ← segment labels
+Outputs land in a dedicated, isolated subfolder — never the real pipeline's own
+output location — so this can never collide with or overwrite real participant data:
+    data/processed/dummy_output/meting_1/ and meting_2/         ← GGIR result files
+    data/processed/dummy_output/summaries/segment_summary.csv   ← segment labels
+
+To preview the dashboard against this fake data, run (from the r/ directory):
+    Rscript ../scripts/dev/preview_dummy_dashboard.R
 """
 
 import csv
@@ -22,8 +26,8 @@ random.seed(42)
 
 # ── Paths ──────────────────────────────────────────────────────────────────────
 REPO_ROOT   = Path(__file__).resolve().parents[3]
-OUT_BASE    = REPO_ROOT / "data" / "processed" / "ggir"
-SEG_OUT     = REPO_ROOT / "data" / "processed" / "segment_summary.csv"
+OUT_BASE    = REPO_ROOT / "data" / "processed" / "dummy_output"
+SEG_OUT     = REPO_ROOT / "data" / "processed" / "dummy_output" / "summaries" / "segment_summary.csv"
 
 # Participants per school — realistic spread summing to ~390
 N_PER_SCHOOL = {
@@ -466,14 +470,14 @@ def main():
         if meting == "meting_1":
             total_participants = n
 
-    # Segment summary — one file for both metings, alongside processed/ not in ggir/
+    # Segment summary — one file for both metings, under dummy_output/summaries/
     write_csv(SEG_OUT, all_segment_rows)
 
     total_schools = len(N_PER_SCHOOL)
     print(f"\nDone. {total_participants} participants × {total_schools} schools.")
     print(f"Segment rows: {len(all_segment_rows)}")
-    print(f"\nNext: run Rscript --vanilla r/pipeline/03_build_summaries.R")
-    print(f"      (or run the full pipeline: Rscript --vanilla r/pipeline/run_all.R)")
+    print(f"\nNext: from the r/ directory, run:")
+    print(f"      Rscript ../scripts/dev/preview_dummy_dashboard.R")
 
 
 if __name__ == "__main__":
