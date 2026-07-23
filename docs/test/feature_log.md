@@ -81,4 +81,58 @@ Paste this to continue in the same style:
 
 ## Open
 
-*(none yet — first item pending)*
+Collected from the project owner on 2026-07-23, not yet investigated/planned. See
+`docs/test/order_of_approach.md` for working order and reasoning across these plus
+the parallel `bug_log.md` items (#29–31).
+
+### 1. Pipeline-wide error/log-to-file capture — status: `proposed`
+
+Write errors/warnings encountered along the full pipeline run to a `.txt` log file,
+overwritten by default on each run, with the option to redirect to a different
+(persistent) location when a specific run is worth keeping. Directly closes the
+follow-up noted in `bug_log.md` #17 ("if a general error-logging system gets built
+for other reasons, route this constraint's warning through it too" — no such system
+currently exists in the codebase). Second in working order per
+`order_of_approach.md` — pure infrastructure, no dependencies, and helps debug
+several later items (bug #29, feature #4 below).
+
+### 2. Make `split_at_context_boundary` / `labeled_epochs.csv` functional — status: `proposed`
+
+Is `split_at_context_boundary()` (in `utils_bouts.R`) actually functional end-to-end?
+If not, make it so. Same gap already tracked as `bug_log.md` #10 (`deferred`): that
+item confirmed `split_at_context_boundary()` and `detect_activity_bouts()` are
+correctly implemented, but inert because `labeled_epochs.csv` doesn't exist yet — the
+missing piece is a new pipeline step joining GGIR's raw epoch export against school-
+schedule boundaries (~480M rows at full study scale — real design work, not a quick
+fix). To decide: whether this feature-log item simply reopens/supersedes bug #10, or
+stays a separate, forward-looking entry while #10 stays closed as historical record.
+Fifth in working order per `order_of_approach.md` — self-contained, but best tackled
+after the validity-criterion bug (bug #31) settles so new output columns aren't built
+against soon-to-change validity logic.
+
+### 3. Shiny dashboard startup performance / loading indicator — status: `proposed`
+
+`2 - Dashboard starten.bat` takes a long time to open because of the data volume
+being read in. Wanted: faster perceived startup, plus a visible progress indicator
+(percentage or count) while data loads — and to investigate proper use of Shiny's
+`reactive()`/lazy-loading patterns so startup isn't fully blocking. Sixth in working
+order per `order_of_approach.md` — do this after feature #2 (labeled_epochs.csv), not
+before, since that feature will add more data for the dashboard to load and any
+loading-indicator design should reflect the real eventual data volume.
+
+### 4. Full bundle functional audit — status: `proposed`
+
+Does the delivered Windows bundle work as it should, and what's needed to make it
+so? Specifically: the dashboard should support rerunning the pipeline with different
+configurations (adjustments or a chosen profile), and recording absences should
+actually work end-to-end through the bundle Veerle runs (the absence-registry
+feature already exists in Shiny/pipeline code — see the earlier conversation in this
+log's history — but isn't reachable/functional through the bundle; root cause not
+yet confirmed, candidate leads include Shiny's working-directory shift when launched
+via `runApp('shiny', ...)` vs. `resolve_cfg_path()`'s relative-path assumptions).
+Explicitly deprioritized by the project owner ("the dashboard is a nice to have — I
+want to focus on the codebase and correctness of output data first"). Last in
+working order per `order_of_approach.md` — biggest scope, most cross-cutting, and
+benefits from every other item above being settled first. Decide at investigation
+time whether the absence-recording gap is folded into this item or split out
+separately.

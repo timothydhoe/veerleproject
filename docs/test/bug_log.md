@@ -1426,3 +1426,63 @@ still exist on disk, but only as the stale leftover from bug #27's dummy-data ge
 bug — not real pipeline output — so the pre-fix docs were, in effect, pointing at stale
 test artifacts rather than the real path. Doc-only change; no code, config, or pipeline
 output touched, so no before/after CSV diff was needed.
+
+---
+
+## 🆕 Newly reported — session 2026-07-23 (pending investigation)
+
+Collected from the project owner, not yet investigated. See
+`docs/test/order_of_approach.md` for working order and reasoning across these plus
+the parallel `feature_log.md` items.
+
+### 29. Bundle: must keep the first `.bat`'s terminal open to run the second — status: `open`
+
+**Where:** `scripts/bundle/templates/1 - Pipeline uitvoeren.bat`,
+`scripts/bundle/templates/2 - Dashboard starten.bat`
+
+Reported by the project owner: in the current bundle, the terminal window opened by
+running `1 - Pipeline uitvoeren.bat` must stay open in order to then run
+`2 - Dashboard starten.bat` and view the dashboard. Not yet investigated — root cause
+unknown (could be a real process/lock dependency between the two launchers, or a
+UX/expectation issue around the trailing `pause` in the pipeline `.bat`). Fourth in
+working order per `order_of_approach.md`, after error/log-to-file capture (feature
+log #2) lands, since that should make it easier to see what's actually happening
+across the two launcher runs.
+
+### 30. Shiny dashboard: `object 'calendar_date' not found` — "MVPA per dag" graph, Deelnemers tab — status: `open`
+
+**Where:** `r/shiny/` — "Deelnemers" tab, "MVPA per dag" graph (exact module not yet
+identified)
+
+Reported by the project owner. Not yet investigated. Possibly related in kind (not
+necessarily in cause) to bug #4's `calendar_date` type mismatch (`IDate`/`Date` vs.
+`character` between `fread()` and `read.csv()`), but that was a QC-script-only issue
+already fixed — this is a live dashboard-rendering error and needs its own
+investigation into which data source feeds this specific graph.
+
+### 31. Validity criterion: is `min_wear_hours_per_day` computed over waking hours or the full 24h day? — status: `open`
+
+**Where:** `config.yaml` (`validity.min_wear_hours_per_day`), GGIR's `includedaycrit`
+parameter, `CLAUDE.md` "Key Domain Concepts" table (validity criteria row, addressed
+by bug #20)
+
+Direct question from Veerle (verbatim, Dutch): *"Voor het bepalen van de draaguren
+per dag om een dag als geldig te tellen (eerste criterium) wilde ik even checken of
+dit enkel gedaan werd o.b.v. de tijd dat leerlingen wakker zijn (dus 24 uur min de
+tijd dat leerlingen slapen). Hebben jullie daar toevallig een idee van?"*
+
+(Translation: whether the wear-hours-per-day criterion is computed only over the
+time pupils are awake — i.e. 24h minus sleep time — rather than the full calendar
+day.)
+
+**Why this needs care:** `CLAUDE.md`'s validity-criteria entry (as corrected by bug
+#20) currently documents the 9-hour criterion as GGIR's `includedaycrit` — a **24h
+calendar-day** valid-wear measure, explicitly *not* a waking-only window — with a
+separate, non-configurable, Part-5-only waking-hours parameter
+(`includedaycrit.part5`, hardcoded to 2/3) that's unrelated to this inclusion
+criterion. Veerle's question directly asks about the waking-hours interpretation, so
+either #20's fix mischaracterized the criterion, or the current implementation
+doesn't match her actual protocol intent (or both) — needs checking against her
+original protocol source, the same primary-source approach bug #8 used to resolve a
+similar ambiguity. Highest priority in working order per `order_of_approach.md`: this
+gates which participant-days count as valid across the entire dataset.
