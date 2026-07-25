@@ -46,7 +46,7 @@ modParticipantsUI <- function(id) {
       dl_id    = ns("dl_plot_wear"),
       height   = "500px",
       subtitle = paste0("Groen = geldig (≥", MIN_WEAR_H,
-                        "h draagduur) · rood = onvoldoende of niet gedragen")
+                        "h draagduur tijdens waaktijd) · rood = onvoldoende of niet gedragen")
     ),
     card(
       class       = "shadow-sm",
@@ -122,7 +122,7 @@ mod_participants_server <- function(id, shared) {
           facet_wrap(~ meting_label, scales = "free_x") +
           labs(x = "Datum", y = NULL,
                title = "Draagduur overzicht — alle scholen",
-               subtitle = paste0("% geldige dagen per school (drempelwaarde: ≥", MIN_WEAR_H, "h)")) +
+               subtitle = paste0("% geldige dagen per school (drempelwaarde: ≥", MIN_WEAR_H, "h waaktijd)")) +
           theme_schoolmove() +
           theme(axis.text.x  = element_text(angle = 45, hjust = 1, size = 8),
                 panel.grid   = element_blank(),
@@ -141,7 +141,7 @@ mod_participants_server <- function(id, shared) {
           facet_wrap(~ meting, scales = "free_x", labeller = as_labeller(METINGEN_LABELS)) +
           labs(x = "Datum", y = NULL,
                title = paste("Draagduur —", SCHOOL_LABELS[school_val]),
-               subtitle = paste0("Groen = geldige dag (≥", MIN_WEAR_H, "h)")) +
+               subtitle = paste0("Groen = geldige dag (≥", MIN_WEAR_H, "h waaktijd)")) +
           theme_schoolmove() +
           theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 8),
                 axis.text.y = element_text(size = 7),
@@ -261,9 +261,9 @@ mod_participants_server <- function(id, shared) {
 
       setnames(dt,
         c("ID","school_label","meting_label","n_valid_days","mean_wear_h","status","reden"),
-        c("ID","School","Meting","Geldige dagen","Gem. draagduur (h)","Status","Reden"),
+        c("ID","School","Meting","Geldige dagen","Gem. draagduur tijdens waaktijd (h)","Status","Reden"),
         skip_absent = TRUE)
-      base_cols  <- c("ID","School","Meting","Geldige dagen","Gem. draagduur (h)")
+      base_cols  <- c("ID","School","Meting","Geldige dagen","Gem. draagduur tijdens waaktijd (h)")
       extra_cols <- character(0)
       if ("mvpa_avg" %in% names(dt)) {
         setnames(dt, "mvpa_avg", "MVPA (min/dag)", skip_absent = TRUE)
@@ -278,7 +278,7 @@ mod_participants_server <- function(id, shared) {
       caption_txt <- htmltools::tags$caption(
         style = "caption-side:bottom; font-size:0.78rem; color:#64748b; padding:4px 0;",
         sprintf(
-          "Inclusiecriterium: ≥%g geldige draagdagen (%s) · ≥%g uur/dag draagduur",
+          "Inclusiecriterium: ≥%g geldige draagdagen (%s) · ≥%g uur/dag draagduur tijdens waaktijd",
           MIN_DAYS, wknd_txt, MIN_WEAR_H
         )
       )

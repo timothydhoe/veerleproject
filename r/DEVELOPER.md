@@ -268,7 +268,7 @@ Joins all GGIR parts with segment labels and computes validity flags.
 
 | Flag | Logic |
 |------|-------|
-| `n_valid_days` | Days where `N valid hours ≥ min_wear_hours_per_day` |
+| `n_valid_days` | Days where `n_valid_waking_hours ≥ min_wear_hours_per_day` — waking hours, i.e. Part 2's full-day `N valid hours` minus that night's detected sleep-period time (`add_waking_valid_hours()` in `utils_ggir.R`, shared with `shiny/global.R`). See bug_log.md #31 — this used to incorrectly use the raw full-day `N valid hours`. |
 | `meets_sedentary_criteria` | `n_valid_days ≥ min_valid_days` AND (if `require_weekend_day`) `has_weekend` |
 | `meets_sleep_criteria` | `n_valid_nights ≥ min_nights` (Part 4 primary; Part 5 SPT fallback) |
 | `exclusion_reason` | First failing criterion, for transparent reporting |

@@ -126,13 +126,29 @@ load_ggir_file <- function(meting_output_dir, meting,
 #' doesn't (observed with GGIR 3.3.6 on a small test set).
 #'
 #' @param results_dir Path to the GGIR results/ directory.
+#' @param prefer_full When TRUE, tries the unfiltered "full" report before
+#'   "cleaned". Needed by add_waking_valid_hours(): computing how many hours
+#'   a participant slept on a given calendar day requires every attempted
+#'   night's sleeponset/wakeup, including nights GGIR's own per-night 50%-
+#'   valid-data check excludes from "cleaned" — those nights still have real
+#'   detected sleep timing, and silently treating them as "no sleep" would
+#'   inflate that day's computed waking hours. The sleep *validity gate*
+#'   (a separate criterion, "was this night's own data good enough to use")
+#'   should keep using the default cleaned-first priority.
 #' @return data.frame, or NULL if no Part 4 file found.
-read_part4_sleep <- function(results_dir) {
+read_part4_sleep <- function(results_dir, prefer_full = FALSE) {
   filenames <- c(
     "part4_nightsummary_sleep_cleaned.csv",
     "part4_nightsummary_sleep_full.csv",
     "part4_nightsummary.csv"
   )
+  if (isTRUE(prefer_full)) {
+    filenames <- c(
+      "part4_nightsummary_sleep_full.csv",
+      "part4_nightsummary_sleep_cleaned.csv",
+      "part4_nightsummary.csv"
+    )
+  }
   search_dirs <- c(results_dir, file.path(results_dir, "QC"))
   candidates  <- as.vector(outer(search_dirs, filenames, file.path))
 
@@ -270,6 +286,97 @@ read_ggir_config <- function(meting_output_dir) {
   cfg_path <- file.path(subdir, "config.csv")
   if (!file.exists(cfg_path)) return(NULL)
   read.csv(cfg_path, stringsAsFactors = FALSE)
+}
+
+#' Compute per-day "waking valid wear hours" by subtracting overnight sleep
+#'
+#' Veerle's protocol (docs/info/info studie.docx, citing Antczak et al. 2021)
+#' defines the sedentary-analysis validity criterion as "≥9 valid hours of
+#' valid WAKING wear time" — 24h minus the time a pupil is asleep — not the
+#' full calendar day. GGIR's own `includedaycrit` (used in 01_run_ggir.R for
+#' GGIR's internal Part 2/5 processing) measures the full calendar day; this
+#' function corrects that for the pipeline's own validity gate by subtracting
+#' each night's sleep-period-time (SPT) window from the calendar day(s) it
+#' overlaps. This mirrors how GGIR itself defines "waking hours" internally
+#' for its own includedaycrit.part5 parameter (both are built on GGIR's
+#' detected SleepPeriodTime) — see docs/test/bug_log.md #31 for the source-
+#' level investigation that established this.
+#'
+#' Approximation, documented rather than hidden: a night's SPT clock-time
+#' duration is treated as fully "valid wear" time (GGIR's sleep detection
+#' needs wear data to run in the first place, so this is a reasonable but not
+#' epoch-exact assumption — true epoch-level accounting is the deferred
+#' labeled_epochs.csv feature, bug_log.md #10). GGIR expresses sleeponset/
+#' wakeup as decimal hours counted from that night's calendar_date's
+#' midnight, e.g. wakeup = 26.25 means 02:15 on the *next* calendar day — the
+#' SPT window is split across both days accordingly. Subtraction is capped so
+#' a day's waking hours can never go negative.
+#'
+#' Calendar days with no matching Part 4 night data (e.g. non-wear overnight,
+#' or GGIR simply never produced any Part 4 output) get n_valid_waking_hours
+#' = NA rather than an assumed zero-sleep subtraction — silently assuming no
+#' sleep would inflate that day's waking hours and could wrongly count it as
+#' valid. NA days are excluded from validity counts by the caller (any
+#' na.rm = TRUE aggregation naturally drops them), matching how the sleep
+#' validity gate already treats unknown/missing nights.
+#'
+#' @param part2 data.table with (at least) ID, calendar_date, n_valid_hours —
+#'   one row per participant per calendar day (GGIR Part 2 daysummary).
+#' @param part4_full data.table with (at least) ID, calendar_date,
+#'   sleeponset, wakeup — one row per participant per night. Should be the
+#'   UNFILTERED variant (read_part4_sleep(..., prefer_full = TRUE)), not the
+#'   cleaned/valid-nights-only one.
+#' @return part2 (copy), with calendar_date coerced to Date and a new
+#'   n_valid_waking_hours column added.
+add_waking_valid_hours <- function(part2, part4_full) {
+  part2 <- data.table::copy(part2)
+  part2[, calendar_date := as.Date(calendar_date)]
+
+  required <- c("ID", "calendar_date", "sleeponset", "wakeup")
+  if (is.null(part4_full) || nrow(part4_full) == 0 ||
+      !all(required %in% names(part4_full))) {
+    part2[, n_valid_waking_hours := NA_real_]
+    return(part2)
+  }
+
+  key_cols <- intersect(c("ID", "school", "meting"), names(part4_full))
+  key_cols <- intersect(key_cols, names(part2))
+
+  spt <- part4_full[!is.na(calendar_date) & !is.na(sleeponset) & !is.na(wakeup)]
+  spt[, calendar_date := as.Date(calendar_date)]
+
+  # Portion of each night's sleep window falling on the onset day vs. the
+  # next calendar day (see decimal-hour convention in the docstring above).
+  spt[, today_h    := pmax(0, pmin(wakeup, 24) - pmin(sleeponset, 24))]
+  spt[, tomorrow_h := pmax(0, wakeup - 24)]
+
+  sleep_by_day <- data.table::rbindlist(list(
+    spt[, c(key_cols, "calendar_date", "today_h"), with = FALSE][
+      , .(sleep_h = today_h), by = c(key_cols, "calendar_date")],
+    spt[tomorrow_h > 0][
+      , calendar_date := calendar_date + 1][
+      , c(key_cols, "calendar_date", "tomorrow_h"), with = FALSE][
+      , .(sleep_h = tomorrow_h), by = c(key_cols, "calendar_date")]
+  ))
+  sleep_by_day <- sleep_by_day[
+    , .(sleep_h = sum(sleep_h, na.rm = TRUE)), by = c(key_cols, "calendar_date")
+  ]
+
+  part2 <- merge(part2, sleep_by_day, by = c(key_cols, "calendar_date"), all.x = TRUE)
+
+  n_missing <- part2[is.na(sleep_h), .N]
+  if (n_missing > 0) {
+    message(sprintf(
+      "[validity] %d participant-day(s) have no matching Part 4 sleep record — waking valid hours cannot be computed and these will not count toward n_valid_days.",
+      n_missing
+    ))
+  }
+
+  part2[, n_valid_waking_hours := ifelse(
+    is.na(sleep_h), NA_real_, pmax(0, n_valid_hours - sleep_h)
+  )]
+  part2[, sleep_h := NULL]
+  part2[]
 }
 
 #' Resolve the qwindow actually used by GGIR for a given meting output

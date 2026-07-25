@@ -64,8 +64,8 @@ Controleer minimaal:
 | Instelling | Betekenis |
 |-----------|-----------|
 | `dev.example_mode` | `true` = gebruik fictieve testdata; `false` = gebruik échte data in `data/raw/` |
-| `validity.min_wear_hours_per_day` | Minimum draaguren per dag (standaard: 16) |
-| `validity.min_valid_days` | Minimum geldige dagen per deelnemer (standaard: 3) |
+| `validity.min_wear_hours_per_day` | Minimum draaguren tijdens waaktijd per dag (standaard: 9) |
+| `validity.min_valid_days` | Minimum geldige dagen per deelnemer (standaard: 4) |
 | `ggir.cut_points_mg` | ENMO-grenswaarden voor intensiteitsklassen (Hildebrand 2014/2017) |
 
 ### 2b. Pipeline uitvoeren
@@ -390,7 +390,7 @@ Na een succesvolle pipeline-run staan de samenvattingsbestanden in `data/process
 | `sb_min_day` | Gemiddelde sedentaire minuten per dag |
 | `sleep_duration_h` | Gemiddelde geschatte slaapduur per nacht (uur) |
 | `sleep_efficiency_pct` | Gemiddelde slaapefficiëntie (%) |
-| `n_valid_days` | Aantal dagen met voldoende draagduur |
+| `n_valid_days` | Aantal dagen met voldoende draagduur **tijdens waaktijd** (24u min de geschatte slaaptijd die nacht) |
 | `meets_sedentary_criteria` | TRUE/FALSE — voldoet aan bewegingsgeldigheidscriteria |
 | `meets_sleep_criteria` | TRUE/FALSE — voldoet aan slaapgeldigheidscriteria |
 | `exclusion_reason` | Reden van uitsluiting als niet geldig |

@@ -1460,11 +1460,12 @@ necessarily in cause) to bug #4's `calendar_date` type mismatch (`IDate`/`Date` 
 already fixed — this is a live dashboard-rendering error and needs its own
 investigation into which data source feeds this specific graph.
 
-### 31. Validity criterion: is `min_wear_hours_per_day` computed over waking hours or the full 24h day? — status: `open`
+### 31. Validity criterion: is `min_wear_hours_per_day` computed over waking hours or the full 24h day? — status: `fixed`
 
 **Where:** `config.yaml` (`validity.min_wear_hours_per_day`), GGIR's `includedaycrit`
-parameter, `CLAUDE.md` "Key Domain Concepts" table (validity criteria row, addressed
-by bug #20)
+parameter, `CLAUDE.md` "Key Domain Concepts" table (validity criteria row, previously
+"addressed" by bug #20), `r/pipeline/utils_ggir.R` (new `add_waking_valid_hours()`),
+`r/pipeline/03_build_summaries.R`, `r/shiny/global.R`, `r/shiny/modules/mod_participants.R`
 
 Direct question from Veerle (verbatim, Dutch): *"Voor het bepalen van de draaguren
 per dag om een dag als geldig te tellen (eerste criterium) wilde ik even checken of
@@ -1475,14 +1476,100 @@ tijd dat leerlingen slapen). Hebben jullie daar toevallig een idee van?"*
 time pupils are awake — i.e. 24h minus sleep time — rather than the full calendar
 day.)
 
-**Why this needs care:** `CLAUDE.md`'s validity-criteria entry (as corrected by bug
-#20) currently documents the 9-hour criterion as GGIR's `includedaycrit` — a **24h
-calendar-day** valid-wear measure, explicitly *not* a waking-only window — with a
-separate, non-configurable, Part-5-only waking-hours parameter
-(`includedaycrit.part5`, hardcoded to 2/3) that's unrelated to this inclusion
-criterion. Veerle's question directly asks about the waking-hours interpretation, so
-either #20's fix mischaracterized the criterion, or the current implementation
-doesn't match her actual protocol intent (or both) — needs checking against her
-original protocol source, the same primary-source approach bug #8 used to resolve a
-similar ambiguity. Highest priority in working order per `order_of_approach.md`: this
-gates which participant-days count as valid across the entire dataset.
+**Primary source confirms Veerle's own interpretation.** `docs/info/info studie.docx`
+(her own protocol document, same source bug #8 drew from) states verbatim: *"Pupils
+will be included if they have at least 9 valid hours of valid **waking** wear time on
+four days for the sedentary time analysis... (10)"* — reference (10) is Antczak et al.
+(2021), Int J Behav Nutr Phys Act 18(1):73, the same citation `docs/data_info/data_dictionary.md`
+already used correctly. **Bug #20 was itself wrong**: it accurately described GGIR's
+`includedaycrit` mechanics (a full 24h-calendar-day measure) but never checked that
+against Veerle's protocol text, and in doing so reversed CLAUDE.md's previously-correct
+"waking hours" wording (confirmed via git history). `r/pipeline/03_build_summaries.R`
+was confirmed to read GGIR's raw full-day `N valid hours` column with zero sleep-time
+adjustment anywhere — the bug was real, not just a docs mismatch.
+
+**Two fix options were researched before choosing:**
+- **Option A (chosen):** Compute "waking valid hours" in the pipeline's own
+  post-processing — per participant-day, subtract that night's GGIR-detected
+  sleep-period time from Part 2's full-day valid hours.
+- **Option B (rejected, researched fully by an independent agent):** Use GGIR's own
+  `includedaycrit.part5` parameter (already Part-5-only, hardcoded to `2/3`, never
+  wired to config) set to an absolute hour value instead. Source-level investigation of
+  GGIR's `g.part5.savetimeseries.R` confirmed GGIR *does* compute the right thing
+  internally (`invalid_wakinghours`, derived from its own `SleepPeriodTime`) — but never
+  exposes it as a column; it silently drops invalid-day rows from `part5_daysummary_*.csv`
+  (confirmed live: 57 filtered rows vs. 289 in the unfiltered `results/QC/part5_daysummary_full_*.csv`
+  companion for the same participant). Reconstructing `n_valid_days` under Option B would
+  need joining two Part5 files, one an undocumented QC artifact, and — the deciding factor —
+  the threshold would be baked in at GGIR-run time, requiring a full Parts 1–5 rerun for
+  every threshold change, vs. Option A's fast, iterable post-processing step.
+
+**Independent review of Option A** (before implementation) confirmed the diagnosis and
+the Veerle quote (pulled directly from the docx XML), and caught a real design gap:
+GGIR attributes an entire night to its onset `calendar_date` even when the sleep period
+spans midnight (confirmed live: participant 1001's night of 2026-04-22 runs 23:02→02:14,
+i.e. ~2h fall on 2026-04-23, but GGIR tags the whole night `2026-04-22`) — a naive
+"subtract the night's duration from the onset day" would over-subtract from one day and
+under-subtract from the next. Also flagged: calendar days with no matching Part 4 night
+data need an explicit NA policy, not a silent zero-subtraction (which would inflate that
+day's waking hours).
+
+**Fix applied:**
+- New shared helper `add_waking_valid_hours(part2, part4_full)` in `utils_ggir.R`.
+  Splits each night's sleep-period-time (SPT) window across the two calendar days it
+  overlaps, using GGIR's decimal-hour convention (`wakeup > 24` means the SPT window
+  continues into the next calendar day), and subtracts the split hours from each day's
+  Part 2 `N valid hours`. Days with no matching Part 4 night get `n_valid_waking_hours = NA`
+  (excluded from validity counts via `na.rm = TRUE`, not silently assumed zero-sleep) —
+  addressing both edge cases the independent review raised.
+- `read_part4_sleep()` gained a `prefer_full` argument. The waking-hours calculation needs
+  *every* attempted night's sleep timing (to correctly subtract it), including nights GGIR's
+  own separate 50%-valid-night check would exclude from the "cleaned" report — reusing the
+  cleaned-preferring `part4` object here would silently treat excluded nights as "no sleep,"
+  inflating those days' waking hours. The sleep *validity gate* (a different criterion, unchanged)
+  keeps using the default cleaned-first priority.
+- `03_build_summaries.R`: loads a second, unfiltered Part 4 table (`part4_full`, via
+  `prefer_full = TRUE`), calls `add_waking_valid_hours()` on `part2` before computing
+  `participant_validity`. The gate (`n_valid_days`, `mean_wear_h`, `has_weekend`) now uses
+  `n_valid_waking_hours` instead of the raw full-day figure. The raw full-day mean is kept
+  as a new `mean_wear_h_fullday` diagnostic column in `validity_summary.csv`, not discarded.
+- `shiny/global.R` had its **own independent, parallel copy** of the same (wrong) full-day
+  logic (`valid_day <- n_valid_hours >= MIN_WEAR_H`), driving the Deelnemers tab's per-day
+  heatmap — found during implementation, not previously tracked as a separate item. Fixed
+  the same way, calling the same shared `add_waking_valid_hours()` helper, so the dashboard's
+  per-day view and `validity_summary.csv` can no longer silently disagree the way they would
+  have if only one of the two call sites had been fixed.
+- `min_wear_hours_per_day` stays exactly as configurable in `config.yaml` as before (explicit
+  project-owner requirement) — only its inline comment was clarified to say "waking hours."
+  No new config keys were introduced.
+- Dashboard copy in `mod_participants.R` (4 strings: heatmap subtitle, two chart subtitles,
+  inclusion-criteria table caption) updated to say "waaktijd" (waking time) instead of the
+  ambiguous "draagduur," so Veerle sees the correct criterion when reading the dashboard.
+- `CLAUDE.md`'s validity-criteria row corrected (supersedes bug #20's wording); `r/DEVELOPER.md`
+  and `r/GEBRUIKERSGIDS.md`'s matching entries updated to match. Found and fixed in passing:
+  `GEBRUIKERSGIDS.md`'s config-settings table (§2a) still showed the pre-superseded `≥16h`/`≥3
+  days` figures as the "standaard" (default) values, not the current `9`/`4` — stale since
+  whenever those defaults last changed, unrelated to bug #20, just never caught until this
+  line was touched for the same reason.
+
+**Verified three ways:**
+1. **Research phase**: an independent agent fully investigated Option B from GGIR's actual
+   R source (fetched from GitHub, since the local renv library only has compiled `.rdb`/`.rdx`,
+   no plain `.R`) and this project's own on-disk GGIR output, before Option A was chosen.
+2. **Independent static review** (fresh agent, no prior context) verified the primary-source
+   quote directly from the docx XML, re-confirmed `03_build_summaries.R`'s pre-fix behavior,
+   verified GGIR's source and this repo's on-disk data back up the Option-B rejection, and
+   found the midnight-crossing and missing-Part-4-data edge cases addressed above.
+3. **Live end-to-end verification against real data**: ran `03_build_summaries.R` against the
+   real GGIR output for participants 1001/73044. By-hand calculation from raw Part 2/Part 4
+   values for participant 1001: night of 2026-04-22 (`sleeponset=23.044`, `wakeup=26.249`)
+   splits to 0.956h on 2026-04-22 and 2.249h on 2026-04-23; expected waking hours
+   8.5−0.956=7.544 and 10−2.249=7.751. **Code output matched exactly**: `n_valid_waking_hours`
+   = 7.544 and 7.751, both correctly `valid_day = FALSE` under the 9h threshold (previously,
+   2026-04-23 alone passed under the old 24h-day logic, since 10 ≥ 9). Ran `qc/qc_03_summaries.R`
+   against the new output — passes cleanly, correctly warns about the (expected, tiny-test-data)
+   0% inclusion rate. Confirmed `segment_summary.csv` untouched (mtime unchanged, no new backup) —
+   this fix only touches the validity gate, not segment labeling. Separately loaded `global.R`'s
+   data pipeline in isolation and confirmed `n_valid_waking_hours`/`valid_day` match the same
+   values as the pipeline script for the same participant, proving the shared helper keeps both
+   call sites in agreement.

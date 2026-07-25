@@ -63,7 +63,7 @@ bouts:
 # ── Geldigheidsdrempels ───────────────────────────────────────────────────────
 validity:
   # Criteria voor sedentaire analyse
-  min_wear_hours_per_day: 9    # minimum draaguren per dag om een dag als geldig te tellen
+  min_wear_hours_per_day: 9    # minimum draaguren tijdens waaktijd (24u min slaaptijd die nacht) om een dag als geldig te tellen
   min_valid_days: 4             # minimum aantal geldige dagen per meting
   require_weekend_day: true     # minimaal één weekenddag vereist onder de geldige dagen
   # Criteria voor slaapanalyse

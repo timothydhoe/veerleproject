@@ -74,12 +74,28 @@ part4_list <- lapply(metingen, function(m) {
   dt
 })
 
+# Part 4 (unfiltered variant) — used only for the waking-valid-hours
+# computation below, which needs every attempted night's sleep timing, not
+# just nights that individually pass the separate sleep-validity criterion.
+# See add_waking_valid_hours()'s docstring in utils_ggir.R.
+part4_full_list <- lapply(metingen, function(m) {
+  results_dir <- find_ggir_results_dir(file.path(base_out, m))
+  if (is.null(results_dir)) return(NULL)
+  df <- read_part4_sleep(results_dir, prefer_full = TRUE)
+  if (is.null(df)) return(NULL)
+  dt <- as.data.table(df)
+  dt[, meting := m]
+  if ("ID" %in% names(dt)) dt[, school := extract_school_id(ID)]
+  dt
+})
+
 # Part 5: person summary (WW or Segments)
 part5_list <- lapply(metingen, load_ggir, pattern  = "^part5_personsummary_")
 
-part2 <- rbindlist(Filter(Negate(is.null), part2_list), fill = TRUE)
-part4 <- rbindlist(Filter(Negate(is.null), part4_list), fill = TRUE)
-part5 <- rbindlist(Filter(Negate(is.null), part5_list), fill = TRUE)
+part2      <- rbindlist(Filter(Negate(is.null), part2_list), fill = TRUE)
+part4      <- rbindlist(Filter(Negate(is.null), part4_list), fill = TRUE)
+part4_full <- rbindlist(Filter(Negate(is.null), part4_full_list), fill = TRUE)
+part5      <- rbindlist(Filter(Negate(is.null), part5_list), fill = TRUE)
 
 if (nrow(part2) == 0) stop("No part2 data found. Run pipeline/01_run_ggir.R first.")
 
@@ -91,6 +107,11 @@ if ("N hours"       %in% names(part2)) setnames(part2, "N hours",       "n_hours
 if (!"weekday" %in% names(part2) && "calendar_date" %in% names(part2)) {
   part2[, weekday := weekdays(as.Date(calendar_date, tz = cfg$output$timezone %||% "Europe/Brussels"))]
 }
+
+# Waking-hours validity (bug_log.md #31): subtract each day's detected sleep
+# time from Part 2's full-day "N valid hours" to match Veerle's actual
+# protocol ("valid WAKING wear time"), not the full 24h calendar day.
+part2 <- add_waking_valid_hours(part2, part4_full)
 
 # ── Load segment summary ──────────────────────────────────────────────────────
 seg_path <- file.path(base_out, "summaries", "segment_summary.csv")
@@ -106,13 +127,18 @@ if (file.exists(seg_path)) {
 # ── Participant-level validity (from part2) ────────────────────────────────────
 message("Computing validity flags...")
 
+# n_valid_waking_hours (24h minus that day's detected sleep, see
+# add_waking_valid_hours() above) drives the sedentary validity gate, per
+# Veerle's protocol. Raw full-day n_valid_hours is kept alongside for
+# transparency/debugging but no longer decides inclusion.
 participant_validity <- part2[
   , .(
       n_days       = .N,
-      n_valid_days = sum(n_valid_hours >= min_wear_h, na.rm = TRUE),
-      mean_wear_h  = round(mean(n_valid_hours, na.rm = TRUE), 1),
+      n_valid_days = sum(n_valid_waking_hours >= min_wear_h, na.rm = TRUE),
+      mean_wear_h  = round(mean(n_valid_waking_hours, na.rm = TRUE), 1),
+      mean_wear_h_fullday = round(mean(n_valid_hours, na.rm = TRUE), 1),
       has_weekend  = any(
-        weekday %in% c("Saturday", "Sunday") & n_valid_hours >= min_wear_h,
+        weekday %in% c("Saturday", "Sunday") & n_valid_waking_hours >= min_wear_h,
         na.rm = TRUE
       )
     ),
@@ -468,7 +494,8 @@ if (!is.null(absent_days) && nrow(absent_days) > 0) {
 }
 
 validity_cols <- intersect(
-  c("ID", "school", "meting", "n_days", "n_valid_days", "mean_wear_h", "has_weekend",
+  c("ID", "school", "meting", "n_days", "n_valid_days", "mean_wear_h",
+    "mean_wear_h_fullday", "has_weekend",
     "meets_sedentary_criteria", "exclusion_reason", "n_valid_nights", "meets_sleep_criteria",
     "n_absent_school_days"),
   names(participant_validity)
