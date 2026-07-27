@@ -83,6 +83,8 @@ if errorlevel 1 (
     echo  Bekijk de foutmelding hierboven in dit venster. Controleer
     echo  of je eerst "1 - Pipeline uitvoeren.bat" hebt uitgevoerd.
     echo.
+    echo  Zie ook het logbestand voor details: %BUNDLE_DIR%r\logs\shiny_errors.txt
+    echo.
     pause
     exit /b 1
 )

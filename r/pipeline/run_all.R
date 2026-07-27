@@ -24,6 +24,13 @@ library(yaml)
 `%||%` <- function(a, b) if (!is.null(a)) a else b
 
 source("pipeline/validate_config.R", local = TRUE)
+source("pipeline/utils_logging.R",   local = TRUE)
+
+# Errors/warnings encountered anywhere below are additionally captured to
+# this file (overwritten each run) — console output is unaffected, this is
+# purely additive. See docs/test/feature_log.md #1.
+PIPELINE_LOG <- file.path("logs", "pipeline_errors.txt")
+init_pipeline_log(PIPELINE_LOG)
 
 message("═══ SchoolMove Pipeline ══════════════════════════════════════════")
 message("Starting at: ", format(Sys.time(), "%Y-%m-%d %H:%M:%S"))
@@ -38,7 +45,7 @@ source("pipeline/utils_input.R", local = TRUE)
 
 cfg <- read_config_yaml("../config.yaml")
 cfg <- apply_active_profile(cfg)
-validate_config(cfg)
+with_logged_conditions(validate_config(cfg), PIPELINE_LOG, "config validation")
 
 if (isTRUE(cfg$dev$example_mode)) {
   raw_base <- file.path(cfg$paths$data_example, "dummy_data")
@@ -46,20 +53,22 @@ if (isTRUE(cfg$dev$example_mode)) {
   raw_base <- cfg$paths$data_raw
 }
 
-write_input_manifest(
-  data_dirs = list(
-    meting_1 = file.path(raw_base, "meting_1"),
-    meting_2 = file.path(raw_base, "meting_2")
-  ),
-  logs_dir = "logs",
-  valid_school_ids = suppressWarnings(as.integer(sub("^school_", "", names(cfg$schedules))))
-)
+with_logged_conditions({
+  write_input_manifest(
+    data_dirs = list(
+      meting_1 = file.path(raw_base, "meting_1"),
+      meting_2 = file.path(raw_base, "meting_2")
+    ),
+    logs_dir = "logs",
+    valid_school_ids = suppressWarnings(as.integer(sub("^school_", "", names(cfg$schedules))))
+  )
+}, PIPELINE_LOG, "input manifest")
 
 message("")
 
 # ── Step 01: GGIR ─────────────────────────────────────────────────────────────
 message("── Step 01: GGIR (Parts 1–5) ────────────────────────────────────")
-source("pipeline/01_run_ggir.R")
+with_logged_conditions(source("pipeline/01_run_ggir.R"), PIPELINE_LOG, "01_run_ggir.R")
 
 # ── Archive GGIR config.csv for reproducibility ───────────────────────────────
 # Copies GGIR's own parameter record into logs/ so every run is auditable.
@@ -99,11 +108,11 @@ message("")
 
 # ── Step 02: Segment labels ───────────────────────────────────────────────────
 message("── Step 02: Segment labels ──────────────────────────────────────")
-source("pipeline/02_label_segments.R")
+with_logged_conditions(source("pipeline/02_label_segments.R"), PIPELINE_LOG, "02_label_segments.R")
 
 # ── Step 03: Build summaries ──────────────────────────────────────────────────
 message("── Step 03: Build summaries ─────────────────────────────────────")
-source("pipeline/03_build_summaries.R")
+with_logged_conditions(source("pipeline/03_build_summaries.R"), PIPELINE_LOG, "03_build_summaries.R")
 
 # ── Done ──────────────────────────────────────────────────────────────────────
 t_elapsed <- proc.time() - t_start
