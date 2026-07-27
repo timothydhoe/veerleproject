@@ -87,6 +87,8 @@ if errorlevel 1 (
     echo  het om een probleem met config.yaml of met de data in
     echo  data\raw\meting_1 of data\raw\meting_2.
     echo.
+    echo  Zie ook het logbestand voor details: %BUNDLE_DIR%r\logs\pipeline_errors.txt
+    echo.
     echo  Los het probleem op en start dit bestand opnieuw.
     echo.
     pause

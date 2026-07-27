@@ -1449,16 +1449,37 @@ working order per `order_of_approach.md`, after error/log-to-file capture (featu
 log #2) lands, since that should make it easier to see what's actually happening
 across the two launcher runs.
 
-### 30. Shiny dashboard: `object 'calendar_date' not found` — "MVPA per dag" graph, Deelnemers tab — status: `open`
+### 30. Shiny dashboard: `object 'calendar_date' not found` — "MVPA per dag" graph, Deelnemers tab — status: `fixed`
 
-**Where:** `r/shiny/` — "Deelnemers" tab, "MVPA per dag" graph (exact module not yet
-identified)
+**Where:** `r/shiny/modules/mod_participants.R` — "Deelnemers" tab, `explorer_mvpa_plot`
+(the "MVPA per dag" graph)
 
-Reported by the project owner. Not yet investigated. Possibly related in kind (not
-necessarily in cause) to bug #4's `calendar_date` type mismatch (`IDate`/`Date` vs.
-`character` between `fread()` and `read.csv()`), but that was a QC-script-only issue
-already fixed — this is a live dashboard-rendering error and needs its own
-investigation into which data source feeds this specific graph.
+Reported by the project owner, logged `open` in the 2026-07-23 batch. Investigated by
+reading the live code and its history rather than assuming the original report was
+still accurate (per this file's own workflow). The graph reads from `segment_summary`
+(output of `02_label_segments.R`), which has always written its per-row date column as
+`date`, never `calendar_date` — `02_label_segments.R` explicitly reads GGIR's
+`calendar_date` from `part2` but writes it out under the column name `date`
+(`r/pipeline/02_label_segments.R:397/433/462`). A plot grouping/plotting on
+`calendar_date` against that table would throw exactly this error.
+
+**Fix applied:** none needed — already fixed by commit `1b22e668` ("fix - date error
+mvpa error", 2026-07-15), 8 days before this item was logged as `open`. That commit
+changed `explorer_mvpa_plot`'s `by = .(calendar_date, meting)` / `as.Date(calendar_date)`
+to `by = .(date, meting)` / `as.Date(date)`. Stale duplicate — the original report
+predates the fix landing, or the fix landed before the item was logged, and the log was
+never reconciled against it.
+
+**Verified:** via `git blame` on the two affected lines (confirmed the change and its
+commit), and by re-reading every remaining `calendar_date` reference in `r/` today —
+all others are either guarded (`"calendar_date" %in% names(...)`) or operate on
+`part2`/`part4`, which genuinely have that column (GGIR's own output). No live Shiny
+run performed — no R interpreter available in this session (the repo's
+`r/renv/library/` only has `renv` itself bootstrapped, not the full package set or an
+R interpreter; the portable R+library bundle is only assembled by
+`build-windows-bundle.yml` in CI, not committed to git). Recommend a quick manual
+check next time the dashboard is open (Deelnemers tab → pick a participant → confirm
+"MVPA per dag" renders) to close the loop live.
 
 ### 31. Validity criterion: is `min_wear_hours_per_day` computed over waking hours or the full 24h day? — status: `fixed`
 

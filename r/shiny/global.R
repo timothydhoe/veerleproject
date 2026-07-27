@@ -6,6 +6,15 @@
 
 `%||%` <- function(a, b) if (!is.null(a)) a else b
 
+# Errors/warnings encountered during startup and while the app is running are
+# additionally captured to this file (overwritten each run) — console/UI
+# behaviour is unaffected, this is purely additive. See
+# docs/test/feature_log.md #1. Sourced first (before library() calls) since
+# it's dependency-free base R and other startup code below needs it.
+source("../pipeline/utils_logging.R", local = TRUE)
+SHINY_LOG <- file.path("..", "logs", "shiny_errors.txt")
+init_pipeline_log(SHINY_LOG)
+
 # Resolve a config-file path relative to r/ (global.R runs from r/shiny/, one
 # level deeper) — unless the path is already absolute (Windows drive letter,
 # UNC, or POSIX), in which case it's used as-is. config.yaml explicitly allows
@@ -43,11 +52,20 @@ profiles_dir <- resolve_cfg_path(cfg$profiles$directory %||% "profiles/")
 cfg <- apply_active_profile(cfg, profiles_dir)
 
 CONFIG_VALID <- tryCatch({
-  validate_config(cfg)
+  with_logged_conditions(validate_config(cfg), SHINY_LOG, "config validation")
   TRUE
 }, error = function(e) {
+  # Not logged again here — with_logged_conditions() above already logged it
+  # (and re-threw) before this outer catch runs.
   message("[config] Validation errors — dashboard may show incomplete data:\n", e$message)
   FALSE
+})
+
+# Errors during reactive/render execution, once the app is already running
+# (i.e. after this startup script has finished) — the standard shiny.error
+# hook for app-wide error capture, rather than wrapping every render*() call.
+options(shiny.error = function() {
+  log_error(SHINY_LOG, geterrmessage(), "reactive/render (runtime)")
 })
 base_out       <- resolve_cfg_path(cfg$paths$data_processed)
 metingen       <- c("meting_1", "meting_2")
@@ -83,86 +101,93 @@ load_ggir <- function(meting, filename = NULL, pattern = NULL) {
 }
 
 # ── Load processed data ───────────────────────────────────────────────────────
-# analysis_ready + validity (output of 03_build_summaries.R)
-analysis_ready <- tryCatch(
-  fread(file.path(base_out, "summaries", "analysis_ready.csv"),   data.table = TRUE, encoding = "UTF-8"),
-  error = function(e) { message("analysis_ready.csv not found — run pipeline first"); NULL }
-)
-validity_summary <- tryCatch(
-  fread(file.path(base_out, "summaries", "validity_summary.csv"), data.table = TRUE, encoding = "UTF-8"),
-  error = function(e) NULL
-)
+# Wrapped so any warning/error encountered while loading is captured to
+# SHINY_LOG (in addition to the console) — see docs/test/feature_log.md #1.
+# Assignments still land in this (global) environment as usual: a bare `{ }`
+# block passed as a lazy argument is evaluated in the environment where it
+# was written, not inside with_logged_conditions()'s own call frame.
+with_logged_conditions({
+  # analysis_ready + validity (output of 03_build_summaries.R)
+  analysis_ready <- tryCatch(
+    fread(file.path(base_out, "summaries", "analysis_ready.csv"),   data.table = TRUE, encoding = "UTF-8"),
+    error = function(e) { message("analysis_ready.csv not found — run pipeline first"); NULL }
+  )
+  validity_summary <- tryCatch(
+    fread(file.path(base_out, "summaries", "validity_summary.csv"), data.table = TRUE, encoding = "UTF-8"),
+    error = function(e) NULL
+  )
 
-# part2 day summaries (for heatmap and day-level views)
-part2_list <- lapply(metingen, load_ggir, filename = "part2_daysummary.csv")
-part2      <- rbindlist(Filter(Negate(is.null), part2_list), fill = TRUE)
-if (nrow(part2) > 0) {
-  if ("N valid hours" %in% names(part2)) setnames(part2, "N valid hours", "n_valid_hours")
-  if ("N hours"       %in% names(part2)) setnames(part2, "N hours",       "n_hours")
-  if (!"weekday" %in% names(part2) && "calendar_date" %in% names(part2)) {
-    # Force English day names so Saturday/Sunday filters work on Dutch-locale machines.
-    old_lc <- Sys.getlocale("LC_TIME")
-    Sys.setlocale("LC_TIME", "C")
-    part2[, weekday := weekdays(as.Date(calendar_date))]
-    Sys.setlocale("LC_TIME", old_lc)
+  # part2 day summaries (for heatmap and day-level views)
+  part2_list <- lapply(metingen, load_ggir, filename = "part2_daysummary.csv")
+  part2      <- rbindlist(Filter(Negate(is.null), part2_list), fill = TRUE)
+  if (nrow(part2) > 0) {
+    if ("N valid hours" %in% names(part2)) setnames(part2, "N valid hours", "n_valid_hours")
+    if ("N hours"       %in% names(part2)) setnames(part2, "N hours",       "n_hours")
+    if (!"weekday" %in% names(part2) && "calendar_date" %in% names(part2)) {
+      # Force English day names so Saturday/Sunday filters work on Dutch-locale machines.
+      old_lc <- Sys.getlocale("LC_TIME")
+      Sys.setlocale("LC_TIME", "C")
+      part2[, weekday := weekdays(as.Date(calendar_date))]
+      Sys.setlocale("LC_TIME", old_lc)
+    }
+    part2[, school_label := SCHOOL_LABELS[school]]
   }
-  part2[, school_label := SCHOOL_LABELS[school]]
-}
 
-# part4 night summaries (sleep) — uses version-tolerant reader
-part4_list <- lapply(metingen, function(m) {
-  results_dir <- find_ggir_results_dir(file.path(base_out, m))
-  if (is.null(results_dir)) return(NULL)
-  df <- read_part4_sleep(results_dir)
-  if (is.null(df)) return(NULL)
-  dt <- data.table::as.data.table(df)
-  dt[, meting := m]
-  if ("ID" %in% names(dt)) dt[, school := extract_school_id(ID)]
-  dt
-})
-part4 <- rbindlist(Filter(Negate(is.null), part4_list), fill = TRUE)
+  # part4 night summaries (sleep) — uses version-tolerant reader
+  part4_list <- lapply(metingen, function(m) {
+    results_dir <- find_ggir_results_dir(file.path(base_out, m))
+    if (is.null(results_dir)) return(NULL)
+    df <- read_part4_sleep(results_dir)
+    if (is.null(df)) return(NULL)
+    dt <- data.table::as.data.table(df)
+    dt[, meting := m]
+    if ("ID" %in% names(dt)) dt[, school := extract_school_id(ID)]
+    dt
+  })
+  part4 <- rbindlist(Filter(Negate(is.null), part4_list), fill = TRUE)
 
-# Unfiltered part4 variant, for waking-valid-hours only (see
-# add_waking_valid_hours() in utils_ggir.R and bug_log.md #31) — needs every
-# attempted night's sleep timing, not just nights meeting their own separate
-# sleep-validity criterion.
-part4_full_list <- lapply(metingen, function(m) {
-  results_dir <- find_ggir_results_dir(file.path(base_out, m))
-  if (is.null(results_dir)) return(NULL)
-  df <- read_part4_sleep(results_dir, prefer_full = TRUE)
-  if (is.null(df)) return(NULL)
-  dt <- data.table::as.data.table(df)
-  dt[, meting := m]
-  if ("ID" %in% names(dt)) dt[, school := extract_school_id(ID)]
-  dt
-})
-part4_full <- rbindlist(Filter(Negate(is.null), part4_full_list), fill = TRUE)
+  # Unfiltered part4 variant, for waking-valid-hours only (see
+  # add_waking_valid_hours() in utils_ggir.R and bug_log.md #31) — needs every
+  # attempted night's sleep timing, not just nights meeting their own separate
+  # sleep-validity criterion.
+  part4_full_list <- lapply(metingen, function(m) {
+    results_dir <- find_ggir_results_dir(file.path(base_out, m))
+    if (is.null(results_dir)) return(NULL)
+    df <- read_part4_sleep(results_dir, prefer_full = TRUE)
+    if (is.null(df)) return(NULL)
+    dt <- data.table::as.data.table(df)
+    dt[, meting := m]
+    if ("ID" %in% names(dt)) dt[, school := extract_school_id(ID)]
+    dt
+  })
+  part4_full <- rbindlist(Filter(Negate(is.null), part4_full_list), fill = TRUE)
 
-# Waking-hours validity (bug_log.md #31): "valid day" is defined against
-# waking wear hours (24h minus that night's detected sleep), per Veerle's
-# protocol — not the full calendar day. Mirrors 03_build_summaries.R so the
-# dashboard's per-day view and validity_summary.csv agree.
-if (nrow(part2) > 0) {
-  part2 <- add_waking_valid_hours(part2, part4_full)
-  part2[, valid_day := !is.na(n_valid_waking_hours) & n_valid_waking_hours >= MIN_WEAR_H]
-}
+  # Waking-hours validity (bug_log.md #31): "valid day" is defined against
+  # waking wear hours (24h minus that night's detected sleep), per Veerle's
+  # protocol — not the full calendar day. Mirrors 03_build_summaries.R so the
+  # dashboard's per-day view and validity_summary.csv agree.
+  if (nrow(part2) > 0) {
+    part2 <- add_waking_valid_hours(part2, part4_full)
+    part2[, valid_day := !is.na(n_valid_waking_hours) & n_valid_waking_hours >= MIN_WEAR_H]
+  }
 
-# segment summary (output of 02_label_segments.R)
-seg_path <- file.path(base_out, "summaries", "segment_summary.csv")
-if (file.exists(seg_path)) {
-  segment_summary <- fread(seg_path, data.table = TRUE, encoding = "UTF-8")
-  segment_summary[, school_label := SCHOOL_LABELS[school]]
-  SEGMENT_LEVELS <- c("before_school", "in_class", "recess", "lunch", "after_school")
-  SEGMENT_LABELS <- c("Voor school", "Les", "Speeltijd", "Middagpauze", "Na school")
-  segment_summary[, segment_label := factor(
-    segment,
-    levels = c(SEGMENT_LEVELS, "absent", "weekend", "outside_school"),
-    labels = c(SEGMENT_LABELS, "Afwezig", "Weekend", "Buiten school")
-  )]
-} else {
-  segment_summary <- NULL
-  message("segment_summary.csv not found — School Day tab will be empty.")
-}
+  # segment summary (output of 02_label_segments.R)
+  seg_path <- file.path(base_out, "summaries", "segment_summary.csv")
+  if (file.exists(seg_path)) {
+    segment_summary <- fread(seg_path, data.table = TRUE, encoding = "UTF-8")
+    segment_summary[, school_label := SCHOOL_LABELS[school]]
+    SEGMENT_LEVELS <- c("before_school", "in_class", "recess", "lunch", "after_school")
+    SEGMENT_LABELS <- c("Voor school", "Les", "Speeltijd", "Middagpauze", "Na school")
+    segment_summary[, segment_label := factor(
+      segment,
+      levels = c(SEGMENT_LEVELS, "absent", "weekend", "outside_school"),
+      labels = c(SEGMENT_LABELS, "Afwezig", "Weekend", "Buiten school")
+    )]
+  } else {
+    segment_summary <- NULL
+    message("segment_summary.csv not found — School Day tab will be empty.")
+  }
+}, SHINY_LOG, "startup data load")
 
 # ── WHO references ────────────────────────────────────────────────────────────
 WHO_MVPA_MIN   <- 60   # WHO recommendation: ≥60 min/day MVPA for children (5–17 yr)
