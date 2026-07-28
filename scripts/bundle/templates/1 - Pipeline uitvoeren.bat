@@ -70,12 +70,14 @@ echo Dit verwerkt de data in data\raw\meting_1 en data\raw\meting_2.
 echo Zorg dat je bestanden daar staan voor je verdergaat.
 echo.
 echo Dit kan 30-60 minuten duren voor de volledige dataset.
-echo Sluit dit venster niet terwijl de pipeline draait.
+echo De pipeline draait op de achtergrond -- dit venster mag gesloten
+echo worden zonder de run te onderbreken. Open dit bestand gewoon
+echo opnieuw om de voortgang terug te zien.
 echo.
 pause
 
 cd /d "%BUNDLE_DIR%r"
-"%RSCRIPT%" -e "source('pipeline/run_all.R')"
+"%RSCRIPT%" -e "source('pipeline/run_pipeline_monitored.R')"
 
 if errorlevel 1 (
     echo.

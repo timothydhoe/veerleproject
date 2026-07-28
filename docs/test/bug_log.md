@@ -1435,19 +1435,112 @@ Collected from the project owner, not yet investigated. See
 `docs/test/order_of_approach.md` for working order and reasoning across these plus
 the parallel `feature_log.md` items.
 
-### 29. Bundle: must keep the first `.bat`'s terminal open to run the second — status: `open`
+### 29. Bundle: must keep the first `.bat`'s terminal open to run the second — status: `fixed`
 
-**Where:** `scripts/bundle/templates/1 - Pipeline uitvoeren.bat`,
-`scripts/bundle/templates/2 - Dashboard starten.bat`
+**Where:** `scripts/bundle/templates/1 - Pipeline uitvoeren.bat`, new
+`r/pipeline/run_pipeline_monitored.R`
 
-Reported by the project owner: in the current bundle, the terminal window opened by
-running `1 - Pipeline uitvoeren.bat` must stay open in order to then run
-`2 - Dashboard starten.bat` and view the dashboard. Not yet investigated — root cause
-unknown (could be a real process/lock dependency between the two launchers, or a
-UX/expectation issue around the trailing `pause` in the pipeline `.bat`). Fourth in
-working order per `order_of_approach.md`, after error/log-to-file capture (feature
-log #2) lands, since that should make it easier to see what's actually happening
-across the two launcher runs.
+**Investigated before fixing.** Read both launcher scripts in full: no code-level
+lock or dependency exists between them — each is a fully independent `cmd.exe`
+invocation, no shared env vars (don't cross sibling console windows), no lock files,
+no process chaining. Clarified with the project owner what was actually being
+observed: **both** halves of the original report were real — (a) window 1 must stay
+open *while the pipeline runs* (closing a console window on Windows kills any child
+process still attached to it — here, the in-progress `Rscript.exe` — a real,
+unavoidable OS behaviour, not a bug), and (b) window 2 must stay open while using the
+dashboard (`shiny::runApp()` *is* the R process serving it — standard Shiny
+behaviour). The actual problem: accidentally closing window 1 mid-run loses up to
+30-60 minutes of real work, with nothing protecting against it.
+
+**Scope decision (with the project owner):** detach only the pipeline run (the
+expensive one to lose) via a true background process, with a live progress
+indicator; leave the dashboard (`2 -...bat`) as a simple blocking process as-is,
+since losing that session is cheap to recover from (data's already computed, just
+relaunch) — matches this project's broader `order_of_approach.md` reasoning of not
+pulling forward the (separately deprioritized) full bundle audit,
+`feature_log.md` #4, while still designing the fix's status-file/progress-polling
+piece generically enough to be reusable when that item's time comes (per an
+independent review specifically on that sequencing question).
+
+**Empirically verified the core mechanism before designing around it** (not just
+taken from docs): confirmed `processx` and `ps` are already present in
+`r/renv.lock` as existing transitive dependencies — no new package needed. Live-tested
+`processx::process$new(..., windows_detached_process = TRUE, supervise = FALSE)` by
+launching a simulated `.bat` window (`cmd.exe` running an R launcher script) via
+PowerShell, then force-killing that window process, and confirming via `Get-Process`
+that the detached child (`Rscript.exe`) was still running afterward while the window
+was confirmed dead. (One early attempt using `Start-Process -ArgumentList` as a
+PowerShell array failed silently for unrelated quoting reasons, resolved by using a
+single combined argument string — not a `processx` problem.)
+
+**Fix applied:** new `r/pipeline/run_pipeline_monitored.R`, invoked by
+`1 - Pipeline uitvoeren.bat` instead of calling `run_all.R` directly. It:
+- Checks `logs/pipeline_run_status.txt` for an existing PID; if found, verified alive
+  **and** confirmed via `ps::ps_cmdline()` to actually be a `run_all.R` process (not
+  just any `Rscript.exe` — the dashboard or RStudio can also spawn one, and PIDs get
+  reused) → reattaches instead of relaunching.
+- Otherwise launches `pipeline/run_all.R` via `processx` with
+  `windows_detached_process = TRUE`, behind an atomic `dir.create()`-based lock (closes
+  the launch-race window an independent review flagged: two concurrent runs against the
+  same output directory would have no protection from GGIR's own `overwrite: false`
+  resume logic, which is file-existence-based, not process-aware — a real corruption
+  risk, not just wasted compute, if the guard were weaker).
+- Either way, polls GGIR's own incrementally-written milestone files (`meta/basic`,
+  `meta/ms2.out`, `meta/ms3.out`, `meta/ms4.out`, `meta/ms5.out` — one `.RData` file per
+  participant per part, confirmed from real output) against an expected total
+  (participants × 5 parts × metingen, capped by `quick_test_n` the same way
+  `01_run_ggir.R` itself does) and prints an updating progress line, e.g. `Verwerkt: 16
+  van 30 onderdelen (Deel 1 van 5) — 53%`.
+- **No changes to `01_run_ggir.R`/`02_label_segments.R`/`03_build_summaries.R`** —
+  progress comes entirely from external polling of files GGIR already writes, not from
+  any hook inside the pipeline scripts.
+
+**A real edge case was found and designed around, not just assumed away:** verified
+live that milestone files are *not* always 1:1 per participant per part — a dummy
+participant was legitimately missing from `meta/ms4.out`/`meta/ms5.out` in one meting
+(GGIR skipping sleep detection for that participant, plausibly insufficient data), so
+the denominator can overestimate. The progress display is capped at 99% while the
+process is still alive rather than promising a number it may not reach; true
+completion is detected by the process actually exiting, then checking whether the
+three summary CSVs exist — not by hitting 100%.
+
+**Independent review before implementing** (fresh agent, static/read-only) on the full
+design caught four real issues, all folded into the implementation above: (1) the
+stale-PID check needed to match the full command line, not just the process image
+name; (2) `logs/` needed its own `dir.create()` guard in the new script specifically,
+since it writes the status file before the child process's own logging init would
+otherwise create that directory; (3) the progress denominator needed to account for
+`dev$quick_test_n`; (4) flagged that a real Windows Explorer double-click could behave
+differently from a `Start-Process`-launched test (job objects, antivirus, UAC) —
+addressed by testing via a properly nested `cmd.exe /c "..."` window (closer to real
+`.bat` behaviour than the initial PowerShell-array test), though a literal
+double-click-from-Explorer verification remains a residual, honestly-stated gap this
+session couldn't close.
+
+**Verified live, end-to-end, all four scenarios** (dummy data, 3 participants,
+isolated scratch output directory, `config.yaml` restored byte-identical after —
+confirmed via `git diff`):
+1. **Fresh launch:** correctly started a detached run, wrote the status file, showed
+   `Verwerkt: 0 van 30 onderdelen — 0%`.
+2. **Window killed mid-run:** force-killed the simulated `.bat` window process;
+   confirmed via `Get-Process` that the detached pipeline (a different PID) was still
+   running, and that milestone files kept accumulating on disk afterward — the actual
+   bug's failure mode, directly reproduced and confirmed fixed.
+3. **Reattach:** relaunched the monitor script while the detached run was still going;
+   it printed `Er is al een pipeline-run bezig (PID ...) — hierop aansluiten...` and
+   resumed live progress updates (rising through "Deel 3 van 5" → "Deel 5 van 5") instead
+   of starting a duplicate run.
+4. **Completion + fresh-start-after-done:** the real run finished at 93% (28/30 —
+   consistent with the milestone-skipping edge case above, not a bug), correctly
+   printed the `Klaar` message once the process actually exited and all three summary
+   CSVs were confirmed present; a subsequent launch after the PID had died correctly
+   printed `Pipeline wordt gestart op de achtergrond...` (fresh start), not a false
+   reattach.
+
+**Where:** `scripts/bundle/templates/1 - Pipeline uitvoeren.bat` (one line changed,
+plus updated user-facing messaging), new `r/pipeline/run_pipeline_monitored.R`.
+`2 - Dashboard starten.bat` untouched. No `renv.lock` changes (dependencies already
+present).
 
 ### 30. Shiny dashboard: `object 'calendar_date' not found` — "MVPA per dag" graph, Deelnemers tab — status: `fixed`
 
