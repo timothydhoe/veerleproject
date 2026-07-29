@@ -634,6 +634,15 @@ and specifically ruled out, not just deprioritized.
 ### 10. `labeled_epochs.csv` / context-aware bouts not implemented — status: `deferred` (reviewed, scoped, not a quick fix)
 **Where:** `r/pipeline/03_build_summaries.R:298-311`
 
+**Superseded by `feature_log.md` #2 (built).** This item's "1-second epoch"/"~480 million
+rows" figures below were wrong — confirmed live, on both dummy data and real device data
+(`data/raw/veerle_testdata`), that GGIR's `epochvalues2csv` export is actually **5-second**
+resolution (GGIR's own internal `windowsizes` default, independent of the watch's raw/
+programmable sampling rate), giving a real-scale estimate closer to **~96 million rows**
+(400 participants × 14 days × 17,280 epochs/day). Left below as historical record of the
+original (incorrect) scoping, not corrected in place — same convention used elsewhere in
+this log (e.g. bug #20/#31's superseding notes).
+
 **Re-confirmed via `docs/test/whats_going_on.md` item #2** (separate session review): independently
 re-verified that `split_at_context_boundary`'s design/mechanism is correct (it splits a sedentary
 bout whenever the school-context label changes mid-bout, via `bout_key <- paste(is_target,
@@ -1594,3 +1603,32 @@ day's waking hours).
    data pipeline in isolation and confirmed `n_valid_waking_hours`/`valid_day` match the same
    values as the pipeline script for the same participant, proving the shared helper keeps both
    call sites in agreement.
+
+---
+
+### 32. `03_build_summaries.R`'s `labeled_epochs_path` resolved outside `data/processed/` — status: `fixed`
+
+**Where:** `r/pipeline/03_build_summaries.R` (the `labeled_epochs_path` construction, in the
+context-aware-bouts block)
+
+Discovered while implementing `feature_log.md` #2 (`labeled_epochs.csv` / context-aware bouts).
+The path was built as `file.path(base_out, "..", "labeled_epochs.csv")`, where
+`base_out <- cfg$paths$data_processed` (`"../data/processed"` in `config.yaml`, relative to the
+`r/` working directory scripts run from). That resolves to `../data/processed/../labeled_epochs.csv`
+— i.e. `data/labeled_epochs.csv` at the project root — NOT `data/processed/labeled_epochs.csv` as
+both the adjacent comment and `utils_bouts.R`'s header comment always claimed. Pre-existing, not
+introduced by #2's work: the block was unreachable (no pipeline step ever produced the file) until
+#2 built one, so this was never exercised or caught before.
+
+**Fix applied:** changed to `file.path(base_out, "labeled_epochs.csv")`, matching where
+`02b_label_epochs.R` (built as part of feature #2) actually writes the file, and what the
+surrounding comments always said the intended location was. No config key or directory-layout
+change — purely a one-line path-construction fix.
+
+**Verified:** with `bouts.enable_epoch_labeling: true` and `02b_label_epochs.R` run, confirmed
+`03_build_summaries.R` finds and loads `data/processed/labeled_epochs.csv` (message: "Loading
+epoch-level labeled data for context-aware bout detection...") and populates real
+`bouts_30min_*_n`/`_total_min` columns in `analysis_ready.csv`. With the file absent (feature
+disabled), confirmed the `[WARN] labeled_epochs.csv not found` fallback still fires correctly and
+`analysis_ready.csv`/`validity_summary.csv` are byte-identical to before this fix (see
+`feature_log.md` #2's verification notes for the full regression check).

@@ -21,18 +21,37 @@
 #' a context change are split at the boundary.
 #'
 #' @param epochs data.frame with columns:
-#'   ID (or pupil_id), date, context, intensity, wear
+#'   ID (or pupil_id), date, context, intensity, wear. May optionally include
+#'   an `epoch_length_s` column (constant per participant) — see
+#'   `epoch_length_s` param below.
 #' @param min_bout_min Minimum bout duration in minutes.
 #' @param target_intensity One of "sedentary", "light", "moderate", "vigorous".
 #' @param valid_only If TRUE, exclude non-wear epochs. Default TRUE.
 #' @param id_col Name of the participant ID column. Default "ID".
+#' @param epoch_length_s Seconds spanned by one row of `epochs`. If NULL
+#'   (default), taken from an `epoch_length_s` column in `epochs` if present
+#'   (this is how `02b_label_epochs.R`/`labeled_epochs.csv` supply it — the
+#'   real value is 5s for this study's GGIR export, NOT the 1s this function
+#'   used to hardcode via `* 60L`/`/ 60`, which silently required 5x the real
+#'   elapsed time to reach a nominal bout threshold). Falls back to 1 when
+#'   neither is supplied, preserving old behavior for callers/tests that
+#'   don't carry real epoch-length information.
+#' @param split_at_context_boundary If TRUE (default — Veerle's confirmed
+#'   methodology), a bout is split wherever the school-context label changes
+#'   mid-run. If FALSE, context changes are ignored for bout detection and
+#'   the reported context is simply the context of the run's first epoch.
+#'   Not currently exercised in production (config.yaml's
+#'   bouts.split_at_context_boundary defaults to TRUE), kept so the config
+#'   flag actually controls behavior instead of being silently ignored.
 #' @return data.frame with columns:
 #'   ID, date, context, intensity, n_bouts, mean_bout_min, total_bout_min
 detect_activity_bouts <- function(epochs,
                                   min_bout_min     = 30,
                                   target_intensity  = "sedentary",
                                   valid_only        = TRUE,
-                                  id_col            = "ID") {
+                                  id_col            = "ID",
+                                  epoch_length_s    = NULL,
+                                  split_at_context_boundary = TRUE) {
   df <- as.data.frame(epochs)
 
   # Normalise ID column name
@@ -46,13 +65,26 @@ detect_activity_bouts <- function(epochs,
     stop("detect_activity_bouts: missing columns: ", paste(missing, collapse = ", "))
   }
 
+  if (is.null(epoch_length_s)) {
+    epoch_length_s <- if ("epoch_length_s" %in% names(df) && nrow(df) > 0) {
+      df$epoch_length_s[1]
+    } else {
+      1
+    }
+  }
+  if (!is.numeric(epoch_length_s) || length(epoch_length_s) != 1 ||
+      is.na(epoch_length_s) || epoch_length_s <= 0) {
+    stop("detect_activity_bouts: epoch_length_s must be a single positive number, got: ",
+         epoch_length_s)
+  }
+
   if (valid_only && "wear" %in% names(df)) {
     df <- df[df$wear == TRUE, ]
   }
   df <- df[!is.na(df$intensity), ]
 
-  # 1-second epochs → minutes
-  min_bout_epochs <- min_bout_min * 60L
+  # min_bout_min minutes, expressed as a count of epoch_length_s-second epochs.
+  min_bout_epochs <- (min_bout_min * 60) / epoch_length_s
 
   all_results <- list()
 
@@ -64,18 +96,29 @@ detect_activity_bouts <- function(epochs,
       if (nrow(ddata) == 0) next
 
       # RLE key: "TRUE|context" marks the start of a qualifying bout run,
-      # splitting at context boundaries
+      # splitting at context boundaries (unless split_at_context_boundary is
+      # FALSE, in which case context is dropped from the key and only
+      # intensity-run boundaries matter).
       is_target <- as.character(ddata$intensity) == target_intensity
-      bout_key  <- paste(is_target, ddata$context, sep = "|")
+      bout_key  <- if (isTRUE(split_at_context_boundary)) {
+        paste(is_target, ddata$context, sep = "|")
+      } else {
+        as.character(is_target)
+      }
       runs      <- rle(bout_key)
 
       run_end   <- cumsum(runs$lengths)
       run_start <- c(1L, run_end[-length(run_end)] + 1L)
 
       for (j in seq_along(runs$values)) {
-        parts    <- strsplit(runs$values[j], "\\|")[[1]]
-        is_match <- parts[1] == "TRUE"
-        ctx      <- parts[2]
+        if (isTRUE(split_at_context_boundary)) {
+          parts    <- strsplit(runs$values[j], "\\|")[[1]]
+          is_match <- parts[1] == "TRUE"
+          ctx      <- parts[2]
+        } else {
+          is_match <- runs$values[j] == "TRUE"
+          ctx      <- ddata$context[run_start[j]]
+        }
 
         if (!is_match || runs$lengths[j] < min_bout_epochs) next
 
@@ -84,7 +127,7 @@ detect_activity_bouts <- function(epochs,
           date              = d,
           context           = ctx,
           intensity         = target_intensity,
-          bout_duration_min = runs$lengths[j] / 60,
+          bout_duration_min = runs$lengths[j] * epoch_length_s / 60,
           stringsAsFactors  = FALSE
         )
       }
@@ -146,6 +189,7 @@ compute_context_bout_summaries <- function(epochs, bout_cfg) {
   if (is.null(epochs) || nrow(epochs) == 0) return(NULL)
 
   min_sb      <- bout_cfg$sedentary_min %||% 30L
+  split_ctx   <- isTRUE(bout_cfg$split_at_context_boundary %||% TRUE)
   has_meting  <- "meting" %in% names(epochs)
 
   if (!has_meting) {
@@ -153,7 +197,8 @@ compute_context_bout_summaries <- function(epochs, bout_cfg) {
   }
 
   raw <- tryCatch(
-    detect_activity_bouts(epochs, min_bout_min = min_sb, target_intensity = "sedentary"),
+    detect_activity_bouts(epochs, min_bout_min = min_sb, target_intensity = "sedentary",
+                          split_at_context_boundary = split_ctx),
     error = function(e) {
       message("[bouts] Error in bout detection: ", e$message)
       NULL

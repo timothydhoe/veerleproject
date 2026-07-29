@@ -30,91 +30,14 @@ base_out    <- cfg$paths$data_processed
 metingen    <- c("meting_1", "meting_2")
 tz          <- cfg$output$timezone
 
-# ── Helper: extract school ID from participant code ───────────────────────────
-# Participant code is a 4-digit number: first digit = school (1–6)
-extract_school_id <- function(id) {
-  code     <- suppressWarnings(as.integer(sub("\\.[^.]+$", "", basename(as.character(id)))))
-  school_n <- code %/% 1000L
-  school_n[is.na(school_n) | school_n < 1L | school_n > 6L] <- NA_integer_
-  paste0("school_", school_n)
-}
-
-# ── Helper: get schedule for a school + weekday ───────────────────────────────
-# Returns a data.frame with columns: segment, start_h, end_h
-get_schedule <- function(school_id, wday_name, schedules) {
-  sch <- schedules[[school_id]]
-  if (is.null(sch)) return(NULL)
-
-  school_start <- hm_to_h(sch$school_start)
-
-  # School end depends on day
-  wday_lower <- tolower(wday_name)
-  if (wday_lower == "wednesday") {
-    school_end <- hm_to_h(sch$school_end$wednesday %||% sch$school_end$mon_tue_thu_fri)
-    breaks_key <- "wednesday"
-  } else {
-    # Try weekday-specific end time first (e.g. "tuesday"), then generic fallbacks
-    school_end <- hm_to_h(
-      sch$school_end[[wday_lower]] %||%
-      sch$school_end$mon_tue_thu_fri %||%
-      sch$school_end$mon_thu_fri
-    )
-    breaks_key <- "mon_tue_thu_fri"
-  }
-
-  # Build segment intervals
-  segments <- list()
-
-  # Before school
-  segments <- c(segments, list(data.frame(
-    segment = "before_school", start_h = 0, end_h = school_start
-  )))
-
-  # Breaks split the in-class time
-  breaks <- sch$breaks[[breaks_key]]
-  if (is.null(breaks) || length(breaks) == 0) breaks <- list()
-
-  # Sort breaks by start time
-  if (length(breaks) > 0) {
-    break_starts <- sapply(breaks, function(b) hm_to_h(b$start))
-    breaks <- breaks[order(break_starts)]
-  }
-
-  # Build in-class and break segments between school_start and school_end
-  cursor <- school_start
-  for (brk in breaks) {
-    brk_start <- hm_to_h(brk$start)
-    brk_end   <- hm_to_h(brk$end)
-    if (brk_start > cursor && brk_start < school_end) {
-      segments <- c(segments, list(data.frame(
-        segment = "in_class", start_h = cursor, end_h = brk_start
-      )))
-    }
-    seg_label <- if (!is.null(brk$label)) brk$label else "recess"
-    segments <- c(segments, list(data.frame(
-      segment = seg_label, start_h = brk_start, end_h = min(brk_end, school_end)
-    )))
-    cursor <- min(brk_end, school_end)
-  }
-
-  # Final in-class block before school ends
-  if (cursor < school_end) {
-    segments <- c(segments, list(data.frame(
-      segment = "in_class", start_h = cursor, end_h = school_end
-    )))
-  }
-
-  # After school
-  segments <- c(segments, list(data.frame(
-    segment = "after_school", start_h = school_end, end_h = 24
-  )))
-
-  rbindlist(lapply(segments, as.data.table))
-}
-
 `%||%` <- function(a, b) if (!is.null(a)) a else b
 
-source("pipeline/utils_ggir.R", local = TRUE)
+source("pipeline/utils_ggir.R",    local = TRUE)
+source("pipeline/utils_schedule.R", local = TRUE)
+# get_schedule(), extract_school_id(), build_pupil_override_map(),
+# build_schedule_cache(), resolve_schedule_key(), read_absence_keys(),
+# ABSENCE_OVERLAY_SEGMENTS now come from utils_schedule.R (shared with
+# 02b_label_epochs.R, feature_log.md #2) instead of being defined inline here.
 
 # ── Load GGIR part2 for both metingen ─────────────────────────────────────────
 all_data <- list()
@@ -309,73 +232,14 @@ distribute_qwindow_cols <- function(seg_row, id, date_val, start_h, end_h) {
 
 message("\nBuilding segment schedule lookup...")
 
-# ── Build pupil → class override map ─────────────────────────────────────────
-# For schools with class_overrides: maps pupil_id (character) to a list with
-#   $class     — class name (e.g. "2Aa")
-#   $overrides — named list: weekday_lower → override school_end (e.g. "16:25")
-pupil_override_map <- list()
-for (school_id in names(cfg$schedules)) {
-  class_overrides <- cfg$schedules[[school_id]]$class_overrides
-  if (is.null(class_overrides)) next
-  for (class_name in names(class_overrides)) {
-    co <- class_overrides[[class_name]]
-    for (pupil in as.character(co$pupils)) {
-      pupil_override_map[[pupil]] <- list(
-        class     = class_name,
-        overrides = co$school_end_override
-      )
-    }
-  }
-}
+# Pupil → class override map, and the school × weekday (× class-override
+# variant) schedule cache, now come from utils_schedule.R — shared with
+# 02b_label_epochs.R so the two labeling steps can't drift apart.
+pupil_override_map <- build_pupil_override_map(cfg)
 if (length(pupil_override_map) > 0)
   message("Class overrides loaded for ", length(pupil_override_map), " pupils")
 
-# Build all schedule lookups for all schools × weekdays
-weekdays_list <- c("Monday", "Tuesday", "Wednesday", "Thursday", "Friday")
-schedule_cache <- list()
-
-for (school_id in names(cfg$schedules)) {
-  for (wday in weekdays_list) {
-    key <- paste(school_id, wday, sep = "_")
-    sched <- tryCatch(
-      get_schedule(school_id, wday, cfg$schedules),
-      error = function(e) {
-        warning(sprintf("Could not build schedule for %s %s: %s", school_id, wday, e$message))
-        NULL
-      }
-    )
-    if (!is.null(sched)) schedule_cache[[key]] <- sched
-  }
-
-  # ── Class-variant cache entries ───────────────────────────────────────────
-  # For each (school, class, weekday) with a school_end_override, build a
-  # modified schedule where that day's school_end is replaced by the override.
-  class_overrides <- cfg$schedules[[school_id]]$class_overrides
-  if (is.null(class_overrides)) next
-  for (class_name in names(class_overrides)) {
-    co <- class_overrides[[class_name]]
-    for (wday_lower in names(co$school_end_override)) {
-      override_end <- co$school_end_override[[wday_lower]]
-      wday_name    <- paste0(toupper(substring(wday_lower, 1, 1)),
-                             substring(wday_lower, 2))
-      # Build a copy of the school config with the override injected
-      sch_mod <- cfg$schedules[[school_id]]
-      sch_mod$school_end[[wday_lower]] <- override_end
-      sch_mod$class_overrides          <- NULL  # avoid recursion
-      cache_key <- paste(school_id, class_name, wday_lower, sep = "_")
-      sched <- tryCatch(
-        get_schedule(school_id, wday_name, setNames(list(sch_mod), school_id)),
-        error = function(e) {
-          warning(sprintf("Could not build class schedule for %s %s %s: %s",
-                          school_id, class_name, wday_lower, e$message))
-          NULL
-        }
-      )
-      if (!is.null(sched)) schedule_cache[[cache_key]] <- sched
-    }
-  }
-}
-
+schedule_cache <- build_schedule_cache(cfg)
 message("Schedule cache built for ", length(schedule_cache), " school × day combinations")
 
 # ── Expand part2 rows into per-segment rows ────────────────────────────────────
@@ -410,18 +274,7 @@ for (i in seq_len(nrow(part2))) {
   }
 
   # School day: look up schedule (with per-pupil class override if applicable)
-  cache_key  <- paste(school, wday, sep = "_")
-  pupil_key  <- sub("\\.[^.]+$", "", basename(as.character(row$ID)))
-  pupil_info <- pupil_override_map[[pupil_key]]
-  if (!is.null(pupil_info)) {
-    wday_lower   <- tolower(wday)
-    override_end <- pupil_info$overrides[[wday_lower]]
-    if (!is.null(override_end)) {
-      class_key <- paste(school, pupil_info$class, wday_lower, sep = "_")
-      if (class_key %in% names(schedule_cache))
-        cache_key <- class_key
-    }
-  }
+  cache_key <- resolve_schedule_key(row$ID, school, wday, schedule_cache, pupil_override_map)
   sched     <- schedule_cache[[cache_key]]
 
   if (is.null(sched)) {
@@ -489,32 +342,24 @@ segment_summary <- rbindlist(rows, fill = TRUE)
 # absent pupils on those dates as "absent" and NA out activity values.
 # Absence data is entered by the researcher via the Shiny dashboard.
 absences_path <- cfg$paths$absences %||% "../data/absences.csv"
-if (file.exists(absences_path)) {
-  abs_dt <- tryCatch(
-    fread(absences_path,
-          colClasses = c(pupil_id = "character", date = "character")),
-    error = function(e) { message("[absences] Could not read absences.csv: ", e$message); NULL }
-  )
-  if (!is.null(abs_dt) && nrow(abs_dt) > 0) {
-    abs_keys    <- paste(abs_dt$pupil_id, abs_dt$date)
-    school_segs <- c("in_class", "recess", "lunch")
-    rows_before <- nrow(segment_summary[segment == "absent"])
-    segment_summary[
-      !is.na(ID) & !is.na(date) &
-        paste(ID, date) %in% abs_keys & segment %in% school_segs,
-      `:=`(segment = "absent", n_valid_hours = NA_real_)
-    ]
-    for (col in intensity_cols) {
-      if (col %in% names(segment_summary))
-        segment_summary[segment == "absent", (col) := NA_real_]
-    }
-    n_marked <- nrow(segment_summary[segment == "absent"]) - rows_before
-    message(sprintf("[absences] %d absence records — %d segment rows marked as absent",
-                    nrow(abs_dt), n_marked))
-    if (n_marked == 0 && nrow(abs_dt) > 0)
-      warning("[absences] No rows were marked absent despite ", nrow(abs_dt),
-              " records in absences.csv — check that ID and date formats match.")
+abs_keys <- read_absence_keys(absences_path)
+if (length(abs_keys) > 0) {
+  rows_before <- nrow(segment_summary[segment == "absent"])
+  segment_summary[
+    !is.na(ID) & !is.na(date) &
+      paste(ID, date) %in% abs_keys & segment %in% ABSENCE_OVERLAY_SEGMENTS,
+    `:=`(segment = "absent", n_valid_hours = NA_real_)
+  ]
+  for (col in intensity_cols) {
+    if (col %in% names(segment_summary))
+      segment_summary[segment == "absent", (col) := NA_real_]
   }
+  n_marked <- nrow(segment_summary[segment == "absent"]) - rows_before
+  message(sprintf("[absences] %d absence records — %d segment rows marked as absent",
+                  length(abs_keys), n_marked))
+  if (n_marked == 0)
+    warning("[absences] No rows were marked absent despite ", length(abs_keys),
+            " records in absences.csv — check that ID and date formats match.")
 }
 
 # ── Flag fallback schools ──────────────────────────────────────────────────────

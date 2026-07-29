@@ -189,13 +189,18 @@ Segments output" QC check — decoupling data-completeness verification from whi
 
 ---
 
-## 3. `epochvalues2csv = TRUE` writes an unused raw epoch export — status: `catalogued`
+## 3. `epochvalues2csv = TRUE` writes an unused raw epoch export — status: `resolved` (implemented as part of `feature_log.md` #2)
 
 **Where:** `r/pipeline/01_run_ggir.R:150` (hardcoded, applies to every run — real and
 dummy/example alike)
 
+**Correction:** "1 row/second" below was wrong — confirmed live (dummy data and real
+device data alike) that GGIR's `epochvalues2csv` export is actually 5-second resolution
+(GGIR's own internal `windowsizes` default), not 1-second. Doesn't change this item's
+conclusion, just the units. See `bug_log.md` #10's superseding note for the full context.
+
 **Expected impact: real but disk/IO-bound, not proven as a wall-clock win.** GGIR
-writes a full raw per-epoch CSV (1 row/second) per participant. Confirmed via
+writes a full raw per-epoch CSV (1 row per 5s) per participant. Confirmed via
 `utils_bouts.R`'s own header comment and `03_build_summaries.R` (lines 364-402) that
 this raw export is only ever useful as input to a future `labeled_epochs.csv` step —
 tracked as `feature_log.md` item #2, status `proposed`, not built. Nothing in the
@@ -221,6 +226,14 @@ needs this export as its input.
 
 **Independent review:** confirmed no other current consumer exists anywhere in the
 repo. **Verdict: safe to proceed.**
+
+**Implemented** (feature #2 build): rather than a separate `ggir.epochvalues2csv` key,
+`01_run_ggir.R`'s `epochvalues2csv` now reads `cfg$bouts$enable_epoch_labeling` directly
+— the same flag that gates whether `02b_label_epochs.R` runs at all. A single flag
+avoids the two settings ever getting out of sync (e.g. epoch export off but the labeling
+step on, or vice versa). Default `false`, as recommended here. Verified: with the flag
+`false` (the shipped default), `analysis_ready.csv`/`segment_summary.csv`/
+`validity_summary.csv` are byte-identical to before this change.
 
 **Honest framing for ranking:** disk savings are real and will scale meaningfully with
 400 real participants over full multi-week recordings (plausibly gigabytes), but this
@@ -352,7 +365,7 @@ unreferenced, and it's an intentional manual one-time setup script, not dead cod
 |---|------|--------|--------|
 | 1 | `maxNcores: 1` forces single-core | Highest (whole-pipeline, scales with cores) | `approved` (→ 2) |
 | 2 | Redundant Part 5 `WW` variant | High (per-participant, every run) | `catalogued` |
-| 3 | Unused `epochvalues2csv` export | Moderate (disk/IO only, not proven wall-clock) | `catalogued` |
+| 3 | Unused `epochvalues2csv` export | Moderate (disk/IO only, not proven wall-clock) | `resolved` |
 | 4 | Duplicate Part 4 file reads | Moderate (dashboard-only, high frequency) | `catalogued` |
 | 5 | Eager Shiny startup loading | Moderate | tracked as `feature_log.md` #3 |
 | 6 | Unused `ggrepel` package | Low | `catalogued` |

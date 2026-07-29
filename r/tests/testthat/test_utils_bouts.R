@@ -68,3 +68,90 @@ test_that("non-wear epochs excluded when valid_only = TRUE", {
   expect_equal(nrow(result), 1)
   expect_equal(result$date, "2026-02-25")
 })
+
+# ── epoch_length_s (feature_log.md #2 — real GGIR epoch export is 5s, not 1s) ──
+
+test_that("5-second epochs: 30-min threshold uses real elapsed time, not row count", {
+  # 30 minutes at 5s/epoch = 360 rows (NOT 1800, which is what the old
+  # hardcoded `* 60L` assumed regardless of actual epoch length).
+  n_epochs <- 30 * 60 / 5
+  epochs <- data.frame(
+    ID = "P001", date = "2026-02-25", context = "in_class",
+    intensity = "sedentary", wear = TRUE, stringsAsFactors = FALSE
+  )[rep(1, n_epochs), ]
+
+  result <- detect_activity_bouts(epochs, min_bout_min = 30, target_intensity = "sedentary",
+                                  valid_only = FALSE, epoch_length_s = 5)
+  expect_equal(nrow(result), 1)
+  expect_equal(result$total_bout_min, 30)
+})
+
+test_that("5-second epochs: a run just under the row-count-as-1s threshold still counts as a bout", {
+  # 360 rows at 5s/epoch = 30 real minutes. Under the old (buggy) 1s
+  # assumption this would have needed 1800 rows to register as a bout at
+  # all — with the fix, 360 rows already clears the 30-min threshold.
+  n_epochs <- 360
+  epochs <- data.frame(
+    ID = "P001", date = "2026-02-25", context = "in_class",
+    intensity = "sedentary", wear = TRUE, stringsAsFactors = FALSE
+  )[rep(1, n_epochs), ]
+
+  result <- detect_activity_bouts(epochs, min_bout_min = 30, target_intensity = "sedentary",
+                                  valid_only = FALSE, epoch_length_s = 5)
+  expect_equal(nrow(result), 1)
+})
+
+test_that("epoch_length_s is read from an `epoch_length_s` column when the parameter is omitted", {
+  n_epochs <- 360
+  epochs <- data.frame(
+    ID = "P001", date = "2026-02-25", context = "in_class",
+    intensity = "sedentary", wear = TRUE, epoch_length_s = 5,
+    stringsAsFactors = FALSE
+  )[rep(1, n_epochs), ]
+
+  result <- detect_activity_bouts(epochs, min_bout_min = 30, target_intensity = "sedentary",
+                                  valid_only = FALSE)
+  expect_equal(nrow(result), 1)
+  expect_equal(result$total_bout_min, 30)
+})
+
+test_that("epoch_length_s defaults to 1 when neither parameter nor column is supplied (legacy behavior)", {
+  epochs <- make_epochs(30, "sedentary")
+  result <- detect_activity_bouts(epochs, min_bout_min = 30, target_intensity = "sedentary",
+                                  valid_only = FALSE)
+  expect_equal(result$total_bout_min, 30)
+})
+
+test_that("invalid epoch_length_s errors clearly", {
+  epochs <- make_epochs(30, "sedentary")
+  expect_error(
+    detect_activity_bouts(epochs, epoch_length_s = 0),
+    "epoch_length_s"
+  )
+  expect_error(
+    detect_activity_bouts(epochs, epoch_length_s = -5),
+    "epoch_length_s"
+  )
+})
+
+# ── split_at_context_boundary ──────────────────────────────────────────────
+
+test_that("split_at_context_boundary = FALSE merges a run across a context change", {
+  part1 <- make_epochs(20, "sedentary", context = "in_class")
+  part2 <- make_epochs(15, "sedentary", context = "recess")
+  epochs <- rbind(part1, part2)
+  result <- detect_activity_bouts(epochs, min_bout_min = 30, target_intensity = "sedentary",
+                                  valid_only = FALSE, split_at_context_boundary = FALSE)
+  expect_equal(nrow(result), 1)
+  expect_equal(result$total_bout_min, 35)
+  expect_equal(result$context, "in_class")  # labeled with the run's starting context
+})
+
+test_that("split_at_context_boundary = TRUE (default) still splits at the boundary", {
+  part1 <- make_epochs(30, "sedentary", context = "in_class")
+  part2 <- make_epochs(30, "sedentary", context = "recess")
+  epochs <- rbind(part1, part2)
+  result <- detect_activity_bouts(epochs, min_bout_min = 30, target_intensity = "sedentary",
+                                  valid_only = FALSE)
+  expect_equal(nrow(result), 2)
+})
