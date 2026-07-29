@@ -24,6 +24,24 @@
 # milestone files GGIR already writes incrementally per participant per part,
 # not from any hook inside the pipeline scripts themselves.
 #
+# Two follow-up gaps (see docs/test/bug_log.md) were closed after this script
+# first shipped:
+# - If a background run is still alive when this script is relaunched, a bare
+#   reattach means config.yaml edits made in the meantime (e.g. flipping
+#   ggir.overwrite: true — the documented fix in GEBRUIKERSGIDS.md for "GGIR
+#   slaat stappen over") silently never take effect. We now compare
+#   config.yaml's mtime against the run's recorded start time and, if it
+#   changed, ask whether to keep monitoring or stop the old run and restart
+#   fresh.
+# - Under ggir.overwrite: true, pre-existing milestone files from the run
+#   being overwritten sit on disk, untouched, until GGIR actually gets to
+#   rewriting them — count_progress() used to count those stale files as
+#   already "done", making the display jump to ~99% almost immediately and
+#   stay there for the entire real duration of the reprocess. A baseline
+#   timestamp (captured once, at the moment a fresh overwrite-mode run is
+#   launched, and persisted so a later reattach uses the same value) now lets
+#   count_progress() ignore files older than the current run.
+#
 # Run from r/ (same convention as run_all.R itself).
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -37,6 +55,7 @@ LOGS_DIR    <- "logs"
 STATUS_PATH <- file.path(LOGS_DIR, "pipeline_run_status.txt")
 LOCK_DIR    <- file.path(LOGS_DIR, "pipeline_run.lock")
 STDOUT_PATH <- file.path(LOGS_DIR, "pipeline_run_stdout.txt")
+CONFIG_PATH <- "../config.yaml"
 
 # Guarded independently of run_all.R's own logging init (utils_logging.R's
 # init_pipeline_log() only creates logs/ once the detached child itself
@@ -59,12 +78,64 @@ read_status <- function(path) {
            vapply(kv, `[`, character(1), 1))
 }
 
-write_status <- function(path, pid, expected_total) {
+#' @param overwrite_mode Was this run launched with ggir.overwrite: true?
+#'   Persisted so a later reattach can gate baseline-based progress filtering
+#'   on what the *running* process actually used, not on whatever
+#'   config.yaml happens to say by the time someone reattaches (Veerle's own
+#'   documented workflow has users flip overwrite back to false while a run
+#'   is still going, which must not retroactively change how its progress is
+#'   counted).
+#' @param baseline Numeric epoch (sub-second precision) captured at launch,
+#'   used to filter out milestone files left over from the run being
+#'   overwritten. NA when overwrite_mode is FALSE (existing file-existence
+#'   counting is correct there — already-completed participants should count
+#'   as immediately done).
+write_status <- function(path, pid, expected_total, overwrite_mode = FALSE, baseline = NA_real_) {
   writeLines(c(
     paste0("pid=", pid),
     paste0("expected_total=", expected_total),
-    paste0("started=", format(Sys.time(), "%Y-%m-%d %H:%M:%S"))
+    paste0("started=", format(Sys.time(), "%Y-%m-%d %H:%M:%S")),
+    paste0("overwrite_mode=", isTRUE(overwrite_mode)),
+    paste0("baseline=", format(baseline, scientific = FALSE, digits = 15))
   ), path)
+}
+
+#' Has config.yaml been modified after the given run's recorded start time?
+#' Used to warn that in-flight config edits won't affect an already-running
+#' background pipeline. Fails safe (FALSE, i.e. "nothing changed") on any
+#' parse/read error, so a malformed timestamp never blocks a normal reattach.
+config_changed_since <- function(started_str, config_path = CONFIG_PATH) {
+  # A missing (not just malformed) started_str -- e.g. a status file from an
+  # older version of this script, or one truncated mid-write -- makes
+  # as.POSIXct() return a zero-length value rather than erroring, which would
+  # otherwise slip past the tryCatch below and crash the if() that uses it.
+  if (is.null(started_str) || length(started_str) != 1 || is.na(started_str)) return(FALSE)
+  started <- tryCatch(as.POSIXct(started_str, format = "%Y-%m-%d %H:%M:%S"),
+                       error = function(e) NA)
+  if (length(started) != 1 || is.na(started) || !file.exists(config_path)) return(FALSE)
+  cfg_mtime <- tryCatch(file.info(config_path)$mtime, error = function(e) NA)
+  if (length(cfg_mtime) != 1 || is.na(cfg_mtime)) return(FALSE)
+  cfg_mtime > started
+}
+
+#' Ask a yes/no question on the console and block for an answer.
+#'
+#' readline() is NOT usable here: verified empirically that under
+#' `Rscript -e "..."` (how this script is always invoked, from the .bat)
+#' interactive() is FALSE, and readline() returns "" immediately without
+#' waiting for input under that mode — a prompt built on it would silently
+#' never pause in real use, even though it looks fine from an interactive
+#' RStudio console. readLines(con = "stdin", n = 1) correctly blocks and
+#' reads the real console instead.
+#'
+#' Defaults to FALSE (i.e. "no, don't touch the running pipeline") for any
+#' empty or unrecognized answer — an ambiguous keystroke must never be able
+#' to kill an in-progress run.
+prompt_yes_no <- function(msg) {
+  message(msg)
+  ans <- tryCatch(readLines(con = "stdin", n = 1), error = function(e) character(0))
+  if (length(ans) == 0) ans <- ""
+  tolower(trimws(ans)) %in% c("j", "ja", "y", "yes")
 }
 
 #' Is the recorded PID genuinely our still-running run_all.R process?
@@ -126,8 +197,18 @@ MILESTONE_SUBFOLDERS <- c(
 )
 
 #' Count milestone files written so far, and the most recently active part.
+#'
+#' @param baseline POSIXct or NULL. When supplied (overwrite-mode runs only),
+#'   milestone files with mtime < baseline are treated as stale leftovers
+#'   from the run being overwritten and excluded entirely — otherwise they'd
+#'   be double-counted as already "done" before GGIR has actually rewritten
+#'   them, making the display jump to ~99% immediately and stay there for the
+#'   whole reprocess (see docs/test/bug_log.md). NULL preserves the original
+#'   existence-based counting, which is correct for overwrite: false (an
+#'   already-completed participant legitimately IS done, and should count as
+#'   such immediately).
 #' @return list(done = integer, current_part = integer or NA)
-count_progress <- function(cfg) {
+count_progress <- function(cfg, baseline = NULL) {
   out_base <- cfg$paths$data_processed
   done <- 0L
   latest_mtime <- as.POSIXct(NA)
@@ -142,9 +223,16 @@ count_progress <- function(cfg) {
       p <- file.path(out_subdir, sf)
       if (!dir.exists(p)) next
       files <- list.files(p, pattern = "\\.RData$", full.names = TRUE)
+      if (length(files) == 0) next
+      mtimes <- file.info(files)$mtime
+      if (!is.null(baseline)) {
+        keep   <- mtimes >= baseline
+        files  <- files[keep]
+        mtimes <- mtimes[keep]
+      }
       done <- done + length(files)
       if (length(files) > 0) {
-        mt <- max(file.info(files)$mtime, na.rm = TRUE)
+        mt <- max(mtimes, na.rm = TRUE)
         if (is.na(latest_mtime) || mt > latest_mtime) {
           latest_mtime <- mt
           latest_part  <- MILESTONE_SUBFOLDERS[[sf]]
@@ -170,7 +258,7 @@ render_progress <- function(done, expected_total, current_part) {
 
 # ── Main ────────────────────────────────────────────────────────────────────
 
-cfg <- read_config_yaml("../config.yaml")
+cfg <- read_config_yaml(CONFIG_PATH)
 cfg <- apply_active_profile(cfg)
 source("pipeline/utils_ggir.R", local = TRUE)
 
@@ -178,10 +266,74 @@ existing <- read_status(STATUS_PATH)
 reattaching <- FALSE
 
 if (!is.null(existing) && is_our_pipeline_process(existing$pid)) {
-  reattaching <- TRUE
-  message("Er is al een pipeline-run bezig (PID ", existing$pid, ") -- hierop aansluiten...")
+  if (config_changed_since(existing$started)) {
+    message("============================================================")
+    message("Let op: config.yaml is aangepast na het starten van de lopende")
+    message("pipeline-run (PID ", existing$pid, ", gestart om ", existing$started, ").")
+    message("Deze wijzigingen hebben GEEN effect op de run die nu bezig is --")
+    message("ze worden pas gebruikt bij een nieuwe start.")
+    message("============================================================")
+    restart <- prompt_yes_no(
+      "Wil je de lopende run stoppen en opnieuw starten met de huidige config.yaml? (j/N): "
+    )
+    if (restart) {
+      message("Bezig met stoppen van PID ", existing$pid, "...")
+      handle <- tryCatch(ps::ps_handle(pid = as.integer(existing$pid)), error = function(e) NULL)
+      if (!is.null(handle)) {
+        tryCatch(ps::ps_kill(handle), error = function(e) NULL)
+        # ps_kill is an immediate TerminateProcess on Windows -- no graceful
+        # shutdown chance, unlike its POSIX branch. A milestone file mid-write
+        # at that exact instant can be left truncated; harmless if the reason
+        # for restarting is ggir.overwrite: true (GGIR will clobber it again
+        # this run regardless), a narrower pre-existing risk otherwise.
+        for (i in 1:10) {
+          if (!isTRUE(tryCatch(ps::ps_is_running(handle), error = function(e) FALSE))) break
+          Sys.sleep(0.5)
+        }
+      }
+      # Re-check with the same robust (PID-alive + cmdline-match) test used
+      # everywhere else, regardless of whether ps_handle()/ps_kill() above
+      # succeeded -- launching a second process while the first is still
+      # actually alive would be exactly the concurrent-run corruption risk
+      # this script exists to prevent, so refuse rather than proceed blind.
+      if (is_our_pipeline_process(existing$pid)) {
+        stop("Kon de lopende pipeline-run (PID ", existing$pid, ") niet stoppen binnen 5 ",
+             "seconden. Sluit dit proces handmatig af via Taakbeheer en start dit script ",
+             "opnieuw.")
+      }
+      unlink(STATUS_PATH)
+      existing <- NULL
+      message("Gestopt. Als de volgende run een fout geeft door een onvolledig")
+      message("weggeschreven bestand, draai dan eenmalig met ggir.overwrite: true")
+      message("zodat dat bestand helemaal opnieuw wordt geschreven.")
+    } else {
+      reattaching <- TRUE
+      message("Er is al een pipeline-run bezig (PID ", existing$pid, ") -- hierop aansluiten...")
+    }
+  } else {
+    reattaching <- TRUE
+    message("Er is al een pipeline-run bezig (PID ", existing$pid, ") -- hierop aansluiten...")
+  }
+}
+
+if (reattaching) {
   pid            <- as.integer(existing$pid)
   expected_total <- suppressWarnings(as.integer(existing$expected_total)) %||% compute_expected_total(cfg)
+  run_overwrite  <- isTRUE(as.logical(existing$overwrite_mode))
+  run_baseline   <- if (run_overwrite) {
+    as.POSIXct(suppressWarnings(as.numeric(existing$baseline)), origin = "1970-01-01")
+  } else {
+    NULL
+  }
+  # A missing/unparseable baseline (e.g. a status file truncated mid-write,
+  # right after overwrite_mode but before baseline was written) must fall
+  # back to unfiltered counting, not a zero-length POSIXct -- the latter
+  # would make every mtime comparison in count_progress() empty, discarding
+  # every milestone file and leaving the display stuck at 0% for the whole
+  # run even though the pipeline is working correctly.
+  if (!is.null(run_baseline) && (length(run_baseline) != 1 || is.na(run_baseline))) {
+    run_baseline <- NULL
+  }
 } else {
   # Acquire a short-lived lock via atomic directory creation (dir.create()
   # either succeeds or fails atomically at the OS level -- no two concurrent
@@ -203,6 +355,10 @@ if (!is.null(existing) && is_our_pipeline_process(existing$pid)) {
 
   message("Pipeline wordt gestart op de achtergrond...")
   expected_total <- compute_expected_total(cfg)
+  run_overwrite  <- isTRUE(cfg$ggir$overwrite)
+  # Captured immediately before launch so every file the new process writes
+  # has mtime >= run_baseline, with no race window.
+  run_baseline   <- if (run_overwrite) Sys.time() else NULL
 
   rscript_path <- file.path(R.home("bin"), "Rscript.exe")
   proc <- processx::process$new(
@@ -215,7 +371,9 @@ if (!is.null(existing) && is_our_pipeline_process(existing$pid)) {
     supervise = FALSE
   )
   pid <- proc$get_pid()
-  write_status(STATUS_PATH, pid, expected_total)
+  write_status(STATUS_PATH, pid, expected_total,
+               overwrite_mode = run_overwrite,
+               baseline = if (run_overwrite) as.numeric(run_baseline) else NA_real_)
   unlink(LOCK_DIR, recursive = TRUE, force = TRUE)
 
   message("Gestart (PID ", pid, "). Dit venster kan gesloten worden zonder de run te onderbreken --")
@@ -227,7 +385,7 @@ if (!is.null(existing) && is_our_pipeline_process(existing$pid)) {
 message("")
 repeat {
   still_running <- is_our_pipeline_process(pid)
-  progress <- count_progress(cfg)
+  progress <- count_progress(cfg, baseline = run_baseline)
   render_progress(progress$done, expected_total, progress$current_part)
   if (!still_running) break
   Sys.sleep(3)
