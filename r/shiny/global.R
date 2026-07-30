@@ -33,6 +33,7 @@ library(data.table)
 library(yaml)
 
 # ── Utilities (pure functions, no reactive context) ───────────────────────────
+source("../utils/util_brand.R",   local = TRUE)
 source("../utils/util_plots.R",   local = TRUE)
 source("../utils/util_filters.R", local = TRUE)
 
@@ -195,9 +196,9 @@ WHO_SLEEP_MIN_H <- 8   # WHO/AAP minimum sleep: ≥8h/night for children 6–12 
 
 # ZONE_COLORS and theme_schoolmove() live in ../utils/util_plots.R (sourced above)
 
-# Atlassian categorical palette — 6 distinct, accessible schools (config-derived)
+# UGent faculty-color palette — 6 distinct, accessible schools (config-derived)
 SCHOOL_COLORS <- setNames(
-  c("#2684FF", "#00B8D9", "#36B37E", "#FF991F", "#6554C0", "#FF5630")[seq_along(schools)],
+  ugent_categorical_palette(length(schools)),
   SCHOOL_LABELS
 )
 
@@ -260,7 +261,7 @@ fallback_banner <- function() {
   school_names <- paste(SCHOOL_LABELS[FALLBACK_SCHOOLS], collapse = ", ")
   div(
     class = "readiness-strip",
-    style = "background:#fff3cd; border-bottom-color:#ffc107;",
+    style = paste0("background:", UGENT_BG_LIGHT_YELLOW, "; border-bottom-color:", UGENT_YELLOW, ";"),
     tags$span(class = "check-warn",
       icon("triangle-exclamation"),
       paste0(" Geschat rooster: ", school_names,

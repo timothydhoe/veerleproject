@@ -5,11 +5,15 @@
 # ─────────────────────────────────────────────────────────────────────────────
 
 #' Return a minimal ggplot carrying a centred message (used when data is absent).
-no_data_plot <- function(msg = "Geen data — voer de pipeline eerst uit.") {
+no_data_plot <- function(msg = "Nog geen data — voer de pipeline uit.") {
   ggplot() +
     annotate("text", x = 0.5, y = 0.5, label = msg,
-             size = 5, colour = "grey60", hjust = 0.5) +
-    theme_void()
+             size = 5, colour = UGENT_TEXT_GRAY, hjust = 0.5) +
+    theme_void() +
+    theme(
+      plot.background  = element_rect(fill = UGENT_BG_LIGHT_BLUE, colour = NA),
+      panel.background = element_rect(fill = UGENT_BG_LIGHT_BLUE, colour = NA)
+    )
 }
 
 #' Standardised PNG download handler factory.
@@ -28,32 +32,33 @@ png_dl <- function(plot_expr, filename_stem, width = 1800, height = 1000, dpi = 
   )
 }
 
-#' Shared ggplot2 theme (Atlassian-inspired neutrals, UGent blue accent).
+#' Shared ggplot2 theme (UGent neutrals + blue accent).
 theme_schoolmove <- function(legend_pos = "bottom") {
   theme_minimal(base_size = 12) +
     theme(
-      plot.title       = element_text(face = "bold", size = 13, colour = "#202020",
+      plot.title       = element_text(face = "bold", size = 13, colour = UGENT_BLACK,
                                       margin = margin(b = 2)),
-      plot.subtitle    = element_text(colour = "#6B778C", size = 10.5,
+      plot.subtitle    = element_text(colour = UGENT_TEXT_GRAY, size = 10.5,
                                       margin = margin(b = 8)),
       plot.background  = element_rect(fill = "white", colour = NA),
       plot.margin      = margin(10, 14, 10, 14),
-      panel.grid.major = element_line(colour = "#F4F5F7", linewidth = 0.8),
+      panel.grid.major = element_line(colour = UGENT_BORDER_LIGHTER, linewidth = 0.8),
       panel.grid.minor = element_blank(),
-      axis.title       = element_text(size = 10, colour = "#6B778C"),
-      axis.text        = element_text(colour = "#5E6C84", size = 9.5),
+      axis.title       = element_text(size = 10, colour = UGENT_TEXT_GRAY),
+      axis.text        = element_text(colour = UGENT_TEXT_GRAY, size = 9.5),
       axis.ticks       = element_blank(),
       legend.position  = legend_pos,
       legend.title     = element_blank(),
-      legend.text      = element_text(size = 10, colour = "#5E6C84"),
-      strip.text       = element_text(face = "bold", size = 10.5, colour = "#202020"),
-      strip.background = element_rect(fill = "#e9f0fa", colour = NA)
+      legend.text      = element_text(size = 10, colour = UGENT_TEXT_GRAY),
+      strip.text       = element_text(face = "bold", size = 10.5, colour = UGENT_BLACK),
+      strip.background = element_rect(fill = UGENT_BG_LIGHT_BLUE, colour = NA)
     )
 }
 
-# Atlassian-inspired: SB de-emphasised (grey), LPA cyan, MVPA bold blue (hero)
+# UGent-toned: SB de-emphasised (light border grey), LPA light blue tint, MVPA
+# UGent blue (hero) — a monochrome-blue progression rather than an arbitrary accent.
 ZONE_COLORS <- c(
-  SB   = "#DFE1E6",
-  LPA  = "#79E2F2",
-  MVPA = "#1E64C8"
+  SB   = UGENT_BORDER_LIGHTER,
+  LPA  = "#8BBEE8",  # UGent faculty "sky blue" tint — reads as a lighter step of blue
+  MVPA = UGENT_BLUE
 )
