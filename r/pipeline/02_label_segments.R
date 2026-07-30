@@ -488,6 +488,10 @@ segment_summary <- rbindlist(rows, fill = TRUE)
 # If data/absences.csv exists and has rows, mark school-context segments for
 # absent pupils on those dates as "absent" and NA out activity values.
 # Absence data is entered by the researcher via the Shiny dashboard.
+# `part_of_day` (full/morning/afternoon) narrows a whole-day absence to only
+# the segments before/after that day's lunch break — added after the original
+# whole-day-only schema, so a missing/unrecognized value falls back to "full"
+# and keeps pre-existing absences.csv rows behaving exactly as before.
 absences_path <- cfg$paths$absences %||% "../data/absences.csv"
 if (file.exists(absences_path)) {
   abs_dt <- tryCatch(
@@ -496,18 +500,58 @@ if (file.exists(absences_path)) {
     error = function(e) { message("[absences] Could not read absences.csv: ", e$message); NULL }
   )
   if (!is.null(abs_dt) && nrow(abs_dt) > 0) {
-    abs_keys    <- paste(abs_dt$pupil_id, abs_dt$date)
+    if (!"part_of_day" %in% names(abs_dt)) abs_dt[, part_of_day := "full"]
+    abs_dt[!(part_of_day %in% c("full", "morning", "afternoon")), part_of_day := "full"]
+
     school_segs <- c("in_class", "recess", "lunch")
     rows_before <- nrow(segment_summary[segment == "absent"])
-    segment_summary[
-      !is.na(ID) & !is.na(date) &
-        paste(ID, date) %in% abs_keys & segment %in% school_segs,
-      `:=`(segment = "absent", n_valid_hours = NA_real_)
-    ]
-    for (col in intensity_cols) {
-      if (col %in% names(segment_summary))
-        segment_summary[segment == "absent", (col) := NA_real_]
+
+    for (k in seq_len(nrow(abs_dt))) {
+      pid  <- abs_dt$pupil_id[k]
+      dt_k <- abs_dt$date[k]
+      part <- abs_dt$part_of_day[k]
+
+      match_idx <- which(!is.na(segment_summary$ID) & !is.na(segment_summary$date) &
+                          segment_summary$ID == pid & segment_summary$date == dt_k &
+                          segment_summary$segment %in% school_segs)
+      if (length(match_idx) == 0) next
+
+      target_idx <- match_idx
+      if (part != "full") {
+        day_school  <- segment_summary$school[match_idx[1]]
+        day_weekday <- segment_summary$weekday[match_idx[1]]
+        sched <- tryCatch(get_schedule(day_school, day_weekday, cfg$schedules),
+                           error = function(e) NULL)
+        lunch_start <- if (!is.null(sched) && "lunch" %in% sched$segment)
+          sched$start_h[sched$segment == "lunch"][1] else NA_real_
+
+        # Positional alignment, not label matching: a school day has more than
+        # one "in_class"/"recess" block (before and after lunch), so matching
+        # by segment label alone would always resolve to the first one.
+        # segment_summary rows for this ID+date were appended in the same
+        # order sched's rows were built in, so filtering both to school_segs
+        # keeps them aligned row-for-row.
+        sched_segs <- if (!is.null(sched)) sched[sched$segment %in% school_segs] else NULL
+
+        if (is.na(lunch_start) || is.null(sched_segs) || nrow(sched_segs) != length(match_idx)) {
+          warning(sprintf(
+            paste0("[absences] Could not resolve lunch split for %s on %s (school %s) ",
+                   "-- applying '%s' absence as a full day instead."),
+            pid, dt_k, day_school, part))
+        } else {
+          seg_starts <- sched_segs$start_h
+          target_idx <- if (part == "morning") match_idx[seg_starts <  lunch_start]
+                        else                    match_idx[seg_starts >= lunch_start]
+        }
+      }
+
+      segment_summary[target_idx, `:=`(segment = "absent", n_valid_hours = NA_real_)]
+      for (col in intensity_cols) {
+        if (col %in% names(segment_summary))
+          segment_summary[target_idx, (col) := NA_real_]
+      }
     }
+
     n_marked <- nrow(segment_summary[segment == "absent"]) - rows_before
     message(sprintf("[absences] %d absence records — %d segment rows marked as absent",
                     nrow(abs_dt), n_marked))

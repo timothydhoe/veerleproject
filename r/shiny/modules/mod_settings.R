@@ -149,12 +149,17 @@ modSettingsUI <- function(id) {
             " De pipeline markeert die dag als 'absent' zodat schooluren niet meegeteld worden",
             " in de analyse. Herstart de pipeline na elke wijziging."),
           layout_columns(
-            col_widths = c(4, 3, 3, 2),
+            col_widths = c(3, 2, 2, 3, 2),
             selectInput(ns("abs_pupil"), "Leerling",
                         choices = character(0), width = "100%"),
             dateInput(ns("abs_date"), "Datum",
                       value = Sys.Date(), language = "nl",
                       format = "yyyy-mm-dd", width = "100%"),
+            selectInput(ns("abs_part"), "Dagdeel",
+                        choices = c("Hele dag" = "full",
+                                    "Voormiddag" = "morning",
+                                    "Namiddag" = "afternoon"),
+                        width = "100%"),
             textInput(ns("abs_reason"), "Reden (optioneel)",
                       placeholder = "bijv. ziek", width = "100%"),
             div(
@@ -368,17 +373,25 @@ mod_settings_server <- function(id, shared) {
 
     # ── Absence registry ─────────────────────────────────────────────────────
 
+    empty_absences <- function() {
+      data.table(pupil_id = character(), date = character(),
+                 part_of_day = character(), reason = character())
+    }
+
     read_absences <- function() {
-      if (!file.exists(absences_path_server))
-        return(data.table(pupil_id = character(), date = character(),
-                          reason = character()))
-      tryCatch(
+      if (!file.exists(absences_path_server)) return(empty_absences())
+      dt <- tryCatch(
         fread(absences_path_server,
               colClasses = c(pupil_id = "character", date = "character",
                              reason   = "character")),
-        error = function(e) data.table(pupil_id = character(), date = character(),
-                                       reason = character())
+        error = function(e) empty_absences()
       )
+      # part_of_day was added after the original pupil_id/date/reason schema —
+      # older absences.csv files won't have it yet. Treat missing as "full"
+      # so pre-existing whole-day absences keep behaving the same way.
+      if (!"part_of_day" %in% names(dt)) dt[, part_of_day := "full"]
+      dt[!(part_of_day %in% c("full", "morning", "afternoon")), part_of_day := "full"]
+      dt[, .(pupil_id, date, part_of_day, reason)]
     }
 
     absences_rv <- reactiveVal(read_absences())
@@ -392,11 +405,15 @@ mod_settings_server <- function(id, shared) {
       updateSelectInput(session, "abs_pupil", choices = ids)
     })
 
+    part_of_day_labels <- c(full = "Hele dag", morning = "Voormiddag", afternoon = "Namiddag")
+
     output$abs_table <- renderDT({
       dt <- absences_rv()
       if (nrow(dt) == 0)
         return(datatable(data.frame(Bericht = "Geen afwezigheden geregistreerd."),
                          options = list(dom = "t"), rownames = FALSE))
+      dt <- copy(dt)
+      dt[, part_of_day := part_of_day_labels[part_of_day]]
       dt[, Verwijderen := paste0(
         '<button class="btn btn-outline-danger btn-sm abs-del-btn" ',
         'data-row="', seq_len(.N), '">',
@@ -404,12 +421,12 @@ mod_settings_server <- function(id, shared) {
       )]
       datatable(
         dt,
-        colnames  = c("Leerling", "Datum", "Reden", ""),
+        colnames  = c("Leerling", "Datum", "Dagdeel", "Reden", ""),
         escape    = FALSE,
         rownames  = FALSE,
         selection = "none",
         options   = list(dom = "tp", pageLength = 10, ordering = TRUE,
-                         columnDefs = list(list(orderable = FALSE, targets = 3)))
+                         columnDefs = list(list(orderable = FALSE, targets = 4)))
       )
     })
 
@@ -418,6 +435,7 @@ mod_settings_server <- function(id, shared) {
     observeEvent(input$abs_add, {
       pupil  <- trimws(input$abs_pupil)
       date   <- as.character(input$abs_date)
+      part   <- input$abs_part
       reason <- trimws(input$abs_reason)
       if (!nzchar(pupil)) {
         output$abs_status_msg <- renderUI(
@@ -425,13 +443,14 @@ mod_settings_server <- function(id, shared) {
         return()
       }
       dt <- absences_rv()
-      if (any(dt$pupil_id == pupil & dt$date == date)) {
+      if (any(dt$pupil_id == pupil & dt$date == date & dt$part_of_day == part)) {
         output$abs_status_msg <- renderUI(
           div(class = "alert alert-warning small py-2 mt-2",
-              paste0("Leerling ", pupil, " is al afwezig op ", date, ".")))
+              paste0("Leerling ", pupil, " is al afwezig (", part_of_day_labels[part],
+                     ") op ", date, ".")))
         return()
       }
-      new_row <- data.table(pupil_id = pupil, date = date, reason = reason)
+      new_row <- data.table(pupil_id = pupil, date = date, part_of_day = part, reason = reason)
       dt <- rbindlist(list(dt, new_row))
       tryCatch(
         fwrite(dt, absences_path_server),
