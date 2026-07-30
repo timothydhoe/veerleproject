@@ -61,14 +61,21 @@ unexamined existing inefficiency.
 
 See `feature_log.md` #5.
 
-## 5. Bug — bundle: must keep first `.bat` terminal open to run the second
+## 5. Bug — bundle: must keep first `.bat` terminal open to run the second — `fixed`
 
-Investigate now that logging (item 3) exists to help pin down the actual cause, and
-after the performance/dead-code audit (item 4) has had a chance to surface anything
-relevant to the two launchers. Worth closing out before the big bundle audit (item 8)
-so that audit isn't rediscovering the same root cause from scratch.
+Investigated after the performance/dead-code audit (item 4, optimization_log.md #10)
+had already checked the `.bat` launchers and found nothing relevant there. Both
+halves of the original report turned out to be real (window 1 must stay open while
+the pipeline runs; window 2 must stay open while using the dashboard) — the actual
+fix: detach the pipeline run (the expensive one to lose) into a true background
+process with a live progress indicator, verified empirically to survive the
+launching window being closed. Dashboard left as a simple blocking process, per
+project-owner decision, so this closes out before the big bundle audit (item 8)
+without pulling that deprioritized item forward — though the fix's status-file/
+progress-polling piece was deliberately designed generically enough to be reusable
+there later (per independent review of that specific sequencing question).
 
-See `bug_log.md` #29.
+**Resolved** — see `bug_log.md` #29.
 
 ## 6. Feature — make `split_at_context_boundary` / `labeled_epochs.csv` functional
 

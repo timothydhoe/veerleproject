@@ -1444,19 +1444,112 @@ Collected from the project owner, not yet investigated. See
 `docs/test/order_of_approach.md` for working order and reasoning across these plus
 the parallel `feature_log.md` items.
 
-### 29. Bundle: must keep the first `.bat`'s terminal open to run the second — status: `open`
+### 29. Bundle: must keep the first `.bat`'s terminal open to run the second — status: `fixed`
 
-**Where:** `scripts/bundle/templates/1 - Pipeline uitvoeren.bat`,
-`scripts/bundle/templates/2 - Dashboard starten.bat`
+**Where:** `scripts/bundle/templates/1 - Pipeline uitvoeren.bat`, new
+`r/pipeline/run_pipeline_monitored.R`
 
-Reported by the project owner: in the current bundle, the terminal window opened by
-running `1 - Pipeline uitvoeren.bat` must stay open in order to then run
-`2 - Dashboard starten.bat` and view the dashboard. Not yet investigated — root cause
-unknown (could be a real process/lock dependency between the two launchers, or a
-UX/expectation issue around the trailing `pause` in the pipeline `.bat`). Fourth in
-working order per `order_of_approach.md`, after error/log-to-file capture (feature
-log #2) lands, since that should make it easier to see what's actually happening
-across the two launcher runs.
+**Investigated before fixing.** Read both launcher scripts in full: no code-level
+lock or dependency exists between them — each is a fully independent `cmd.exe`
+invocation, no shared env vars (don't cross sibling console windows), no lock files,
+no process chaining. Clarified with the project owner what was actually being
+observed: **both** halves of the original report were real — (a) window 1 must stay
+open *while the pipeline runs* (closing a console window on Windows kills any child
+process still attached to it — here, the in-progress `Rscript.exe` — a real,
+unavoidable OS behaviour, not a bug), and (b) window 2 must stay open while using the
+dashboard (`shiny::runApp()` *is* the R process serving it — standard Shiny
+behaviour). The actual problem: accidentally closing window 1 mid-run loses up to
+30-60 minutes of real work, with nothing protecting against it.
+
+**Scope decision (with the project owner):** detach only the pipeline run (the
+expensive one to lose) via a true background process, with a live progress
+indicator; leave the dashboard (`2 -...bat`) as a simple blocking process as-is,
+since losing that session is cheap to recover from (data's already computed, just
+relaunch) — matches this project's broader `order_of_approach.md` reasoning of not
+pulling forward the (separately deprioritized) full bundle audit,
+`feature_log.md` #4, while still designing the fix's status-file/progress-polling
+piece generically enough to be reusable when that item's time comes (per an
+independent review specifically on that sequencing question).
+
+**Empirically verified the core mechanism before designing around it** (not just
+taken from docs): confirmed `processx` and `ps` are already present in
+`r/renv.lock` as existing transitive dependencies — no new package needed. Live-tested
+`processx::process$new(..., windows_detached_process = TRUE, supervise = FALSE)` by
+launching a simulated `.bat` window (`cmd.exe` running an R launcher script) via
+PowerShell, then force-killing that window process, and confirming via `Get-Process`
+that the detached child (`Rscript.exe`) was still running afterward while the window
+was confirmed dead. (One early attempt using `Start-Process -ArgumentList` as a
+PowerShell array failed silently for unrelated quoting reasons, resolved by using a
+single combined argument string — not a `processx` problem.)
+
+**Fix applied:** new `r/pipeline/run_pipeline_monitored.R`, invoked by
+`1 - Pipeline uitvoeren.bat` instead of calling `run_all.R` directly. It:
+- Checks `logs/pipeline_run_status.txt` for an existing PID; if found, verified alive
+  **and** confirmed via `ps::ps_cmdline()` to actually be a `run_all.R` process (not
+  just any `Rscript.exe` — the dashboard or RStudio can also spawn one, and PIDs get
+  reused) → reattaches instead of relaunching.
+- Otherwise launches `pipeline/run_all.R` via `processx` with
+  `windows_detached_process = TRUE`, behind an atomic `dir.create()`-based lock (closes
+  the launch-race window an independent review flagged: two concurrent runs against the
+  same output directory would have no protection from GGIR's own `overwrite: false`
+  resume logic, which is file-existence-based, not process-aware — a real corruption
+  risk, not just wasted compute, if the guard were weaker).
+- Either way, polls GGIR's own incrementally-written milestone files (`meta/basic`,
+  `meta/ms2.out`, `meta/ms3.out`, `meta/ms4.out`, `meta/ms5.out` — one `.RData` file per
+  participant per part, confirmed from real output) against an expected total
+  (participants × 5 parts × metingen, capped by `quick_test_n` the same way
+  `01_run_ggir.R` itself does) and prints an updating progress line, e.g. `Verwerkt: 16
+  van 30 onderdelen (Deel 1 van 5) — 53%`.
+- **No changes to `01_run_ggir.R`/`02_label_segments.R`/`03_build_summaries.R`** —
+  progress comes entirely from external polling of files GGIR already writes, not from
+  any hook inside the pipeline scripts.
+
+**A real edge case was found and designed around, not just assumed away:** verified
+live that milestone files are *not* always 1:1 per participant per part — a dummy
+participant was legitimately missing from `meta/ms4.out`/`meta/ms5.out` in one meting
+(GGIR skipping sleep detection for that participant, plausibly insufficient data), so
+the denominator can overestimate. The progress display is capped at 99% while the
+process is still alive rather than promising a number it may not reach; true
+completion is detected by the process actually exiting, then checking whether the
+three summary CSVs exist — not by hitting 100%.
+
+**Independent review before implementing** (fresh agent, static/read-only) on the full
+design caught four real issues, all folded into the implementation above: (1) the
+stale-PID check needed to match the full command line, not just the process image
+name; (2) `logs/` needed its own `dir.create()` guard in the new script specifically,
+since it writes the status file before the child process's own logging init would
+otherwise create that directory; (3) the progress denominator needed to account for
+`dev$quick_test_n`; (4) flagged that a real Windows Explorer double-click could behave
+differently from a `Start-Process`-launched test (job objects, antivirus, UAC) —
+addressed by testing via a properly nested `cmd.exe /c "..."` window (closer to real
+`.bat` behaviour than the initial PowerShell-array test), though a literal
+double-click-from-Explorer verification remains a residual, honestly-stated gap this
+session couldn't close.
+
+**Verified live, end-to-end, all four scenarios** (dummy data, 3 participants,
+isolated scratch output directory, `config.yaml` restored byte-identical after —
+confirmed via `git diff`):
+1. **Fresh launch:** correctly started a detached run, wrote the status file, showed
+   `Verwerkt: 0 van 30 onderdelen — 0%`.
+2. **Window killed mid-run:** force-killed the simulated `.bat` window process;
+   confirmed via `Get-Process` that the detached pipeline (a different PID) was still
+   running, and that milestone files kept accumulating on disk afterward — the actual
+   bug's failure mode, directly reproduced and confirmed fixed.
+3. **Reattach:** relaunched the monitor script while the detached run was still going;
+   it printed `Er is al een pipeline-run bezig (PID ...) — hierop aansluiten...` and
+   resumed live progress updates (rising through "Deel 3 van 5" → "Deel 5 van 5") instead
+   of starting a duplicate run.
+4. **Completion + fresh-start-after-done:** the real run finished at 93% (28/30 —
+   consistent with the milestone-skipping edge case above, not a bug), correctly
+   printed the `Klaar` message once the process actually exited and all three summary
+   CSVs were confirmed present; a subsequent launch after the PID had died correctly
+   printed `Pipeline wordt gestart op de achtergrond...` (fresh start), not a false
+   reattach.
+
+**Where:** `scripts/bundle/templates/1 - Pipeline uitvoeren.bat` (one line changed,
+plus updated user-facing messaging), new `r/pipeline/run_pipeline_monitored.R`.
+`2 - Dashboard starten.bat` untouched. No `renv.lock` changes (dependencies already
+present).
 
 ### 30. Shiny dashboard: `object 'calendar_date' not found` — "MVPA per dag" graph, Deelnemers tab — status: `fixed`
 
@@ -1632,3 +1725,185 @@ epoch-level labeled data for context-aware bout detection...") and populates rea
 disabled), confirmed the `[WARN] labeled_epochs.csv not found` fallback still fires correctly and
 `analysis_ready.csv`/`validity_summary.csv` are byte-identical to before this fix (see
 `feature_log.md` #2's verification notes for the full regression check).
+
+---
+
+## 🆕 Follow-up bugs in bug #29's monitored-pipeline launcher — session 2026-07-29
+
+Reported by the project owner after checking out #29's fix in a real Windows bundle: the
+background-persistence behaviour itself worked (terminal could be closed/reopened), but
+editing `config.yaml` and re-running the pipeline appeared to have no effect, and separately
+the progress display was seen stuck at "20 van 20 onderdelen (Deel 1 van 5) -- 99%".
+
+(Numbered #33/#34, not #32/#33 as originally drafted — #32 was independently claimed by the
+`labeled_epochs_path` fix above, merged in from a parallel branch. Renumbered here to avoid a
+collision; internal cross-references between these two items were updated to match.)
+
+### 33. Silent reattach can swallow config.yaml changes — status: `fixed`
+
+**Where:** `r/pipeline/run_pipeline_monitored.R` (main reattach block, previously lines 177-184)
+
+**Investigated before fixing.** Read `is_our_pipeline_process()` and the reattach branch: if a
+background run from an earlier launch is still alive when the script is relaunched, it
+silently reattaches to it — no new process is ever started. If the user edited `config.yaml`
+in the meantime (e.g. flipped `ggir.overwrite: true`, literally the fix `r/GEBRUIKERSGIDS.md`
+documents for "GGIR slaat stappen over"), that edit is never read, with no signal beyond one
+easy-to-miss console line. Confirmed no existing mitigation anywhere (`validate_config.R`, the
+`.bat`, `GEBRUIKERSGIDS.md`) compares config.yaml's mtime against a run's start time.
+
+Reproduced live: registered a fake long-lived process (real PID, `run_all.R` in its command
+line, matching `is_our_pipeline_process()`'s own check) as "in progress" via
+`logs/pipeline_run_status.txt`, then relaunched the monitor script — it printed the reattach
+message and only ever polled progress, never "Pipeline wordt gestart...", confirming no new
+process starts once a live match exists.
+
+**Independent review (pre-implementation, static/read-only, fresh agent)** confirmed the
+diagnosis and caught two implementation traps before any code was written:
+- `readline()` does not work under `Rscript -e "..."` (how this script is always invoked) —
+  verified empirically that `interactive()` is `FALSE` in that mode and `readline()` returns
+  `""` instantly without blocking. A prompt built on it would look correct from an interactive
+  RStudio console and silently never pause for real users. Used `readLines(con = "stdin", n =
+  1)` instead — confirmed this correctly blocks and reads the real console.
+- Killing the old detached process is only possible via `ps::ps_kill()` by bare PID (the
+  original `processx` handle isn't available — it belonged to a session that already exited).
+  On Windows this is an immediate `TerminateProcess`, not a graceful stop, verified from
+  `ps::ps_kill`'s own source (`grace` is POSIX-only) — a milestone file mid-write at that
+  instant can be left truncated. Low risk if the reason for restarting is `ggir.overwrite:
+  true` (GGIR will overwrite it again this run regardless); a narrower, pre-existing risk
+  otherwise (an abrupt interruption has always been able to do this, even before this fix
+  existed).
+
+**Fix applied:** on reattach, a new `config_changed_since(started_str)` compares
+`config.yaml`'s mtime against the run's recorded `started=` timestamp. If it changed, prints a
+Dutch warning that the edit won't affect the running process, then `prompt_yes_no()` asks
+whether to keep monitoring (default, on any empty/unrecognized answer — an ambiguous keystroke
+must never be able to kill a real run) or stop the old run and restart fresh. "Restart" calls
+`ps::ps_kill()`, polls up to 5s for the process to actually die, then — **added after a second
+independent review of the applied code, see below** — re-verifies via the same
+`is_our_pipeline_process()` check used everywhere else in the file and `stop()`s with a clear
+message rather than silently proceeding if the old process is still alive; only then does it
+fall through into the existing fresh-launch code path (no duplicated launch logic).
+
+**Second independent review, of the applied diff (not just the plan), found three real
+edge-case bugs, all fixed in the same pass:**
+1. `config_changed_since()`'s `tryCatch` only wrapped the `as.POSIXct()` call — a genuinely
+   *missing* `started_str` (as opposed to malformed text) makes `as.POSIXct(NULL, ...)` return
+   a zero-length value silently, which then crashed the uncaught `if (is.na(started) || ...)`
+   with `"missing value where TRUE/FALSE needed"` — directly contradicting the function's own
+   "fails safe" doc comment. Fixed: explicit `is.null()`/`length() != 1`/`is.na()` guard before
+   the conversion.
+2. After the kill + 5s poll, the original draft proceeded to launch a second process
+   regardless of whether the old one actually died (`ps_kill()`'s own errors are swallowed,
+   and the poll loop had no re-check after it exited) — reopening exactly the "two concurrent
+   runs race on GGIR's shared milestone/CSV files" risk this script exists to prevent. Fixed:
+   re-check via `is_our_pipeline_process(existing$pid)` and `stop()` if still alive, per the
+   paragraph above.
+3. (Shared root cause with #34's fix below) a status file with `overwrite_mode=TRUE` but a
+   missing/corrupt `baseline=` field (e.g. truncated mid-write) produced a zero-length
+   `POSIXct`, which is not `NULL` — so `count_progress()`'s `!is.null(baseline)` guard didn't
+   fall back to unfiltered counting, and every mtime comparison silently evaluated to
+   `logical(0)`, discarding every milestone file for the whole run (progress stuck at 0%
+   forever, the mirror image of bug #34). Fixed: normalize `run_baseline` to `NULL` if it's not
+   length-1 and non-NA, immediately after deriving it from the status file.
+
+**Verified:**
+- Unit tests (synthetic status-file dicts, no real process/pipeline involved): `NULL`,
+  `character(0)`, and `NA_character_` values for `started_str` all correctly return `FALSE`
+  (not a crash). Baseline normalization correctly nulls out a missing or `"NA"` baseline field
+  under `overwrite_mode=TRUE`, correctly preserves a real numeric baseline, and always nulls
+  out under `overwrite_mode=FALSE`. Control-flow tests (mocked `is_our_pipeline_process`/kill
+  outcomes) confirm the restart path `stop()`s whenever the process is still alive after the
+  kill attempt, in every combination of "kill call failed" vs. "kill succeeded but didn't exit
+  in time", and proceeds normally when it genuinely died.
+- **Live, end-to-end, real processes** (config.yaml backed up before every edit and restored
+  byte-for-byte after, confirmed via `git diff config.yaml` = empty; `paths.data_processed`
+  temporarily redirected to a scratch directory, `dev.example_mode: true` +
+  `dev.quick_test_n: 2` for a fast real GGIR run): a fake long-lived process (real PID,
+  `run_all.R` in its cmdline) was registered as "in progress." (1) Config unchanged since
+  start → silent reattach, no prompt, fake process untouched. (2) Config changed, answered
+  "n" → warning + prompt shown, fake process left alive and untouched. (3) Config changed,
+  answered "j" → fake process genuinely killed, a real new detached `run_all.R` launched
+  (different PID), status file correctly recorded the new run's `overwrite_mode`/`baseline`,
+  and the fresh run completed normally through to `analysis_ready.csv`/`segment_summary.csv`/
+  `validity_summary.csv`. Re-ran this exact real kill-and-restart sequence again after applying
+  the second review's three fixes, to confirm no regression — identical result.
+
+**Where:** `r/pipeline/run_pipeline_monitored.R` (`config_changed_since()`, `prompt_yes_no()`,
+the reattach block and its restart path)
+
+---
+
+### 34. Progress display double-counts stale pre-existing milestone files under `overwrite: true` — status: `fixed`
+
+**Where:** `r/pipeline/run_pipeline_monitored.R`, `count_progress()` (previously lines 130-156)
+
+**Investigated before fixing**, including live confirmation against the real Windows bundle
+(`C:\SchoolMove`) that reported the symptom: `count_progress()` counted milestone `.RData`
+files by existence only, across `meta/basic`/`meta/ms2.out`/.../`meta/ms5.out` for both
+metingen, with no regard for whether a file was written by the *current* run or is a leftover
+from the run being overwritten. Confirmed live on the actual reported bundle: `meting_1` had
+already fully reprocessed (fresh mtimes through Part 5), while `meting_2` was still on Part 1 —
+yet the displayed total already counted all of `meting_2`'s old Part 2-5 files as "done"
+because they still existed on disk, unrewritten. Net effect: `done` raced to `expected_total`
+(capped at 99% by `render_progress()`) almost immediately under `ggir.overwrite: true`, and
+stayed there for the whole real duration of the reprocess — even though the underlying pipeline
+was working correctly and finished normally (confirmed separately: the real run completed,
+`analysis_ready.csv`/`segment_summary.csv`/`validity_summary.csv` were freshly rewritten with
+`.bak` backups moments after the "stuck" display was observed).
+
+**Important nuance confirmed before choosing a fix:** the existing existence-based counting is
+*correct*, not buggy, for the common `ggir.overwrite: false` case (e.g. adding a few new
+participants to a folder of hundreds already processed) — those old files represent legitimate,
+already-valid work GGIR will correctly skip, and showing that as already-counted progress is
+more useful than showing 0% climbing only for the new participants. Any fix had to be strictly
+conditional on overwrite-mode, not a blanket switch to mtime-based counting.
+
+**Independent review (pre-implementation)** added two corrections that changed the design, not
+just tuned it:
+- The baseline must be captured exactly once, at the moment the fresh process is actually
+  spawned, and persisted into the status file — never recomputed at a later reattach. A
+  freshly-captured `Sys.time()` at reattach time would retroactively filter out every
+  genuinely-fresh file the running process had already written before that reattach, producing
+  a worse regression (permanently stuck at a low percentage that never catches up).
+- The filter must be gated on a flag persisted in the status file at launch time
+  (`overwrite_mode`), not on `cfg$ggir$overwrite` read fresh at monitor startup —
+  `GEBRUIKERSGIDS.md` (line ~317) explicitly documents flipping `overwrite` back to `false`
+  *while a run is still going*, which must not retroactively change how that run's progress is
+  counted.
+
+**Fix applied:** `write_status()`/the status file gained `overwrite_mode` and a sub-second-
+precision numeric `baseline` timestamp, captured immediately before the fresh process is
+spawned (only when `isTRUE(cfg$ggir$overwrite)`). `count_progress()` gained a `baseline`
+parameter: when supplied, milestone files with `mtime < baseline` are excluded from both the
+`done` count and the `current_part` detection entirely. `NULL` (the default, and always the
+case when `overwrite_mode` was `FALSE` at launch) preserves the original existence-based
+counting exactly.
+
+**Second independent review of the applied diff** found the same missing/corrupt-`baseline`
+edge case documented under #33 (fix #3 there) — fixed together in the same pass, since both
+bugs share one root cause (a partially-written status file) and one fix pattern (normalize to
+`NULL`/fall back to unfiltered counting rather than trusting a zero-length value).
+
+**Verified:**
+- **Isolated unit tests** against synthetic milestone-file fixtures (no real GGIR run):
+  `baseline = NULL` reproduces the original counting exactly; `baseline = <time>` correctly
+  excludes older files from both `done` and `current_part`, and correctly picks them up once
+  their mtime crosses the baseline (simulated a real run progressing part-by-part: 0 → 2 (Part
+  1) → 4 (Part 1+2), matching what GGIR would actually produce).
+- **Live, end-to-end, real GGIR runs** (dummy data, `quick_test_n: 2`, output redirected to a
+  scratch directory to avoid touching real data, config.yaml backed up/restored and confirmed
+  byte-identical via `git diff` afterward):
+  1. Fresh empty output directory, `overwrite: true` — progress climbed honestly
+     0%→5%→...→90%→"Klaar", confirming no regression for the normal fresh-run case.
+  2. **Immediately re-running against that now-fully-populated directory, still `overwrite:
+     true`** (the exact real-world scenario that produced the original "20 van 20, Deel 1, 99%"
+     report) — progress correctly started at **"0 van 20 onderdelen -- 0%"** and climbed
+     honestly through every part to "Klaar" again, never jumping to a falsely-stuck-looking
+     percentage. This is the direct reproduction-and-fix confirmation for the reported bug.
+  3. Same already-fully-populated directory, `overwrite: false` — progress correctly showed
+     "18 van 20 onderdelen (Deel 5 van 5) -- 90%" almost immediately (existing/desired
+     behaviour for the common incremental-add case), confirming the fix does not regress the
+     non-overwrite path.
+
+**Where:** `r/pipeline/run_pipeline_monitored.R` (`write_status()`, `count_progress()`, and the
+fresh-launch branch that now captures `run_overwrite`/`run_baseline`)
