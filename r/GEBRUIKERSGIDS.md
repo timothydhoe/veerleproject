@@ -14,6 +14,12 @@ Pak de zip uit naar een korte maplocatie zoals `C:\SchoolMove\` en volg
 `LEES MIJ.txt` in die map. Er is geen installatiestap en geen
 internetverbinding nodig — R en alle R-pakketten zitten al in de bundel.
 
+> **Gebruik 7-Zip om uit te pakken** (gratis, https://www.7-zip.org/), niet de
+> ingebouwde Windows-uitpakker. Bij een lang bestandspad slaat de Windows-
+> uitpakker bestanden soms **stil over, zonder foutmelding** — waardoor R of
+> R-pakketten later "ontbreken" na een op het oog geslaagde uitpak. Rechtsklik
+> op het `.zip`-bestand → **7-Zip → Extract Here**.
+
 Ga verder naar sectie 2 als je de draagbare versie gebruikt.
 
 ### Optie B — Handmatige installatie
@@ -269,24 +275,26 @@ Als een leerling op een schooldag afwezig was, wil je dat de schooluren van die 
 ### Via het dashboard (aanbevolen)
 
 1. Ga naar het tabblad **Instellingen** → sectie **Afwezigheden**
-2. Kies de leerling (4-cijferige code), de datum en eventueel een reden (bijv. "ziek")
+2. Kies de leerling (4-cijferige code), de datum, het **dagdeel** (hele dag,
+   voormiddag of namiddag) en eventueel een reden (bijv. "ziek")
 3. Klik **Toevoegen** — de afwezigheid wordt opgeslagen in `data/absences.csv`
 4. Herstart de pipeline (`run_all.R`) om de afwezigheid toe te passen
 
-De schoolsegmenten (les, speeltijd, middagpauze) van die dag worden dan als **"afwezig"** gemarkeerd en uitgesloten uit de activiteitsanalyse.
+De schoolsegmenten (les, speeltijd, middagpauze) van die dag worden dan als **"afwezig"** gemarkeerd en uitgesloten uit de activiteitsanalyse. Bij "voormiddag" of "namiddag" geldt dit alleen voor de segmenten vóór, respectievelijk vanaf, de middagpauze van die school — bijv. bij een halve dag afwezigheid omwille van een offerfeest of een dokters- of tandartsafspraak.
 
 ### Handmatig (gevorderde gebruikers)
 
 Je kunt `data/absences.csv` ook rechtstreeks bewerken in Excel of een teksteditor. Het formaat is:
 
 ```csv
-pupil_id,date,reason
-3025,2026-01-21,ziek
-3026,2026-01-22,schooluitstap
+pupil_id,date,part_of_day,reason
+3025,2026-01-21,full,ziek
+3026,2026-01-22,morning,tandarts
 ```
 
 - `pupil_id`: 4-cijferige leerlingcode (bijv. 3025)
 - `date`: datum in formaat `JJJJ-MM-DD`
+- `part_of_day`: `full` (hele dag), `morning` (voormiddag) of `afternoon` (namiddag). Oudere `absences.csv`-bestanden zonder deze kolom blijven werken — ontbrekende of onherkende waarden worden als `full` behandeld.
 - `reason`: optionele toelichting
 
 Sla het bestand op en herstart de pipeline.
@@ -318,6 +326,19 @@ Sla het bestand op en herstart de pipeline.
 
 **De "Pipeline uitvoeren"-knop doet niets**
 → Dit is zo ontworpen: de knop toont een venster met de terminalopdracht. De pipeline draait nooit automatisch vanuit het dashboard (GGIR zou de app 30–60 minuten blokkeren). Voer de opdracht uit in een apart terminalvenster en herlaad de app daarna.
+
+**"FOUT: kon R niet vinden" bij het starten van een `.bat`-bestand**
+→ Dit betekent meestal dat de map niet volledig is uitgepakt, of dat antivirussoftware bestanden (vaak `.exe`/`.dll` in de `R-portable`-map) heeft geblokkeerd of verwijderd tijdens het uitpakken. Volg deze stappen:
+1. Verwijder de huidige uitgepakte SchoolMove-map (die met de fout).
+2. Verplaats het `.zip`-bestand naar een korte locatie, bv. `C:\SM\` (dus niet in Downloads of OneDrive).
+3. Installeer [7-Zip](https://www.7-zip.org/) als je dat nog niet hebt (gratis).
+4. Rechtsklik op het `.zip`-bestand → **7-Zip → Extract Here** (dus niet de normale "Alles uitpakken" van Windows zelf — zie de waarschuwing in sectie 1).
+5. Start daarna opnieuw `1 - Pipeline uitvoeren.bat`.
+
+Voeg zo nodig eerst een uitzondering toe in je antivirussoftware voor de map waarin je uitpakt, en pak dan opnieuw uit.
+
+**Moet ik het venster van "1 - Pipeline uitvoeren.bat" openhouden om het dashboard te starten?**
+→ Nee. Zodra dat venster "Klaar" toont, mag je het sluiten — `2 - Dashboard starten.bat` is een volledig los proces en heeft alleen de bestanden nodig die stap 1 al heeft weggeschreven. Het venster van **stap 2** moet je wel openhouden zolang je het dashboard gebruikt: dat venster draait de dashboard-server zelf, en sluiten stopt het dashboard.
 
 ---
 

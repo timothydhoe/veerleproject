@@ -331,6 +331,34 @@ Loads everything the dashboard needs at startup:
 - Defines `extract_school_id(id)` (first digit → `school_N`) and version-tolerant
   `load_ggir()` wrappers
 
+### Logging (`pipeline/utils_logging.R`)
+
+Shared error/warning-to-file logging, sourced by both `run_all.R` and `global.R` so
+the two entry points can't drift. `init_pipeline_log(path)` creates/truncates the file
+at startup; `with_logged_conditions(expr, path, context)` wraps a step, logging any
+warning/error raised during `expr` (then re-throwing/re-propagating exactly as before
+— logging is additive, not a behaviour change) with dedup for repeated identical
+lines. Two log files, both under a `logs/` directory relative to the process's working
+directory:
+
+- **Pipeline**: `logs/pipeline_errors.txt` — `run_all.R` wraps config validation and
+  each of steps 01–03.
+- **Dashboard**: `../logs/shiny_errors.txt` — `global.R` wraps config validation and
+  the startup data load; `options(shiny.error = ...)` additionally logs errors from
+  reactive/render code once the app is running (a session's *runtime* warnings —
+  as opposed to errors — are not captured, only startup warnings are).
+
+**What this does not cover** (relevant if a server/unattended deployment is ever
+considered — none is currently planned): no rotation or retention across runs (each
+`init_pipeline_log()` call truncates the file, so history isn't kept beyond the most
+recent run); no alerting — a file sitting on disk isn't noticed by anyone unless
+opened manually; paths are relative, which assumes the `.bat` launchers' working
+directory and is untested under a service/headless launcher; and `geterrmessage()`
+(used by the `shiny.error` handler) is global R process state, so concurrent Shiny
+sessions under a multi-worker server (e.g. shiny-server spawning several R processes)
+could interleave unexpectedly. None of this needs solving now — flagging so a future
+server-deployment discussion starts from an accurate picture.
+
 ### ui.R — 7 tabs
 
 | Tab | Purpose |

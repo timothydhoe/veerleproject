@@ -204,6 +204,14 @@ Input files are GENEActiv CSVs. Key characteristics (full spec in
    `docs/test/bug_log.md` #9 (segment-summary loop — benchmarked at full study scale,
    4.66s, not a real problem — `wontfix`) and #13 (summary CSV output paths now
    backed up before every overwrite — `fixed`).
+4. **Activity-profile / cut-point validation** — Veerle asked (15 July 2026 meeting) to
+   review whether the SB/LPA/MPA/VPA split ("activiteitsprofiel") coming out of
+   `analysis_ready.csv` looks right. The Hildebrand cut-points themselves are correctly
+   configured (see Key Domain Concepts above), so this isn't a code bug to fix — it's a
+   validation exercise that needs Veerle's own reference numbers or prior GGIR output to
+   compare against. Same underlying gap as blocker #1 above (her original `config.csv`
+   would help confirm parameter parity); still open, needs a short back-and-forth with her
+   rather than solo dev work.
 
 ## MCP Servers
 
