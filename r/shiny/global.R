@@ -107,8 +107,24 @@ load_ggir <- function(meting, filename = NULL, pattern = NULL) {
 # Assignments still land in this (global) environment as usual: a bare `{ }`
 # block passed as a lazy argument is evaluated in the environment where it
 # was written, not inside with_logged_conditions()'s own call frame.
+# Console-only progress feedback for the slow startup data load. There is no
+# browser session yet at this point (global.R runs once before the app starts
+# accepting connections, and the browser tab doesn't open until this finishes)
+# so a Shiny withProgress()/incProgress() spinner has nothing to render into —
+# the .bat window's terminal is the only thing actually visible while this
+# runs, hence plain message()s with a step counter rather than a Shiny widget.
+.STARTUP_STEP_TOTAL <- 6L
+.startup_step <- local({
+  n <- 0L
+  function(label) {
+    n <<- n + 1L
+    message(sprintf("[%d/%d] %s", n, .STARTUP_STEP_TOTAL, label))
+  }
+})
+
 with_logged_conditions({
   # analysis_ready + validity (output of 03_build_summaries.R)
+  .startup_step("Laden van analyse-tabel (analysis_ready.csv)...")
   analysis_ready <- tryCatch(
     fread(file.path(base_out, "summaries", "analysis_ready.csv"),   data.table = TRUE, encoding = "UTF-8"),
     error = function(e) { message("analysis_ready.csv not found — run pipeline first"); NULL }
@@ -119,6 +135,7 @@ with_logged_conditions({
   )
 
   # part2 day summaries (for heatmap and day-level views)
+  .startup_step("Laden van GGIR-dagsamenvattingen (Part 2)...")
   part2_list <- lapply(metingen, load_ggir, filename = "part2_daysummary.csv")
   part2      <- rbindlist(Filter(Negate(is.null), part2_list), fill = TRUE)
   if (nrow(part2) > 0) {
@@ -135,6 +152,7 @@ with_logged_conditions({
   }
 
   # part4 night summaries (sleep) — uses version-tolerant reader
+  .startup_step("Laden van slaapdata (Part 4)...")
   part4_list <- lapply(metingen, function(m) {
     results_dir <- find_ggir_results_dir(file.path(base_out, m))
     if (is.null(results_dir)) return(NULL)
@@ -151,6 +169,7 @@ with_logged_conditions({
   # add_waking_valid_hours() in utils_ggir.R and bug_log.md #31) — needs every
   # attempted night's sleep timing, not just nights meeting their own separate
   # sleep-validity criterion.
+  .startup_step("Laden van volledige slaapdata (voor geldige-urenberekening)...")
   part4_full_list <- lapply(metingen, function(m) {
     results_dir <- find_ggir_results_dir(file.path(base_out, m))
     if (is.null(results_dir)) return(NULL)
@@ -167,12 +186,14 @@ with_logged_conditions({
   # waking wear hours (24h minus that night's detected sleep), per Veerle's
   # protocol — not the full calendar day. Mirrors 03_build_summaries.R so the
   # dashboard's per-day view and validity_summary.csv agree.
+  .startup_step("Berekenen van geldige waak-uren per dag...")
   if (nrow(part2) > 0) {
     part2 <- add_waking_valid_hours(part2, part4_full)
     part2[, valid_day := !is.na(n_valid_waking_hours) & n_valid_waking_hours >= MIN_WEAR_H]
   }
 
   # segment summary (output of 02_label_segments.R)
+  .startup_step("Laden van schoolsegmenten (segment_summary.csv)...")
   seg_path <- file.path(base_out, "summaries", "segment_summary.csv")
   if (file.exists(seg_path)) {
     segment_summary <- fread(seg_path, data.table = TRUE, encoding = "UTF-8")
@@ -189,6 +210,7 @@ with_logged_conditions({
     message("segment_summary.csv not found — School Day tab will be empty.")
   }
 }, SHINY_LOG, "startup data load")
+message("[6/6] Data geladen. Dashboard wordt gestart...")
 
 # ── WHO references ────────────────────────────────────────────────────────────
 WHO_MVPA_MIN   <- 60   # WHO recommendation: ≥60 min/day MVPA for children (5–17 yr)
