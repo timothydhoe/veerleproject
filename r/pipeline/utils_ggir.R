@@ -255,16 +255,23 @@ pick_ggir_variant_file <- function(files, prefer = c("Segments", "WW", "MM")) {
 #' Keeps only the 5 most recent backups per file to avoid unbounded growth
 #' from routine dev/test iteration.
 #'
+#' Backups live in a `backups/` subfolder next to `path` rather than as
+#' siblings of the live file, so the output folder doesn't visibly fill up
+#' with `.bak.*` files over repeated pipeline runs.
+#'
 #' @param path Path to the file about to be overwritten.
 backup_if_exists <- function(path) {
   if (!file.exists(path)) return(invisible(NULL))
 
-  ts          <- format(Sys.time(), "%Y%m%d_%H%M%S")
-  backup_path <- paste0(path, ".bak.", ts)
-  file.copy(path, backup_path, overwrite = TRUE)
-  message("[backup] Existing ", basename(path), " backed up to ", basename(backup_path))
+  backup_dir <- file.path(dirname(path), "backups")
+  dir.create(backup_dir, showWarnings = FALSE, recursive = TRUE)
 
-  existing <- sort(list.files(dirname(path),
+  ts          <- format(Sys.time(), "%Y%m%d_%H%M%S")
+  backup_path <- file.path(backup_dir, paste0(basename(path), ".bak.", ts))
+  file.copy(path, backup_path, overwrite = TRUE)
+  message("[backup] Existing ", basename(path), " backed up to ", file.path("backups", basename(backup_path)))
+
+  existing <- sort(list.files(backup_dir,
                               pattern = paste0("^", basename(path), "\\.bak\\."),
                               full.names = TRUE))
   if (length(existing) > 5) {
