@@ -175,7 +175,7 @@ Bovenaan staat ook een **Pipeline uitvoeren**-knop. Die opent een dialoogvenster
 Individuele deelnemerverkenner. Selecteer een deelnemer via het dropdown-menu of door op een rij in de inclusietabel te klikken. Toont:
 - MVPA per dag (tijdlijn)
 - Activiteit per schoolsegment, M1 vs M2 (staafgrafiek)
-- Draagduuroverzicht (heatmap per dag: groen = geldig, rood = onvoldoende)
+- Draagduuroverzicht (heatmap per dag: blauw = geldig, oranje = onvoldoende)
 - Inclusie/exclusie-tabel met filtermogelijkheid (alle / inbegrepen / uitgesloten)
 
 ### Schooldag
@@ -191,7 +191,7 @@ Analyse van activiteit per schooldagsegment (voor school, les, speeltijd, middag
 ### Slaap
 Drie KPI-kaarten (gem. slaap, Δ M1→M2, % onder 8 uur per nacht) gevolgd door:
 - **Slaapverdeling per school** — vioolplot met mediaan, te wisselen tussen slaapduur en slaapefficiëntie
-- **Bland-Altman M1 vs M2** — meet de overeenstemming tussen de twee metingen; bias ≈ 0 en meeste punten binnen de rode stippellijnen betekent goede reproduceerbaarheid
+- **Bland-Altman M1 vs M2** — meet de overeenstemming tussen de twee metingen; bias ≈ 0 en meeste punten binnen de oranje stippellijnen betekent goede reproduceerbaarheid
 
 ### Meting 1 vs 2
 Vergelijkt de twee meetmomenten op twee sub-tabbladen:

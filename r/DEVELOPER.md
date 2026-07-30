@@ -325,8 +325,9 @@ Loads everything the dashboard needs at startup:
 - Loads `analysis_ready.csv`, `validity_summary.csv`, Part 2 day summaries, Part 4 sleep,
   `segment_summary.csv` (adds Dutch labels and translations)
 - Defines shared constants: `MIN_WEAR_H`, `MIN_DAYS`, `NEED_WKND`, `WHO_MVPA_MIN=60`,
-  `WHO_SLEEP_MIN_H=8`, `ZONE_COLORS` (SB grey, LPA cyan, MVPA blue)
-- Defines `theme_schoolmove()` — Atlassian-inspired minimal aesthetic
+  `WHO_SLEEP_MIN_H=8`, `ZONE_COLORS` (SB grey, LPA light blue, MVPA UGent blue —
+  see `../utils/util_brand.R`)
+- Defines `theme_schoolmove()` — UGent-branded minimal aesthetic
 - Defines `extract_school_id(id)` (first digit → `school_N`) and version-tolerant
   `load_ggir()` wrappers
 
@@ -419,10 +420,10 @@ All module server functions receive a `shared` list. Contents:
 
 | Function / constant | Pure | Description |
 |---------------------|------|-------------|
-| `no_data_plot(msg)` | ✓ | Returns a minimal ggplot with a centred message (used when data is absent) |
+| `no_data_plot(msg)` | ✓ | Returns a minimal ggplot with a centred message on a light-blue-tinted background (used when data is absent) |
 | `png_dl(plot_expr, filename_stem, width, height, dpi)` | ✓ | Standardised Shiny download handler factory for PNG exports |
-| `theme_schoolmove(legend_pos)` | ✓ | Shared ggplot2 theme (Atlassian neutrals, UGent blue accent) |
-| `ZONE_COLORS` | — | Named character vector: SB → grey, LPA → cyan, MVPA → UGent blue |
+| `theme_schoolmove(legend_pos)` | ✓ | Shared ggplot2 theme (UGent neutrals + blue accent, see `util_brand.R`) |
+| `ZONE_COLORS` | — | Named character vector: SB → light grey, LPA → light blue, MVPA → UGent blue |
 
 ---
 
