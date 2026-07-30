@@ -100,4 +100,8 @@ echo ============================================================
 echo  Klaar. Start nu "2 - Dashboard starten.bat" om de
 echo  resultaten te bekijken.
 echo ============================================================
+echo.
+echo  U kunt dit venster nu sluiten - dat is niet nodig om
+echo  "2 - Dashboard starten.bat" te kunnen starten.
+echo.
 pause
