@@ -55,7 +55,7 @@ modSettingsUI <- function(id) {
                 actionButton(ns("settings_save_profile"),     "Opslaan als…",
                              icon = icon("floppy-disk"), class = "btn-outline-primary btn-sm"),
                 actionButton(ns("settings_activate_profile"), "Activeer",
-                             icon = icon("check"),       class = "btn-success btn-sm")
+                             icon = icon("check"),       class = "btn-primary btn-sm")
               )
             ),
             div(

@@ -83,7 +83,7 @@ mod_export_server <- function(id, shared) {
                 "Bestand niet gevonden — voer stap 03 (build_summaries) uit" else NULL,
               downloadButton(ns("dl_ready"), "Analysetabel",
                              class = paste("btn-sm export-dl-btn",
-                                           if (ar_path_exists) "btn-outline-success"
+                                           if (ar_path_exists) "btn-outline-primary"
                                            else "btn-outline-secondary disabled-btn"))
             ),
             br(), br(),

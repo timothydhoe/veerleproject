@@ -52,7 +52,7 @@ server <- function(input, output, session) {
     res <- pipeline_result()
     if (is.null(res)) return(NULL)
     tags$span(
-      style = paste0("font-size:0.82rem; color:", if (res$ok) "#198754" else "#dc3545", ";"),
+      style = paste0("font-size:0.82rem; color:", if (res$ok) UGENT_POSITIVE else UGENT_NEGATIVE, ";"),
       if (res$ok) icon("circle-check") else icon("triangle-exclamation"),
       " ", res$msg
     )
@@ -105,7 +105,7 @@ server <- function(input, output, session) {
         paste0("⚠ Geschat rooster: ",
                paste(SCHOOL_LABELS[FALLBACK_SCHOOLS], collapse = ", ")))
     div(class = "readiness-strip",
-        tags$span(style = "font-weight:600; color:#6c757d; margin-right:4px;", "Pipeline:"),
+        tags$span(style = "font-weight:600; color:#6c757d; margin-right:4px;", "Status:"),
         checks)
   })
 
