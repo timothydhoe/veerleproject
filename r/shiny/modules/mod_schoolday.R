@@ -164,9 +164,9 @@ mod_schoolday_server <- function(id, shared) {
       if (input$seg_metric == "mvpa")
         p <- p +
           geom_hline(yintercept = WHO_MVPA_MIN, linetype = "dashed",
-                     colour = "#E74C3C", linewidth = 0.7) +
+                     colour = UGENT_REFERENCE_LINE, linewidth = 0.7) +
           annotate("text", x = Inf, y = WHO_MVPA_MIN + 1,
-                   label = "WHO: 60 min/dag", hjust = 1.05, colour = "#E74C3C", size = 3.2)
+                   label = "WHO: 60 min/dag", hjust = 1.05, colour = UGENT_REFERENCE_LINE, size = 3.2)
       p
     })
 
@@ -347,15 +347,15 @@ mod_schoolday_server <- function(id, shared) {
           geom_segment(aes(x = mean_bouts_meting_1, xend = mean_bouts_meting_2,
                            y = reorder(school_label, -mean_bouts_meting_1),
                            yend = reorder(school_label, -mean_bouts_meting_1)),
-                       colour = "#DFE1E6", linewidth = 2.0, lineend = "round") +
-          geom_point(aes(x = mean_bouts_meting_1), colour = "#97A0AF", size = 5, shape = 16) +
+                       colour = UGENT_BORDER_LIGHTER, linewidth = 2.0, lineend = "round") +
+          geom_point(aes(x = mean_bouts_meting_1), colour = UGENT_TEXT_GRAY, size = 5, shape = 16) +
           geom_point(aes(x = mean_bouts_meting_2, colour = direction), size = 5, shape = 16) +
           geom_text(aes(x = mean_bouts_meting_2,
                         label = paste0(ifelse(delta <= 0, "", "+"), round(delta, 1))),
                     nudge_y = 0.32, hjust = 0.5, size = 2.6,
-                    colour = "#172B4D", fontface = "bold") +
+                    colour = UGENT_BLACK, fontface = "bold") +
           scale_colour_manual(
-            values = c("Afname (positief)" = "#36B37E", "Toename" = "#FF5630"),
+            values = c("Afname (positief)" = UGENT_POSITIVE, "Toename" = UGENT_NEGATIVE),
             name   = NULL
           ) +
           scale_x_continuous(expand = expansion(add = c(0.5, 0.8))) +

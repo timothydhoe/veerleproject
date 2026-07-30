@@ -45,8 +45,8 @@ modParticipantsUI <- function(id) {
       plot_id  = ns("plot_wear_heatmap"),
       dl_id    = ns("dl_plot_wear"),
       height   = "500px",
-      subtitle = paste0("Groen = geldig (≥", MIN_WEAR_H,
-                        "h draagduur tijdens waaktijd) · rood = onvoldoende of niet gedragen")
+      subtitle = paste0("Blauw = geldig (≥", MIN_WEAR_H,
+                        "h draagduur tijdens waaktijd) · oranje = onvoldoende of niet gedragen")
     ),
     card(
       class       = "shadow-sm",
@@ -117,8 +117,9 @@ mod_participants_server <- function(id, shared) {
                          text = paste0(school_label, "\nDatum: ", day_label,
                                        "\n% geldig: ", pct_valid, "%\nn leerlingen: ", n_pupils))) +
           geom_tile(colour = "white", linewidth = 0.5) +
-          scale_fill_gradient(low = "#F5B7B1", high = "#27AE60",
-                              limits = c(0, 100), name = "% geldig") +
+          scale_fill_gradient2(low = UGENT_FACULTY_COLORS[["PP_warm_orange"]], mid = "#ffffff",
+                               high = UGENT_BLUE, midpoint = 50,
+                               limits = c(0, 100), name = "% geldig") +
           facet_wrap(~ meting_label, scales = "free_x") +
           labs(x = "Datum", y = NULL,
                title = "Draagduur overzicht — alle scholen",
@@ -134,14 +135,14 @@ mod_participants_server <- function(id, shared) {
         ggplot(dt, aes(x = day_label, y = ID_f, fill = valid_day)) +
           geom_tile(colour = "white", linewidth = 0.3) +
           scale_fill_manual(
-            values = c("TRUE" = "#27AE60", "FALSE" = "#E74C3C"),
+            values = c("TRUE" = UGENT_BLUE, "FALSE" = UGENT_FACULTY_COLORS[["PP_warm_orange"]]),
             labels = c("TRUE" = "Geldig", "FALSE" = "Ongeldig/niet-dragen"),
             name   = NULL
           ) +
           facet_wrap(~ meting, scales = "free_x", labeller = as_labeller(METINGEN_LABELS)) +
           labs(x = "Datum", y = NULL,
                title = paste("Draagduur —", SCHOOL_LABELS[school_val]),
-               subtitle = paste0("Groen = geldige dag (≥", MIN_WEAR_H, "h waaktijd)")) +
+               subtitle = paste0("Blauw = geldige dag (≥", MIN_WEAR_H, "h waaktijd)")) +
           theme_schoolmove() +
           theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 8),
                 axis.text.y = element_text(size = 7),
@@ -187,12 +188,12 @@ mod_participants_server <- function(id, shared) {
         geom_line(linewidth = 0.9) +
         geom_point(size = 2) +
         geom_hline(yintercept = WHO_MVPA_MIN, linetype = "dashed",
-                   colour = "#E74C3C", linewidth = 0.6) +
-        scale_colour_manual(values = c("Meting 1" = "#3498DB", "Meting 2" = "#E67E22")) +
+                   colour = UGENT_REFERENCE_LINE, linewidth = 0.6) +
+        scale_colour_manual(values = UGENT_METING_COLORS) +
         scale_y_continuous(expand = expansion(mult = c(0.02, 0.1))) +
         labs(x = NULL, y = "MVPA (min/dag)", colour = NULL,
              subtitle = paste0("ID: ", input$explorer_id,
-                               " · rode lijn = WHO-norm (60 min/dag)")) +
+                               " · grijze lijn = WHO-norm (60 min/dag)")) +
         theme_schoolmove(legend_pos = "top") +
         theme(axis.text.x = element_text(angle = 30, hjust = 1, size = 8))
     })
@@ -289,7 +290,7 @@ mod_participants_server <- function(id, shared) {
                 filter    = "top") |>
         formatStyle("Status",
           backgroundColor = styleEqual(c("Inbegrepen","Uitgesloten"),
-                                       c("#d4edda","#f8d7da")))
+                                       c(UGENT_BG_LIGHT_BLUE, UGENT_BG_LIGHT_NEGATIVE)))
     })
 
     # ── Populate explorer dropdown from filtered analysis_ready ───────────────

@@ -144,7 +144,7 @@ modComparisonUI <- function(id) {
             card_header("Per deelnemer: Meting 1 vs Meting 2"),
             card_body(
               p(class = "text-muted small mb-2",
-                "Gesorteerd op kleinste verandering (Δ). Rood = afname, groen = toename."),
+                "Gesorteerd op kleinste verandering (Δ). Oranje = afname, blauw = toename."),
               DTOutput(ns("table_participant_comp"))
             ),
             card_footer(
@@ -251,19 +251,19 @@ mod_comparison_server <- function(id, shared) {
 
       ggplot(agg, aes(x = mean_delta, y = reorder(school_label, mean_delta),
                       colour = school_label)) +
-        geom_vline(xintercept = 0, colour = "#5E6C84", linewidth = 0.7) +
+        geom_vline(xintercept = 0, colour = UGENT_TEXT_GRAY, linewidth = 0.7) +
         geom_pointrange(aes(xmin = mean_delta - ci95, xmax = mean_delta + ci95),
                         linewidth = 1.0, size = 2.5) +
         geom_text(aes(label = paste0(ifelse(mean_delta >= 0, "+", ""),
                                      round(mean_delta, 1), "  (n=", n, ")")),
-                  hjust = -0.08, size = 2.9, colour = "#172B4D", fontface = "bold") +
+                  hjust = -0.08, size = 2.9, colour = UGENT_BLACK, fontface = "bold") +
         scale_colour_manual(values = SCHOOL_COLORS, guide = "none") +
         scale_x_continuous(expand = expansion(add = c(5, 12))) +
         labs(x = paste("Δ", metric_label(input$comp_metric)), y = NULL,
              subtitle = "M2 − M1 per school · horizontale lijnen = 95% BI") +
         theme_schoolmove(legend_pos = "none") +
         theme(panel.grid.major.y = element_blank(),
-              panel.grid.major.x = element_line(colour = "#F4F5F7"))
+              panel.grid.major.x = element_line(colour = UGENT_BORDER_LIGHTER))
     })
 
     # ── Correlation scatter ───────────────────────────────────────────────────
@@ -363,12 +363,12 @@ mod_comparison_server <- function(id, shared) {
                  "p-waarde","Sig.?","r (effectgrootte)"))
 
       datatable(results, rownames = FALSE, options = list(dom = "t", pageLength = 10, language = .dt_lang_nl)) |>
-        formatStyle("Δ gem.", color = styleInterval(0, c("#C0392B","#27AE60"))) |>
+        formatStyle("Δ gem.", color = styleInterval(0, c(UGENT_NEGATIVE, UGENT_POSITIVE))) |>
         formatStyle("p-waarde",
-                    color = styleEqual(c("<0.001"), c("#C0392B")),
+                    color = styleEqual(c("<0.001"), c(UGENT_NEGATIVE)),
                     fontWeight = "bold") |>
         formatStyle("Sig.?",
-                    backgroundColor = styleEqual(c("Ja","Nee"), c("#d4edda","#ffffff")))
+                    backgroundColor = styleEqual(c("Ja","Nee"), c(UGENT_BG_LIGHT_BLUE, "#ffffff")))
     })
 
     # ── School comparison summary table ───────────────────────────────────────
@@ -397,7 +397,7 @@ mod_comparison_server <- function(id, shared) {
       datatable(agg[order(School, Meting)], rownames = FALSE,
                 options = list(dom = "t", pageLength = 20, language = .dt_lang_nl)) |>
         formatStyle("% WHO-norm",
-                    color = styleInterval(c("50%"), c("#C0392B", "#27AE60")))
+                    color = styleInterval(c("50%"), c(UGENT_NEGATIVE, UGENT_POSITIVE)))
     })
 
     # ── Per-participant wide comparison table ─────────────────────────────────
@@ -429,7 +429,7 @@ mod_comparison_server <- function(id, shared) {
       datatable(dt, rownames = FALSE, filter = "top",
                 options = list(pageLength = 20, dom = "frtip", scrollX = TRUE, language = .dt_lang_nl)) |>
         formatStyle(delta_col,
-                    color = styleInterval(0, c("#C0392B", "#27AE60")),
+                    color = styleInterval(0, c(UGENT_NEGATIVE, UGENT_POSITIVE)),
                     fontWeight = "bold")
     })
 

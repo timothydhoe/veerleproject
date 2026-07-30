@@ -271,7 +271,7 @@ mod_overview_server <- function(id, shared) {
           geom_pointrange(aes(xmin = mean_mvpa - ci95, xmax = mean_mvpa + ci95),
                           size = 0.7, linewidth = 1.0) +
           geom_vline(xintercept = WHO_MVPA_MIN, linetype = "dashed",
-                     colour = "#6554C0", linewidth = 0.6) +
+                     colour = UGENT_REFERENCE_LINE, linewidth = 0.6) +
           scale_colour_manual(values = SCHOOL_COLORS, guide = "none") +
           labs(x = "Gem. MVPA (min/dag)", y = NULL,
                subtitle = "Enkel geldige deelnemers · lijnen = 95% BI") +
@@ -287,10 +287,10 @@ mod_overview_server <- function(id, shared) {
           annotate("rect", xmin = -Inf, xmax = Inf, ymin = -Inf, ymax = Inf,
                    fill = "white", colour = NA) +
           geom_vline(xintercept = WHO_MVPA_MIN, linetype = "dashed",
-                     colour = "#6554C0", linewidth = 0.55, alpha = 0.7) +
+                     colour = UGENT_REFERENCE_LINE, linewidth = 0.55, alpha = 0.7) +
           annotate("text", x = WHO_MVPA_MIN + 0.5, y = Inf,
                    label = "WHO (60 min)", hjust = 0, vjust = 1.8,
-                   colour = "#6554C0", size = 2.8, fontface = "italic") +
+                   colour = UGENT_REFERENCE_LINE, size = 2.8, fontface = "italic") +
           geom_segment(aes(x = mean_mvpa_meting_1, xend = mean_mvpa_meting_2,
                            y = reorder(school_label, mean_mvpa_meting_1),
                            yend = reorder(school_label, mean_mvpa_meting_1),
@@ -299,23 +299,23 @@ mod_overview_server <- function(id, shared) {
           geom_errorbar(aes(xmin = mean_mvpa_meting_1 - ci95_meting_1,
                             xmax = mean_mvpa_meting_1 + ci95_meting_1),
                         orientation = "y", width = 0.18,
-                        colour = "#97A0AF", linewidth = 0.55) +
+                        colour = UGENT_TEXT_GRAY, linewidth = 0.55) +
           geom_errorbar(aes(xmin = mean_mvpa_meting_2 - ci95_meting_2,
                             xmax = mean_mvpa_meting_2 + ci95_meting_2),
                         orientation = "y", width = 0.18,
-                        colour = "#172B4D", linewidth = 0.55) +
-          geom_point(aes(x = mean_mvpa_meting_1), colour = "#97A0AF", size = 5, shape = 16) +
+                        colour = UGENT_BLACK, linewidth = 0.55) +
+          geom_point(aes(x = mean_mvpa_meting_1), colour = UGENT_TEXT_GRAY, size = 5, shape = 16) +
           geom_point(aes(x = mean_mvpa_meting_2, colour = direction), size = 5, shape = 16) +
           geom_text(aes(x = mean_mvpa_meting_1, label = lbl_m1),
-                    nudge_y = 0.35, hjust = 0.5, size = 2.6, colour = "#6B778C") +
+                    nudge_y = 0.35, hjust = 0.5, size = 2.6, colour = UGENT_TEXT_GRAY) +
           geom_text(aes(x = mean_mvpa_meting_2, label = lbl_m2),
-                    nudge_y = 0.35, hjust = 0.5, size = 2.6, colour = "#172B4D",
+                    nudge_y = 0.35, hjust = 0.5, size = 2.6, colour = UGENT_BLACK,
                     fontface = "bold") +
           geom_text(aes(x = (mean_mvpa_meting_1 + mean_mvpa_meting_2) / 2,
                         label = lbl_delta, colour = direction),
                     nudge_y = -0.38, hjust = 0.5, size = 2.5, fontface = "bold") +
           scale_colour_manual(
-            values = c("Toename" = "#36B37E", "Afname" = "#FF5630"),
+            values = c("Toename" = UGENT_POSITIVE, "Afname" = UGENT_NEGATIVE),
             name   = "Verandering M1 → M2"
           ) +
           scale_x_continuous(expand = expansion(add = c(6, 6))) +
@@ -327,7 +327,7 @@ mod_overview_server <- function(id, shared) {
                  else "")) +
           theme_schoolmove(legend_pos = "top") +
           theme(panel.grid.major.y = element_blank(),
-                panel.grid.major.x = element_line(colour = "#F4F5F7"))
+                panel.grid.major.x = element_line(colour = UGENT_BORDER_LIGHTER))
       }
     })
 
@@ -378,7 +378,7 @@ mod_overview_server <- function(id, shared) {
         ) |>
         formatStyle(
           "WHO % (num)",
-          color = styleInterval(50, c("#FF5630", "#36B37E")),
+          color = styleInterval(50, c(UGENT_NEGATIVE, UGENT_POSITIVE)),
           fontWeight = "bold"
         )
     })

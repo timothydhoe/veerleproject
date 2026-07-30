@@ -70,9 +70,9 @@ modSleepUI <- function(id) {
               style = "font-size:0.8rem; line-height:1.5;",
               tags$strong("Hoe lees je dit? "),
               "X-as = gemiddelde slaapduur M1 & M2. Y-as = verschil M2−M1.",
-              " Zwarte lijn = gem. bias. Rode stippellijnen = 95% LoA (±1,96 SD).",
+              " Zwarte lijn = gem. bias. Oranje stippellijnen = 95% LoA (±1,96 SD).",
               tags$strong(" Goede overeenstemming:"),
-              " bias ≈ 0, meeste punten vallen binnen de rode lijnen."
+              " bias ≈ 0, meeste punten vallen binnen de oranje lijnen."
             ),
             plotOutput(ns("plot_bland_altman"), height = "300px")
           ),
@@ -171,56 +171,57 @@ mod_sleep_server <- function(id, shared) {
         p <- ggplot(wide, aes(y = reorder(school_label, `mean_val_Meting 1`))) +
           geom_jitter(data = dt[meting_label == "Meting 1"],
                       aes(x = val, y = school_label),
-                      colour = "#3498DB",
+                      colour = UGENT_METING_COLORS[["Meting 1"]],
                       position = position_jitter(width = 0.12, height = 0, seed = 1L),
                       alpha = 0.42, size = 1.7) +
           geom_jitter(data = dt[meting_label == "Meting 2"],
                       aes(x = val, y = school_label),
-                      colour = "#E67E22",
+                      colour = UGENT_METING_COLORS[["Meting 2"]],
                       position = position_jitter(width = 0.12, height = 0, seed = 2L),
                       alpha = 0.42, size = 1.7) +
           geom_errorbar(aes(xmin = `mean_val_Meting 1` - `ci95_Meting 1`,
                             xmax = `mean_val_Meting 1` + `ci95_Meting 1`),
                         orientation = "y", width = 0.18,
-                        colour = "#3498DB", linewidth = 0.55) +
+                        colour = UGENT_METING_COLORS[["Meting 1"]], linewidth = 0.55) +
           geom_errorbar(aes(xmin = `mean_val_Meting 2` - `ci95_Meting 2`,
                             xmax = `mean_val_Meting 2` + `ci95_Meting 2`),
                         orientation = "y", width = 0.18,
-                        colour = "#E67E22", linewidth = 0.55) +
+                        colour = UGENT_METING_COLORS[["Meting 2"]], linewidth = 0.55) +
           geom_segment(aes(x = `mean_val_Meting 1`, xend = `mean_val_Meting 2`,
                            yend = reorder(school_label, `mean_val_Meting 1`),
                            colour = ifelse(delta >= 0, "Toename", "Afname")),
                        linewidth = 1.4, alpha = 0.7) +
-          geom_point(aes(x = `mean_val_Meting 1`), colour = "#3498DB", size = 4, shape = 16) +
-          geom_point(aes(x = `mean_val_Meting 2`), colour = "#E67E22", size = 4, shape = 16) +
+          geom_point(aes(x = `mean_val_Meting 1`), colour = UGENT_METING_COLORS[["Meting 1"]], size = 4, shape = 16) +
+          geom_point(aes(x = `mean_val_Meting 2`), colour = UGENT_METING_COLORS[["Meting 2"]], size = 4, shape = 16) +
           geom_text(aes(x = pmin(`mean_val_Meting 1`, `mean_val_Meting 2`) - 0.1,
                         label = paste0("n=", `n_Meting 1`)),
-                    hjust = 1, size = 2.5, colour = "grey50") +
+                    hjust = 1, size = 2.5, colour = UGENT_TEXT_GRAY) +
           scale_colour_manual(
-            values = c("Meting 1" = "#3498DB", "Meting 2" = "#E67E22",
-                       "Toename" = "#36B37E", "Afname" = "#FF5630"),
+            values = c("Meting 1" = UGENT_METING_COLORS[["Meting 1"]],
+                       "Meting 2" = UGENT_METING_COLORS[["Meting 2"]],
+                       "Toename" = UGENT_POSITIVE, "Afname" = UGENT_NEGATIVE),
             guide = "none"
           ) +
           labs(x = y_lab, y = NULL,
-               subtitle = "Punten = individuele leerlingen · M1 (blauw) · M2 (oranje) · grote punten = schoolgemiddelde · foutbalken = 95% BI") +
+               subtitle = "Punten = individuele leerlingen · M1 (blauw) · M2 (roze) · grote punten = schoolgemiddelde · foutbalken = 95% BI") +
           theme_schoolmove(legend_pos = "none") +
           theme(panel.grid.major.y = element_blank(),
-                panel.grid.major.x = element_line(colour = "#F4F5F7"))
+                panel.grid.major.x = element_line(colour = UGENT_BORDER_LIGHTER))
 
         if (input$sleep_metric == "duration")
           p <- p +
             annotate("rect", xmin = 8, xmax = 10, ymin = -Inf, ymax = Inf,
-                     fill = "#36B37E", alpha = 0.07, colour = NA) +
+                     fill = UGENT_POSITIVE, alpha = 0.07, colour = NA) +
             annotate("text", x = 9, y = Inf,
-                     label = "WHO: 8–10u", vjust = -0.4, colour = "#36B37E",
+                     label = "WHO: 8–10u", vjust = -0.4, colour = UGENT_POSITIVE,
                      size = 2.8, fontface = "italic")
         else if (input$sleep_metric == "efficiency")
           p <- p +
             geom_hline(yintercept = 85, linetype = "dashed",
-                       colour = "#36B37E", linewidth = 0.6) +
+                       colour = UGENT_POSITIVE, linewidth = 0.6) +
             annotate("text", x = Inf, y = 85,
                      label = "85% drempel", hjust = 1.1, vjust = -0.5,
-                     colour = "#36B37E", size = 2.8, fontface = "italic")
+                     colour = UGENT_POSITIVE, size = 2.8, fontface = "italic")
         p
 
       } else {
@@ -229,8 +230,8 @@ mod_sleep_server <- function(id, shared) {
           geom_pointrange(aes(xmin = mean_val - ci95, xmax = mean_val + ci95),
                           linewidth = 0.8, size = 2.0) +
           geom_text(aes(label = paste0("n=", n)),
-                    hjust = -0.3, size = 2.6, colour = "grey50") +
-          scale_colour_manual(values = c("Meting 1" = "#3498DB", "Meting 2" = "#E67E22")) +
+                    hjust = -0.3, size = 2.6, colour = UGENT_TEXT_GRAY) +
+          scale_colour_manual(values = UGENT_METING_COLORS) +
           labs(x = y_lab, y = NULL, colour = NULL,
                subtitle = "Schoolgemiddelde · foutbalken = 95% BI") +
           theme_schoolmove() +
@@ -262,7 +263,7 @@ mod_sleep_server <- function(id, shared) {
       ggplot(wide, aes(x = ba_mean, y = ba_diff, colour = school_label)) +
         geom_hline(yintercept = mu_diff, linewidth = 0.8, colour = "grey30") +
         geom_hline(yintercept = c(loa_up, loa_lo), linetype = "dashed",
-                   linewidth = 0.7, colour = "#E74C3C") +
+                   linewidth = 0.7, colour = UGENT_NEGATIVE) +
         geom_hline(yintercept = 0, linewidth = 0.4, colour = "grey70", linetype = "dotted") +
         geom_jitter(alpha = 0.55, size = 2, width = 0.02) +
         annotate("text", x = Inf, y = mu_diff + 0.05,
@@ -270,15 +271,15 @@ mod_sleep_server <- function(id, shared) {
                  hjust = 1.05, size = 3.2, colour = "grey30") +
         annotate("text", x = Inf, y = loa_up + 0.05,
                  label = sprintf("+1.96 SD: %.2f u", loa_up),
-                 hjust = 1.05, size = 3.0, colour = "#E74C3C") +
+                 hjust = 1.05, size = 3.0, colour = UGENT_NEGATIVE) +
         annotate("text", x = Inf, y = loa_lo - 0.05,
                  label = sprintf("-1.96 SD: %.2f u", loa_lo),
-                 hjust = 1.05, size = 3.0, colour = "#E74C3C") +
+                 hjust = 1.05, size = 3.0, colour = UGENT_NEGATIVE) +
         scale_colour_manual(values = SCHOOL_COLORS) +
         labs(x = "Gemiddelde slaapduur M1 & M2 (u/nacht)",
              y = "Verschil M2 − M1 (u/nacht)",
              colour = NULL,
-             subtitle = "Bland-Altman overeenkomstplot · rood = 95% limieten van overeenstemming") +
+             subtitle = "Bland-Altman overeenkomstplot · oranje = 95% limieten van overeenstemming") +
         theme_schoolmove()
     })
 
