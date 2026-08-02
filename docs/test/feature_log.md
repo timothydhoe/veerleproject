@@ -215,21 +215,139 @@ performance-sensitive work (dashboard startup performance, #3; the full bundle a
 ends up trimming, and so the heaviest remaining feature (`labeled_epochs.csv`, #2 —
 ~480M rows at full study scale) isn't built on top of unexamined existing inefficiency.
 
-### 2. Make `split_at_context_boundary` / `labeled_epochs.csv` functional — status: `proposed`
+### 2. Make `split_at_context_boundary` / `labeled_epochs.csv` functional — status: `built-unverified`
 
 Is `split_at_context_boundary()` (in `utils_bouts.R`) actually functional end-to-end?
-If not, make it so. Same gap already tracked as `bug_log.md` #10 (`deferred`): that
-item confirmed `split_at_context_boundary()` and `detect_activity_bouts()` are
-correctly implemented, but inert because `labeled_epochs.csv` doesn't exist yet — the
-missing piece is a new pipeline step joining GGIR's raw epoch export against school-
-schedule boundaries (~480M rows at full study scale — real design work, not a quick
-fix). To decide: whether this feature-log item simply reopens/supersedes bug #10, or
-stays a separate, forward-looking entry while #10 stays closed as historical record.
-Sixth in working order per `order_of_approach.md` — self-contained, but best tackled
-after the validity-criterion bug (bug #31) settles so new output columns aren't built
-against soon-to-change validity logic, and after the performance/dead-code audit
-(#5) so it isn't adding ~480M rows of new processing on top of unexamined existing
-inefficiency.
+If not, make it so. Same gap already tracked as `bug_log.md` #10 (`deferred`, now
+superseded by this item's build): that item confirmed `split_at_context_boundary()`
+and `detect_activity_bouts()` are correctly implemented, but inert because
+`labeled_epochs.csv` doesn't exist yet. Sixth in working order per
+`order_of_approach.md` — tackled after the validity-criterion bug (bug #31) and the
+performance/dead-code audit (#5) settled.
+
+**Investigation before building (workflow step 3) surfaced two scoping corrections
+to the original request**, both confirmed live on real device data
+(`data/raw/veerle_testdata`), not just dummy data:
+1. GGIR's `epochvalues2csv` export is **5-second** resolution, not 1-second as every
+   prior doc/comment assumed (`bug_log.md` #10, `optimization_log.md` #3, this repo's
+   `config.yaml` `dev.epoch_length_s: 1` comment all said 1s — that key describes a
+   different input path, pre-converted CSVs, and doesn't apply to GGIR's own epoch
+   export). Real-scale estimate is therefore ~96M rows (400 participants × 14 days),
+   not ~480M.
+2. `detect_activity_bouts()` hardcoded a 1-second-epoch assumption in its bout-length
+   arithmetic (`min_bout_min * 60L` / `runs$lengths / 60`) — fed real 5s-epoch data
+   unmodified, this would have required 5× the real elapsed time to reach a nominal
+   30-minute threshold. Caught by an independent plan review before any code was
+   written (see below).
+
+**Two rounds of independent plan review** (fresh agents, static/read-only, before
+implementation) were run, per this log's workflow. Round 1 (verdict:
+sound-with-changes) caught the epoch-length bug above, plus: no timestamp `%z`
+parsing plan for the epoch CSV's ISO8601+offset format, no `backup_if_exists()` call
+planned before the new step's write, no crash-safe write pattern, and an incomplete
+wear/non-wear polarity check (see below). Round 2 (verdict: sound-with-changes) found
+the epoch-length fix's formula wasn't spelled out precisely enough to implement
+safely, the wear-polarity sanity check had no way to receive the `part2` data it
+needed, the planned schedule-cache extraction would have silently broken (missing
+`hm_to_h`/`%||%` dependencies), the absence-overlay logic wasn't being extracted
+alongside the schedule-cache logic (copy-drift risk), and a real operational gap: if
+a study's GGIR output already exists with `overwrite: false`, turning on epoch
+labeling afterward could hit GGIR's milestone caching and never produce the epoch
+export at all. All of these were folded into the plan before implementation.
+
+**Applied:**
+- `config.yaml`: new `bouts.enable_epoch_labeling` (default `false` — expensive at
+  full study scale). Gates both `01_run_ggir.R`'s `epochvalues2csv` (previously
+  unconditional `TRUE`, closing `optimization_log.md` #3 as a side effect) and
+  whether `02b_label_epochs.R` runs. `bouts.split_at_context_boundary` is now
+  actually read (previously a dead setting, unconditionally always-split regardless
+  of its value) — Veerle's confirmed methodology is "always split," so behavior is
+  unchanged, but the config flag is no longer a no-op.
+- New `r/pipeline/utils_schedule.R`: `build_schedule_cache()`, `build_pupil_override_map()`,
+  `get_schedule()`, `extract_school_id()`, `resolve_schedule_key()`, `read_absence_keys()`,
+  and `ABSENCE_OVERLAY_SEGMENTS`, extracted out of `02_label_segments.R`'s inline code
+  (was previously ~100 lines of script-level logic, not reusable) so the day-level
+  (`02`) and new epoch-level (`02b`) labeling steps share one implementation instead
+  of two that could drift apart. `02_label_segments.R` refactored to call these —
+  verified byte-identical `segment_summary.csv` before/after the refactor.
+- `utils_bouts.R`: `detect_activity_bouts()` gained an `epoch_length_s` parameter
+  (explicit arg, or read from an `epoch_length_s` column in the epoch data if
+  present, defaulting to 1 for legacy callers/tests) replacing the hardcoded 1s
+  arithmetic, and a `split_at_context_boundary` parameter that actually controls
+  whether bouts split at context changes (previously always did, regardless of any
+  setting). `compute_context_bout_summaries()` wires both through from
+  `bout_cfg`/the epoch data automatically.
+- New `r/pipeline/utils_epoch_labeling.R`: `build_labeled_epochs_for_participant()`
+  reads one participant's raw epoch CSV, parses ISO8601+offset timestamps (tested
+  across a Europe/Brussels DST transition), derives the real epoch length
+  empirically from the data's own timestamp deltas (not hardcoded, not read from the
+  unrelated `dev.epoch_length_s` key — sanity-floored/ceilinged to [0.1, 300]s with a
+  fallback), pulls wear/non-wear from GGIR's internal `IMP$r5long` (in
+  `meta/ms2.out/*.RData` — an undocumented GGIR structure, degrades to `wear = NA`
+  on a length mismatch rather than crashing, plus a sanity cross-check against
+  `part2`'s trusted `n_valid_hours`), classifies intensity via `cut_points_mg`
+  (converting ENMO's g units to the config's mg-based cut-points), and looks up
+  school context via the shared `utils_schedule.R` helpers plus the same
+  absence-overlay logic `02_label_segments.R` uses (in_class/recess/lunch only).
+- New `r/pipeline/02b_label_epochs.R`: the actual pipeline step. Iterates
+  participants from `part2`'s own `(ID, filename)` pairs — **not** by scanning
+  `meta/csv/` directly, since GGIR's own participant ID can differ from the raw
+  device filename (confirmed: real participant `1001`'s file is
+  `1001_left wrist_..._.bin`, but GGIR's `idloc=2` truncates the ID to `1001` at the
+  first underscore — same behavior `bug_log.md` #11 already documented). Calls
+  `backup_if_exists()` before writing, writes to a temp path and renames to
+  `data/processed/labeled_epochs.csv` only on success (crash-safe), streams
+  per-participant via `fwrite(append=)` rather than accumulating the full ~96M-row
+  table in memory. Warns clearly if an expected epoch CSV is missing, suggesting a
+  `ggir.overwrite: true` rerun (the milestone-caching gap Round 2's review flagged).
+- `03_build_summaries.R`: fixed a pre-existing, previously-undiscovered path bug
+  (logged separately as `bug_log.md` #32) where `labeled_epochs_path` resolved
+  outside `data/processed/` entirely — the block was unreachable before this feature
+  existed, so it was never caught.
+- `run_all.R`: sources `02b_label_epochs.R` conditionally on
+  `bouts.enable_epoch_labeling`, wrapped in the existing logging infra (feature #1).
+
+**Verified live, four ways:**
+1. **Unit-level, manually** (testthat isn't installed in this environment — no
+   network access to bootstrap `renv`): every new/changed function
+   (`detect_activity_bouts()`'s epoch-length and split-boundary logic,
+   `utils_schedule.R`'s cache-building and lookup functions, `derive_epoch_length_s()`,
+   `classify_intensity()`, `build_labeled_epochs_for_participant()` including the
+   `r5long` mismatch fallback, missing-ms2out fallback, weekend labeling, DST
+   handling, and absence overlay) was exercised via hand-written assertions
+   replicating the testthat-format tests now in `r/tests/testthat/` — all passed.
+   The testthat files themselves are committed for when a real `renv`-backed R
+   environment runs the suite.
+2. **Real-data mechanical check**: ran `build_labeled_epochs_for_participant()`
+   against both a dummy participant (1901) and a real GENEActiv device participant
+   (1001, from `data/raw/veerle_testdata`, already processed by the real pipeline).
+   For both, summed epoch-derived wear hours (via the new `wear` column ×
+   `epoch_length_s`) matched `part2`'s already-trusted `n_valid_hours` **exactly**
+   (51.75h and 18.5h respectively) — strong independent confirmation `IMP$r5long`'s
+   polarity assumption is correct, not just structurally length-matched.
+3. **Functional, end-to-end**: with `enable_epoch_labeling: true`, ran
+   `02b_label_epochs.R` against the existing (mixed dummy+real) GGIR output —
+   produced `labeled_epochs.csv` with exactly the expected row count (269,640 =
+   sum of each participant's epoch count across both metingen). Ran
+   `03_build_summaries.R` — `analysis_ready.csv` correctly gained real, non-NA
+   `bouts_30min_{after_school,before_school,in_class,weekend}_{n,total_min}` columns.
+4. **Regression, byte-for-byte**: captured `segment_summary.csv`/`analysis_ready.csv`/
+   `validity_summary.csv` as a baseline *before any code in this item was touched*.
+   After the full change-set, with `bouts.enable_epoch_labeling: false` (the shipped
+   default) and `labeled_epochs.csv` absent (the true default state, not just the
+   flag off), all three files came back **byte-identical** to that original
+   baseline — confirms this entire feature is a true no-op until explicitly enabled,
+   with zero effect on the existing pipeline. The demo `labeled_epochs.csv` produced
+   during step 3's testing was deleted afterward rather than left as a stray
+   artifact that could confuse a later run.
+
+**Remaining gap, honestly stated:** not yet run at full study scale (~96M rows, 400
+participants) — only dummy-scale and the 2 real `veerle_testdata` participants (both
+finished in seconds). Full-scale timing/memory is unmeasured and should be checked
+before relying on this in production, per this log's own "stay honest about gaps"
+convention. Also not yet run through the built Windows bundle — same gap feature #1
+has, recommend closing both opportunistically alongside the full bundle audit (item 8
+in `order_of_approach.md`) rather than as separate one-off trips through the bundle.
 
 ### 3. Shiny dashboard startup performance / loading indicator — status: `proposed`
 

@@ -112,11 +112,14 @@ without opening RStudio.
 | `pipeline/validate_config.R` | Done | Runtime schema validation; called by run_all.R and global.R |
 | `pipeline/utils_input.R` | Done | Format detection, pupil ID extraction, input manifest writer |
 | `pipeline/utils_ggir.R` | Done | Version-tolerant GGIR output readers (handles filename variations) |
-| `pipeline/utils_bouts.R` | Done | Context-aware sedentary bout detection via RLE on epoch data |
+| `pipeline/utils_bouts.R` | Done | Context-aware sedentary bout detection via RLE on epoch data; epoch-length-aware (not hardcoded 1s) |
+| `pipeline/utils_schedule.R` | Done | Shared school-schedule/pupil-override/absence-overlay lookups (used by 02 and 02b) |
+| `pipeline/utils_epoch_labeling.R` | Done | Per-participant epoch labeling: wear (from GGIR's `IMP$r5long`), intensity, context |
 | `pipeline/01_run_ggir.R` | Done | GGIR Parts 1–5 for both metingen; dev overrides wired up |
 | `pipeline/02_label_segments.R` | Done | Distributes GGIR output across 5 school-day segments per participant × day |
+| `pipeline/02b_label_epochs.R` | Done (opt-in) | Builds `labeled_epochs.csv` for context-aware bouts; only runs when `bouts.enable_epoch_labeling: true` |
 | `pipeline/03_build_summaries.R` | Done | Joins parts 2/4/5 + segments; computes validity flags; writes analysis-ready tables |
-| `pipeline/run_all.R` | Done | Orchestrates 01→02→03 with config validation, manifest, and run log |
+| `pipeline/run_all.R` | Done | Orchestrates 01→02→(02b)→03 with config validation, manifest, and run log |
 | `qc/qc_01_ggir.R` | Done | Verifies GGIR output structure, columns, participant counts, cut-points |
 | `qc/qc_02_segments.R` | Done | Verifies segment coverage, fallback schools, data-schedule match |
 | `qc/qc_03_summaries.R` | Done | Verifies inclusion counts, MVPA/sleep distributions, cut-points |
@@ -293,11 +296,44 @@ Context-aware sedentary bout detection using run-length encoding on epoch-level 
 
 - `detect_activity_bouts()`: RLE on `"intensity|context"` — bouts split at segment
   boundaries so a sitting bout that spans from `in_class` to `recess` is counted separately
+  (controlled by `split_at_context_boundary`, wired from `config.yaml`'s
+  `bouts.split_at_context_boundary`). Epoch duration is NOT hardcoded — `epoch_length_s`
+  is either passed explicitly or read from an `epoch_length_s` column in the epoch data
+  (this is how `labeled_epochs.csv` supplies it), defaulting to 1 only for legacy
+  callers/tests that carry no real epoch-length information.
 - `compute_context_bout_summaries()`: Aggregates to wide format with columns like
   `bouts_30min_in_class_n`, `bouts_30min_in_class_total_min`
 
-Requires one row per 1-second epoch with `ID`, `date`, `context`, `intensity`, `wear`
-columns. When epoch data isn't available, step 03 falls back to GGIR-native columns.
+Requires one row per epoch (5 seconds for this study's GGIR export — see
+`utils_epoch_labeling.R`) with `ID`, `date`, `context`, `intensity`, `wear` columns. When
+epoch data isn't available, step 03 falls back to GGIR-native columns.
+
+---
+
+### `pipeline/utils_epoch_labeling.R` + `pipeline/02b_label_epochs.R`
+
+Builds `data/processed/labeled_epochs.csv` (opt-in — `bouts.enable_epoch_labeling` in
+`config.yaml`, default `false`; expensive at full study scale, ~96M rows for 400
+participants). Reads GGIR's raw per-epoch export
+(`meta/csv/<file>.RData.csv` — produced only when `epochvalues2csv` is on, itself gated
+on the same config flag) and joins it against school-schedule context
+(`utils_schedule.R`, shared with `02_label_segments.R`).
+
+**Known fragility, documented rather than hidden:** wear/non-wear per epoch comes from
+`IMP$r5long` inside GGIR's `meta/ms2.out/<file>.RData` milestone file — an internal GGIR
+structure, not a documented public API or CSV export. `build_labeled_epochs_for_participant()`
+degrades to `wear = NA` (rather than crashing or silently misclassifying) if the object
+is missing or its length doesn't match the epoch CSV's row count, and additionally
+cross-checks the derived wear-hours total against `part2`'s already-trusted
+`n_valid_hours` per day (catches a polarity flip that preserves length, which the
+length check alone wouldn't). If a future GGIR version changes this structure, expect
+warnings pointing at specific participants rather than a silent wrong answer — but this
+is not a permanent fix, and should be re-verified after any GGIR upgrade.
+
+Participants are iterated from `part2`'s own `(ID, filename)` pairs, not by scanning
+`meta/csv/` directly — GGIR's derived `ID` can differ from the raw device filename (e.g.
+`1001_left wrist_..._.bin` → GGIR `ID` `1001`, truncated at the first underscore via
+`idloc=2`).
 
 ---
 

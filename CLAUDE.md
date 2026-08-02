@@ -73,10 +73,14 @@ r/
   GEBRUIKERSGIDS.md       # Dutch end-user guide (install, dashboard, troubleshooting)
 
   pipeline/
-    run_all.R             # ← Researcher entry point: sources 01, 02, 03 in sequence
+    run_all.R             # ← Researcher entry point: sources 01, 02, (02b), 03 in sequence
     01_run_ggir.R         # GGIR parts 1–5 for both metingen (reads config.yaml)
-    02_label_segments.R   # Apply school schedule context to GGIR output
+    02_label_segments.R   # Apply school schedule context to GGIR output (day-level)
+    02b_label_epochs.R    # Build labeled_epochs.csv (epoch-level context + wear labels).
+                          # Opt-in: only runs when bouts.enable_epoch_labeling is true.
     03_build_summaries.R  # Build analysis-ready tables + validity flags
+    utils_schedule.R      # Shared school-schedule/absence-overlay lookups (used by 02 + 02b)
+    utils_epoch_labeling.R # Per-participant epoch labeling logic (used by 02b)
 
   qc/
     qc_01_ggir.R          # Verify GGIR outputs after step 01
@@ -98,6 +102,7 @@ data/
       output_meting_1/    # GGIR output for wave 1
     meting_2/
       output_meting_2/    # GGIR output for wave 2
+    labeled_epochs.csv    # Output of 02b_label_epochs.R (opt-in, see Pipeline Steps)
     summaries/
       segment_summary.csv   # Output of 02_label_segments.R
       analysis_ready.csv    # Output of 03_build_summaries.R
@@ -128,7 +133,8 @@ to_be_built/              # Backlog of unbuilt research features (RQ4, RQ5) — 
 | **QC 01** | `qc/qc_01_ggir.R` | Verify GGIR outputs: required files present, correct columns, participant counts | Console report |
 | **02** | `02_label_segments.R` | Apply school schedule labels to GGIR output: for each participant × day, distribute per-qwindow activity (read from `part5_daysummary_Segments_*.csv`, not `part2_daysummary.csv`) across school context segments (in_class / recess / lunch / before_school / after_school). Falls back to wear-time-only if that Part 5 Segments file is missing. | `segment_summary.csv` |
 | **QC 02** | `qc/qc_02_segments.R` | Verify segment coverage: all pupils labeled, no missing school day windows, fallback school warnings | Console report |
-| **03** | `03_build_summaries.R` | Join all outputs into analysis-ready wide table; compute validity flags per participant | `analysis_ready.csv`, `validity_summary.csv` |
+| **02b** (opt-in) | `02b_label_epochs.R` | Only runs when `bouts.enable_epoch_labeling: true`. Labels every GGIR epoch (5s resolution) with school context, wear/non-wear, and intensity, for context-aware bout detection (`utils_bouts.R`). Expensive at full study scale (~96M rows for 400 participants) — off by default. | `labeled_epochs.csv` |
+| **03** | `03_build_summaries.R` | Join all outputs into analysis-ready wide table; compute validity flags per participant; if `labeled_epochs.csv` exists, also computes context-aware sedentary bout columns (`bouts_30min_*`) | `analysis_ready.csv`, `validity_summary.csv` |
 | **QC 03** | `qc/qc_03_summaries.R` | Verify inclusion/exclusion counts, check MVPA distributions, confirm cut-points match config | Console report |
 | **Shiny** | `shiny/` | Dashboard: Overzicht, Deelnemers, Schooldag, Slaap, Meting 1 vs 2, Export, Instellingen (7 tabs) | Interactive app |
 

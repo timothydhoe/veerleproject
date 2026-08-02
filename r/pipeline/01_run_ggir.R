@@ -147,7 +147,11 @@ for (meting in c("meting_1", "meting_2")) {
     datadir   = data_dir,
     outputdir = output_dir,
     overwrite = isTRUE(cfg$ggir$overwrite),
-    epochvalues2csv = TRUE,
+    # Only export GGIR's raw per-epoch CSV when the epoch-labeling step
+    # actually needs it (feature_log.md #2) — this export is otherwise
+    # unused disk/IO cost (~15MB/participant at dummy scale; see
+    # docs/test/optimization_log.md #3).
+    epochvalues2csv = isTRUE(cfg$bouts$enable_epoch_labeling),
 
     # Parts 3–4: Sleep detection (HDCZA, wrist-validated for children)
     HASPT.algo     = "HDCZA",

@@ -132,6 +132,13 @@ validate_config <- function(cfg) {
     add_err("ggir.cut_points_mg: section missing — activity classification will fail")
   }
 
+  bouts_cfg <- cfg$bouts
+  if (!is.null(bouts_cfg) && !is.null(bouts_cfg$enable_epoch_labeling) &&
+      !is.logical(bouts_cfg$enable_epoch_labeling)) {
+    add_err(paste0("bouts.enable_epoch_labeling must be true or false (got: ",
+                   bouts_cfg$enable_epoch_labeling, ")"))
+  }
+
   val <- cfg$validity
   if (!is.null(val)) {
     min_h <- suppressWarnings(as.numeric(val$min_wear_hours_per_day))

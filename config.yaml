@@ -21,7 +21,13 @@ paths:
 ggir:
   parts: [1, 2, 3, 4, 5]        # informatief, niet actief ingelezen
   overwrite: false               # true = verwerk al verwerkte bestanden opnieuw; gelezen door: 01_run_ggir.R
-  epoch_length_s: 1              # informatief, niet actief ingelezen (CSV's zijn reeds per seconde geaggregeerd)
+  epoch_length_s: 1              # informatief, niet actief ingelezen. Beschrijft de sample-rate
+                                  # van vooraf-geconverteerde CSV-invoer (rmc.sf), NIET GGIR's
+                                  # eigen interne epoch-resolutie voor epochvalues2csv/
+                                  # labeled_epochs.csv — die is standaard 5 seconden (GGIR's
+                                  # windowsizes-parameter), ongeacht deze waarde. Zie
+                                  # utils_epoch_labeling.R (epoch_length_s wordt daar per
+                                  # deelnemer afgeleid uit de echte timestamps, niet uit deze key).
 
   # Activiteitsgrenswaarden (ENMO in mg) — polshorloge bij kinderen, Hildebrand et al. 2014
   # Gelezen door: 01_run_ggir.R (threshold.lig / threshold.mod / threshold.vig)
@@ -49,16 +55,31 @@ ggir:
   qwindow: [0, 8.5, 10.0, 12.0, 13.0, 15.5, 24]
 
 # ── Boutdetectie ──────────────────────────────────────────────────────────────
-# Gebruikt door utils_bouts.R wanneer epoch-niveau data beschikbaar is.
+# Gebruikt door utils_bouts.R wanneer epoch-niveau data beschikbaar is
+# (data/processed/labeled_epochs.csv, gebouwd door 02b_label_epochs.R — zie
+# enable_epoch_labeling hieronder).
 # split_at_context_boundary: een sedentaire bout wordt afgebroken als de
 # schoolcontext verandert (bv. een 35 min. zitperiode over een speeltijd heen
-# telt als twee aparte bouts).
+# telt als twee aparte bouts). Methodologische beslissing bevestigd: altijd
+# afbreken (true). Deze instelling wordt nu ook effectief gelezen door
+# utils_bouts.R (voorheen genegeerd, ongeacht de waarde hier).
 bouts:
   sedentary_min: 30              # minimum aaneengesloten minuten voor een sedentaire bout
   light_min: 10                  # informatief, nog niet actief ingelezen
   moderate_min: 5                # informatief, nog niet actief ingelezen
   vigorous_min: 5                # informatief, nog niet actief ingelezen
-  split_at_context_boundary: true  # nog niet actief — wacht op methodologische beslissing
+  split_at_context_boundary: true  # nu actief gelezen door utils_bouts.R
+
+  # true = bouw data/processed/labeled_epochs.csv (02b_label_epochs.R), nodig
+  # voor de context-gevoelige bout-kolommen hierboven. Standaard uit: dit is
+  # duur op volledige studieschaal (~96 miljoen epoch-rijen bij 400
+  # deelnemers) en vereist dat 01_run_ggir.R met deze instelling AAN is
+  # gedraaid (bepaalt ook of GGIR's epochvalues2csv-export wordt aangemaakt —
+  # zie 01_run_ggir.R). Na het aanzetten: 01_run_ggir.R opnieuw draaien
+  # (met ggir.overwrite: true als de GGIR-output al bestond, anders wordt de
+  # epoch-export door GGIR's eigen caching mogelijk overgeslagen), dan
+  # 02b_label_epochs.R.
+  enable_epoch_labeling: false
 
 # ── Geldigheidsdrempels ───────────────────────────────────────────────────────
 validity:

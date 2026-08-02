@@ -110,6 +110,14 @@ message("")
 message("── Step 02: Segment labels ──────────────────────────────────────")
 with_logged_conditions(source("pipeline/02_label_segments.R"), PIPELINE_LOG, "02_label_segments.R")
 
+# ── Step 02b: Epoch labels (opt-in, feature_log.md #2) ────────────────────────
+# Only runs when config.yaml's bouts.enable_epoch_labeling is true — expensive
+# at full study scale, and skipped by default. See 02b_label_epochs.R.
+if (isTRUE(cfg$bouts$enable_epoch_labeling)) {
+  message("── Step 02b: Epoch labels ───────────────────────────────────────")
+  with_logged_conditions(source("pipeline/02b_label_epochs.R"), PIPELINE_LOG, "02b_label_epochs.R")
+}
+
 # ── Step 03: Build summaries ──────────────────────────────────────────────────
 message("── Step 03: Build summaries ─────────────────────────────────────")
 with_logged_conditions(source("pipeline/03_build_summaries.R"), PIPELINE_LOG, "03_build_summaries.R")

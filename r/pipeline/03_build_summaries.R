@@ -363,20 +363,17 @@ if (!is.null(seg) && nrow(seg) > 0) {
 
 # ── Context-aware sedentary bouts (from epoch-level data) ─────────────────────
 # detect_activity_bouts() in utils_bouts.R requires epoch-level labeled data:
-# one row per 1-second epoch with ID, date, context, intensity, wear columns.
+# one row per epoch (5s for this study's GGIR export — see epoch_length_s
+# column, derived per-participant in utils_epoch_labeling.R) with ID, date,
+# context, intensity, wear columns.
 #
-# NOTE: labeled_epochs.csv is NOT currently produced by any pipeline step.
-# 02_label_segments.R is a day-level script only — it does not emit per-epoch output.
-# epochvalues2csv (in 01_run_ggir.R) controls raw GGIR epoch export, not school
-# context labeling. Until an epoch-level labeling step is implemented, this block
-# never fires and all bouts_30min_*_n columns in analysis_ready.csv will be NA.
-#
-# The labeled epoch file (if available) would live at:
-#   data/processed/labeled_epochs.csv
-#
-# When it is absent, we skip this block and emit a warning.
+# labeled_epochs.csv is produced by 02b_label_epochs.R (feature_log.md #2),
+# which only runs when config.yaml's bouts.enable_epoch_labeling is true
+# (expensive at full study scale — ~96M rows for 400 participants). When it
+# is absent (feature disabled, or 02b hasn't been run yet), we skip this
+# block and emit a warning; all bouts_30min_*_n columns stay NA.
 context_bouts_wide <- NULL
-labeled_epochs_path <- file.path(base_out, "..", "labeled_epochs.csv")
+labeled_epochs_path <- file.path(base_out, "labeled_epochs.csv")
 
 if (file.exists(labeled_epochs_path)) {
   message("Loading epoch-level labeled data for context-aware bout detection...")
@@ -398,7 +395,8 @@ if (file.exists(labeled_epochs_path)) {
   }
 } else {
   message("[WARN] labeled_epochs.csv not found — context-aware bout columns will be NA.")
-  message("  Epoch-level school context labeling is not yet implemented (see comment above).")
+  message("  Enable bouts.enable_epoch_labeling in config.yaml and run ",
+          "pipeline/02b_label_epochs.R to populate them.")
 }
 
 # ── Build analysis_ready table ────────────────────────────────────────────────
