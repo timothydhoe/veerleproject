@@ -1907,3 +1907,47 @@ bugs share one root cause (a partially-written status file) and one fix pattern 
 
 **Where:** `r/pipeline/run_pipeline_monitored.R` (`write_status()`, `count_progress()`, and the
 fresh-launch branch that now captures `run_overwrite`/`run_baseline`)
+
+---
+
+## 🆕 Found during full bundle audit — session 2026-08-02
+
+### 35. Part 5 variable-dictionary filenames have a doubled `.csv.csv` extension — status: `wontfix`
+
+**Where:** GGIR's own report-writing (`g.report.part5_dictionary`), triggered from
+`r/pipeline/01_run_ggir.R` via `mode = 1:5`/`do.report = c(2, 4, 5)` — not SchoolMove code.
+
+Found while investigating the "NAs introduced by coercion (x17)" / "argument is not numeric
+or logical: returning NA (x560)" warnings logged during `01_run_ggir.R` for the real bundle
+run against `C:\SchoolMove` (two real device files, `9998.cwa`/`9999.bin`). Confirmed both
+those warnings are also GGIR-internal, not a SchoolMove bug — traced via a live, isolated
+reproduction (real GGIR 3.3.6, real raw files copied to a scratch directory, `withCallingHandlers`
+capturing the full call stack) to `g.report.part2()` → `g.convert.part2.long(daySUMMARY)`
+(wide→long coercion) and `g.report.part5()` → `agg_plainNweighted()` → `aggregate.data.frame()`
+→ `mean.default()` (blanket `mean()` applied across every column of the day-summary table,
+including non-numeric ID/filename/weekday columns) respectively. Cosmetic noise from GGIR
+applying numeric operations across whole data frames without pre-filtering non-numeric
+columns; does not affect `analysis_ready.csv`/`segment_summary.csv`, which are built from
+GGIR's clean numeric output columns, not these intermediate coercion attempts. Already
+handled correctly at the logging level — `utils_logging.R`'s dedup (`(xN)` suffix) keeps
+these from burying real warnings in `pipeline_errors.txt`; no further action needed there.
+
+While tracing the second warning, noticed the real bundle output directory
+(`C:\SchoolMove\data\processed\meting_1\output_meting_1\results\variableDictionary\`)
+contains files named e.g.
+`part5_dictionary_daysummary_Segments_L56.3M191.6V695.8_T5A5.csv.csv` and
+`part5_dictionary_personsummary_Segments_L56.3M191.6V695.8_T5A5.csv.csv` — GGIR appends
+`.csv` to a filename that already ends in `.csv`. Confirmed present in the real bundle
+output, not just the scratch reproduction (where the same code path additionally failed
+outright with a "does not exist already" write error — most likely an artifact of the
+scratch harness reusing a partially-built output directory across two GGIR runs rather
+than a real risk in a normal fresh run, since the real bundle run completed with no
+`ERROR` lines and the doubled-extension files exist and are readable).
+
+**Not fixed, not urgent** — purely cosmetic (an extra `.csv` in the filename), inside GGIR's
+own `g.report.part5_dictionary()`, not this codebase. The dictionary files are informational
+(GGIR's own variable-name reference, not consumed by any SchoolMove script), so the doubled
+extension has no functional impact on the pipeline or dashboard. Not something to patch
+around inside an external package's internals. Revisit only if it starts causing real
+confusion for Veerle/researchers browsing the output folders, or if a future GGIR upgrade
+changes this behavior.
