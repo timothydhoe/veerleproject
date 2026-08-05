@@ -105,6 +105,31 @@ test_that("get_absence_entries/absence_keys read pupil_id/date pairs from config
   expect_equal(absence_keys(entries), c("101 2026-02-25", "102 2026-02-26"))
 })
 
+test_that("get_absence_entries skips entries missing pupil_id or date entirely, instead of erroring", {
+  cfg <- list(afwezigheden = list(
+    list(pupil_id = "2063"),                     # date key entirely absent
+    list(date = "2026-02-25"),                    # pupil_id key entirely absent
+    list(pupil_id = "2064", date = "2026-02-26")  # well-formed, kept
+  ))
+  entries <- get_absence_entries(cfg)
+  expect_equal(entries$pupil_id, "2064")
+  expect_equal(entries$date, "2026-02-26")
+})
+
+test_that("get_absence_entries skips entries with empty-string pupil_id or date", {
+  cfg <- list(afwezigheden = list(
+    list(pupil_id = "",     date = "2026-02-25"),
+    list(pupil_id = "2064", date = ""),
+    list(pupil_id = "2065", date = "2026-02-27")
+  ))
+  expect_equal(get_absence_entries(cfg)$pupil_id, "2065")
+})
+
+test_that("get_absence_entries returns zero rows when every entry is malformed", {
+  cfg <- list(afwezigheden = list(list(pupil_id = "2063"), list(date = "2026-02-25")))
+  expect_equal(nrow(get_absence_entries(cfg)), 0)
+})
+
 test_that("get_absence_entries strips a .cwa-style suffix from pupil_id", {
   cfg <- list(afwezigheden = list(list(pupil_id = "2063.cwa", date = "2026-03-01")))
   expect_equal(get_absence_entries(cfg)$pupil_id, "2063")

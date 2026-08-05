@@ -10,6 +10,8 @@
 library(yaml)
 library(data.table)
 
+source("pipeline/utils_schedule.R", local = TRUE)  # get_absence_entries(), strip_pupil_id()
+
 cfg      <- yaml::read_yaml("../config.yaml")
 out_path <- file.path(cfg$paths$data_processed, "summaries", "segment_summary.csv")
 
@@ -119,14 +121,8 @@ abs_entries <- cfg$afwezigheden
 if (is.null(abs_entries) || length(abs_entries) == 0) {
   pass("No absences registered in config.yaml")
 } else {
-  abs_dt <- data.table(
-    pupil_id = vapply(abs_entries, function(e)
-      sub("\\.[^.]+$", "", basename(as.character(e$pupil_id))), character(1)),
-    date     = vapply(abs_entries, function(e) as.character(e$date), character(1))
-  )
-  seg_keys <- paste(
-    sub("\\.[^.]+$", "", basename(as.character(seg$ID))), as.character(seg$date)
-  )
+  abs_dt <- get_absence_entries(cfg)
+  seg_keys <- paste(strip_pupil_id(seg$ID), as.character(seg$date))
   still_present <- abs_dt[paste(pupil_id, date) %in% seg_keys]
   if (nrow(still_present) > 0) {
     fail(sprintf(

@@ -7,6 +7,16 @@
 # Does NOT require interactive input — safe to call in batch/Shiny context.
 # ─────────────────────────────────────────────────────────────────────────────
 
+# strip_pupil_id() lives in pipeline/utils_schedule.R and isn't always
+# sourced ahead of this file (02_label_segments.R sources this file first;
+# shiny/global.R never sources utils_schedule.R at all). Guarded like
+# utils_schedule.R's own %||% guard: define a fallback only if the canonical
+# version isn't already in scope. Keep this in sync with utils_schedule.R's
+# strip_pupil_id() if that one is ever changed — they must stay identical.
+if (!exists("strip_pupil_id")) {
+  strip_pupil_id <- function(id) sub("\\.[^.]+$", "", basename(as.character(id)))
+}
+
 #' Read config.yaml with a friendlier error for a common Windows mistake
 #'
 #' Windows users routinely paste backslash paths (e.g. "C:\Users\...") into
@@ -253,7 +263,11 @@ validate_config <- function(cfg) {
         next
       }
 
-      key <- paste(pid, dt_chr)
+      # Normalize the same way get_absence_entries()/apply_absence_drop()
+      # (utils_schedule.R) do at runtime — "2063" and "2063.cwa" collapse to
+      # the same effective drop there, so they must collapse here too or a
+      # config mistake goes undetected.
+      key <- paste(strip_pupil_id(pid), dt_chr)
       if (key %in% seen_keys) {
         add_warn(sprintf("afwezigheden: duplicate entry for pupil_id %s on %s", pid, dt_chr))
       }

@@ -227,14 +227,30 @@ resolve_schedule_key <- function(id, school, wday, schedule_cache, pupil_overrid
 #' extract_school_id()/resolve_schedule_key() do, in case an entry was pasted
 #' in with a ".cwa"-style suffix.
 #'
+#' An entry missing its pupil_id or date key entirely (not just empty —
+#' absent from the YAML mapping) is skipped rather than erroring, mirroring
+#' validate_config()'s own "missing or empty pupil_id"/date check for
+#' afwezigheden — that function already warns about exactly this case, so
+#' skipping it here (instead of crashing) is what lets that warning be the
+#' thing a researcher actually sees.
+#'
 #' @param cfg Full config list (cfg$afwezigheden used).
 #' @return data.table with columns pupil_id (character), date (character,
-#'   "YYYY-MM-DD"). Zero rows if cfg$afwezigheden is NULL/empty.
+#'   "YYYY-MM-DD"). Zero rows if cfg$afwezigheden is NULL/empty/all-malformed.
 get_absence_entries <- function(cfg) {
   entries <- cfg$afwezigheden
   if (is.null(entries) || length(entries) == 0) {
     return(data.table::data.table(pupil_id = character(0), date = character(0)))
   }
+
+  is_missing <- function(x) is.null(x) || !nzchar(trimws(as.character(x)))
+  usable <- vapply(entries, function(e) !is_missing(e$pupil_id) && !is_missing(e$date),
+                    logical(1))
+  entries <- entries[usable]
+  if (length(entries) == 0) {
+    return(data.table::data.table(pupil_id = character(0), date = character(0)))
+  }
+
   pupil_id <- vapply(entries, function(e) strip_pupil_id(e$pupil_id), character(1))
   date <- vapply(entries, function(e) as.character(e$date), character(1))
   data.table::data.table(pupil_id = pupil_id, date = date)
