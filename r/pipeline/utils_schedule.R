@@ -14,6 +14,22 @@ if (!exists("%||%")) {
   `%||%` <- function(a, b) if (!is.null(a)) a else b
 }
 
+#' Strip a GGIR-style extension suffix (".cwa"/".csv"/etc.) from a participant ID
+#'
+#' GGIR's own ID column, and pupil_id as pasted into config.yaml, don't always
+#' agree on whether an extension suffix is present (e.g. "2063" vs
+#' "2063.cwa"). Every ID-matching call site in this pipeline needs to strip it
+#' the same way before comparing — two real bugs (build order steps 3 and 7
+#' of docs/test/plan_absences_config.md) came from a call site quietly
+#' comparing an un-stripped ID against a stripped one. Centralized here so
+#' that can't happen again.
+#'
+#' @param id Character or numeric participant ID / filename.
+#' @return Character vector, extension suffix and any directory path removed.
+strip_pupil_id <- function(id) {
+  sub("\\.[^.]+$", "", basename(as.character(id)))
+}
+
 #' Get the school-day schedule for a school + weekday
 #'
 #' Returns a data.frame with columns: segment, start_h, end_h — one row per
@@ -90,7 +106,7 @@ get_schedule <- function(school_id, wday_name, schedules) {
 #' @param id Character or numeric participant ID / filename.
 #' @return Character vector like "school_1", or "school_NA" when unparseable.
 extract_school_id <- function(id) {
-  code     <- suppressWarnings(as.integer(sub("\\.[^.]+$", "", basename(as.character(id)))))
+  code     <- suppressWarnings(as.integer(strip_pupil_id(id)))
   school_n <- code %/% 1000L
   school_n[is.na(school_n) | school_n < 1L | school_n > 6L] <- NA_integer_
   paste0("school_", school_n)
@@ -187,7 +203,7 @@ build_schedule_cache <- function(cfg) {
 #'   caller must still check).
 resolve_schedule_key <- function(id, school, wday, schedule_cache, pupil_override_map) {
   cache_key  <- paste(school, wday, sep = "_")
-  pupil_key  <- sub("\\.[^.]+$", "", basename(as.character(id)))
+  pupil_key  <- strip_pupil_id(id)
   pupil_info <- pupil_override_map[[pupil_key]]
   if (!is.null(pupil_info)) {
     wday_lower   <- tolower(wday)
@@ -201,30 +217,63 @@ resolve_schedule_key <- function(id, school, wday, schedule_cache, pupil_overrid
   cache_key
 }
 
-#' Read data/absences.csv (if present) as a lookup keyed by "ID date"
+#' Parse cfg$afwezigheden into a clean (pupil_id, date) lookup table
 #'
-#' Absences only overlay in_class/recess/lunch segments — before/after-school
-#' time is unaffected (a pupil absent from school can still have worn the
-#' device before/after school hours). This matches 02_label_segments.R's
-#' original absence-overlay behavior exactly; kept as a shared function so
-#' 02b_label_epochs.R can't silently drift from it.
+#' config.yaml is the single source of truth for absences (see
+#' docs/test/plan_absences_config.md) — there is no absences.csv equivalent
+#' read here; `data/absences.csv`, if present, is only a generated read-only
+#' mirror written by 02_label_segments.R, never read back by pipeline code.
+#' pupil_id is stripped to bare numeric form the same way
+#' extract_school_id()/resolve_schedule_key() do, in case an entry was pasted
+#' in with a ".cwa"-style suffix.
 #'
-#' @param absences_path Path to absences.csv.
-#' @return Character vector of "pupil_id date" keys, or character(0) if the
-#'   file doesn't exist / has no rows.
-read_absence_keys <- function(absences_path) {
-  if (!file.exists(absences_path)) return(character(0))
-  abs_dt <- tryCatch(
-    data.table::fread(absences_path,
-                      colClasses = c(pupil_id = "character", date = "character")),
-    error = function(e) {
-      message("[absences] Could not read absences.csv: ", e$message)
-      NULL
-    }
-  )
-  if (is.null(abs_dt) || nrow(abs_dt) == 0) return(character(0))
-  paste(abs_dt$pupil_id, abs_dt$date)
+#' @param cfg Full config list (cfg$afwezigheden used).
+#' @return data.table with columns pupil_id (character), date (character,
+#'   "YYYY-MM-DD"). Zero rows if cfg$afwezigheden is NULL/empty.
+get_absence_entries <- function(cfg) {
+  entries <- cfg$afwezigheden
+  if (is.null(entries) || length(entries) == 0) {
+    return(data.table::data.table(pupil_id = character(0), date = character(0)))
+  }
+  pupil_id <- vapply(entries, function(e) strip_pupil_id(e$pupil_id), character(1))
+  date <- vapply(entries, function(e) as.character(e$date), character(1))
+  data.table::data.table(pupil_id = pupil_id, date = date)
 }
 
-#' Segments an absence overlay applies to (school-time segments only)
-ABSENCE_OVERLAY_SEGMENTS <- c("in_class", "recess", "lunch")
+#' "pupil_id date" membership keys for an absence entries table
+#'
+#' Used by consumers that need a fast %in% lookup (e.g. "is this ID+date
+#' combination absent?") rather than the raw table itself.
+#'
+#' @param absence_entries data.table from get_absence_entries().
+#' @return Character vector of "pupil_id date" keys, or character(0).
+absence_keys <- function(absence_entries) {
+  if (is.null(absence_entries) || nrow(absence_entries) == 0) return(character(0))
+  paste(absence_entries$pupil_id, absence_entries$date)
+}
+
+#' Drop rows matching a full-day absence entry from a day/segment-level table
+#'
+#' Shared by 02_label_segments.R's whole-day exclusion so the ID-matching
+#' logic (and its strip_pupil_id() dependency) lives in exactly one place,
+#' testable in isolation — see strip_pupil_id()'s docstring for why that
+#' matters here specifically.
+#'
+#' @param dt data.table with ID and date columns (segment_summary-shaped).
+#'   Not modified in place; a filtered copy is returned.
+#' @param abs_entries data.table from get_absence_entries().
+#' @return list(dt = filtered data.table, n_dropped = integer count of rows
+#'   removed, unmatched_keys = character vector of "pupil_id date" entries
+#'   from abs_entries that matched no row in dt at all — a likely typo).
+apply_absence_drop <- function(dt, abs_entries) {
+  if (is.null(abs_entries) || nrow(abs_entries) == 0) {
+    return(list(dt = dt, n_dropped = 0L, unmatched_keys = character(0)))
+  }
+  keys    <- paste(abs_entries$pupil_id, abs_entries$date)
+  dt_keys <- paste(strip_pupil_id(dt$ID), as.character(dt$date))
+
+  unmatched_keys <- setdiff(keys, unique(dt_keys))
+  kept <- dt[!(dt_keys %in% keys)]
+
+  list(dt = kept, n_dropped = nrow(dt) - nrow(kept), unmatched_keys = unmatched_keys)
+}

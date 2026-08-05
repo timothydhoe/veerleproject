@@ -1951,3 +1951,46 @@ extension has no functional impact on the pipeline or dashboard. Not something t
 around inside an external package's internals. Revisit only if it starts causing real
 confusion for Veerle/researchers browsing the output folders, or if a future GGIR upgrade
 changes this behavior.
+
+---
+
+## 🆕 Found during the config.yaml absence-registry rework — session 2026-08-04
+
+### 36. Schooldag tab loses its visible "Afwezig" category once absences move to config.yaml — status: `deferred`
+
+**Where:** `r/shiny/global.R` (`segment_label` factor, includes `"absent"` → `"Afwezig"` as a
+level) and `r/shiny/modules/mod_schoolday.R` (school-comparison bar chart, SB/LPA/MVPA faceted
+chart, and summary table — all grouped/faceted by `segment_label`).
+
+Found while planning `docs/test/plan_absences_config.md` (moving absence entry from the
+dashboard/`data/absences.csv` to `config.yaml`, with `02_label_segments.R` dropping an absent
+day's rows entirely instead of labeling them `segment == "absent"`). Today, `"Afwezig"` shows up
+as its own bar/facet/table row on the Schooldag tab, alongside real school-time segments. Once
+`02` stops producing any `"absent"`-labeled rows, that category has zero data forever.
+
+Confirmed via code read (not yet implemented) that this does **not** crash or misrender anything
+— none of the three chart/table call sites in `mod_schoolday.R` override ggplot2's/data.table's
+default behaviour of dropping discrete categories with no data, so `"Afwezig"` simply stops
+appearing, silently. The only literal leftover is the now-unreachable `"absent"`/`"Afwezig"`
+entry in `global.R`'s factor `levels`/`labels` vectors — cosmetic dead code, no functional effect,
+worth trimming whenever this item is picked up.
+
+**Explicitly scoped out of the absence-registry rework** (project owner decision, 2026-08-04) —
+that rework is about *where absences are entered and what they exclude*, not about redesigning
+Schooldag-tab visuals. Tracked here separately so the disappearance is a documented, deliberate
+deferral rather than an unnoticed regression.
+
+**Options discussed, to revisit when this is picked up:**
+1. A small stat/note near the existing charts (e.g. "N absent day(s) excluded from these
+   results"), sourced from `n_absent_school_days` (already computed in `analysis_ready.csv` per
+   the absence-registry rework). Lightest-weight; same in-context placement as the original.
+2. A small dedicated chart on the Schooldag tab (e.g. "absent days per school"), separate from
+   the activity charts rather than folded into them — closest in *form* to how absence used to
+   appear (still a visual, still on the same tab), without implying a fake activity value for a
+   day that has none.
+3. Surface the read-only absence list (already built for the Instellingen tab, per the
+   absence-registry rework's `mod_settings.R` changes) on the Schooldag tab too, instead of
+   building a second display. Structurally the furthest from the original (a list, not a chart,
+   not integrated into the activity view), but reuses an existing component.
+
+No option was chosen — deferred along with the fix itself.

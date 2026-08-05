@@ -270,34 +270,44 @@ De `logs/`-map bevat per pipeline-run een logboek en een kopie van de GGIR-confi
 
 ## 7. Afwezigheden registreren
 
-Als een leerling op een schooldag afwezig was, wil je dat de schooluren van die dag niet meegeteld worden in de analyse (de leerling had geen normaal schoolgedrag).
+Als een leerling op een schooldag afwezig was, wil je dat die hele dag niet meegeteld
+wordt in de activiteitsanalyse (de leerling had geen normaal schoolgedrag die dag).
+Dit heeft **geen** invloed op de draaggeldigheid van die dag (geldige-dagen-telling,
+gemiddelde draagduur) en ook niet op de slaapanalyse — "was het toestel gedragen" en
+"was dit een normale schooldag" zijn twee aparte vragen.
 
-### Via het dashboard (aanbevolen)
+### Via `config.yaml`
 
-1. Ga naar het tabblad **Instellingen** → sectie **Afwezigheden**
-2. Kies de leerling (4-cijferige code), de datum, het **dagdeel** (hele dag,
-   voormiddag of namiddag) en eventueel een reden (bijv. "ziek")
-3. Klik **Toevoegen** — de afwezigheid wordt opgeslagen in `data/absences.csv`
-4. Herstart de pipeline (`run_all.R`) om de afwezigheid toe te passen
+Afwezigheden worden rechtstreeks in `config.yaml` ingevoerd — niet via het dashboard.
+Open `config.yaml` in de projectroot, zoek de sectie **Afwezigheden**, en voeg een
+regel toe per afwezige leerling/dag:
 
-De schoolsegmenten (les, speeltijd, middagpauze) van die dag worden dan als **"afwezig"** gemarkeerd en uitgesloten uit de activiteitsanalyse. Bij "voormiddag" of "namiddag" geldt dit alleen voor de segmenten vóór, respectievelijk vanaf, de middagpauze van die school — bijv. bij een halve dag afwezigheid omwille van een offerfeest of een dokters- of tandartsafspraak.
-
-### Handmatig (gevorderde gebruikers)
-
-Je kunt `data/absences.csv` ook rechtstreeks bewerken in Excel of een teksteditor. Het formaat is:
-
-```csv
-pupil_id,date,part_of_day,reason
-3025,2026-01-21,full,ziek
-3026,2026-01-22,morning,tandarts
+```yaml
+afwezigheden:
+  - { pupil_id: "3025", date: "2026-01-21" }
+  - { pupil_id: "3026", date: "2026-01-22" }
 ```
 
-- `pupil_id`: 4-cijferige leerlingcode (bijv. 3025)
+- `pupil_id`: de kale leerlingcode zoals in de bestandsnaam (bijv. `3025`, niet
+  `3025.csv`)
 - `date`: datum in formaat `JJJJ-MM-DD`
-- `part_of_day`: `full` (hele dag), `morning` (voormiddag) of `afternoon` (namiddag). Oudere `absences.csv`-bestanden zonder deze kolom blijven werken — ontbrekende of onherkende waarden worden als `full` behandeld.
-- `reason`: optionele toelichting
 
-Sla het bestand op en herstart de pipeline.
+Sla `config.yaml` op en herstart de pipeline (`run_all.R`) om de afwezigheid toe te
+passen. Een afwezigheid sluit steeds de **volledige dag** uit (voor school, les,
+speeltijd, middagpauze, na school) — er is geen aparte optie meer voor een halve dag
+(voormiddag/namiddag).
+
+### Huidige lijst bekijken
+
+Het tabblad **Instellingen** → sectie **Afwezigheden** toont de huidige lijst uit
+`config.yaml`, ter info. Je kunt hier niets toevoegen of verwijderen — dat doe je in
+`config.yaml` zelf.
+
+Bij elke pipeline-run (stap 2) wordt ook automatisch een alleen-lezen kopie
+weggeschreven naar `data/absences.csv`, puur voor je eigen gebruik buiten de app
+(bv. openen in Excel). Dit bestand wordt nooit door de pipeline of het dashboard
+teruggelezen — bewerk het dus niet rechtstreeks, want het wordt bij de volgende
+pipeline-run overschreven.
 
 ---
 

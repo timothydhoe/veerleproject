@@ -37,7 +37,8 @@ All pipeline state is held in files on disk. No R environment persists between p
 | Segment labels | `data/processed/summaries/segment_summary.csv` | `02_label_segments.R` | `03_build_summaries.R`, `global.R` |
 | Analysis-ready table | `data/processed/summaries/analysis_ready.csv` | `03_build_summaries.R` | `global.R` |
 | Validity flags | `data/processed/summaries/validity_summary.csv` | `03_build_summaries.R` | `global.R` |
-| Absence registry | `data/absences.csv` | Researcher (via Shiny or manually) | `02_label_segments.R` |
+| Absence registry | `config.yaml`'s `afwezigheden` list | Researcher (edits `config.yaml` directly) | `02_label_segments.R`, `02b_label_epochs.R`, `03_build_summaries.R` |
+| Absence registry mirror (read-only) | `data/absences.csv` | `02_label_segments.R` (regenerated every run) | Nobody — researcher's own ad-hoc use only, never read back |
 | Active config profile | `r/profiles/<name>.yaml` | `mod_settings.R` | `global.R` |
 | Pipeline run log | `logs/pipeline_runs.csv` | `run_all.R` | `mod_export.R` (download) |
 | Input manifest | `logs/input_manifest.csv` | `run_all.R` | `mod_export.R` (download) |
@@ -89,7 +90,7 @@ flowchart TD
 
     subgraph step02["02_label_segments.R  ─  seconds"]
         SCHED["Schedule lookup\n(config schedules + class overrides)"]
-        ABS["Absence overlay\n(data/absences.csv)"]
+        ABS["Absence drop (whole day)\n(config.yaml afwezigheden)"]
         SEG["data/processed/summaries/segment_summary.csv"]
     end
 
@@ -111,6 +112,7 @@ flowchart TD
 
     P2 --> SCHED
     CFG --> SCHED
+    CFG --> ABS
     SCHED --> ABS
     ABS --> SEG
 

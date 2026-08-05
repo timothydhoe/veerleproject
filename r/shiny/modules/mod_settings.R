@@ -4,31 +4,18 @@
 # Profile manager, validity parameters, cut-points, absence registry.
 #
 # shared list keys used:
-#   cfg  — static config list (for paths and current active profile)
-#
-# Global objects accessed directly (defined in global.R):
-#   analysis_ready, part2 — for pupil ID dropdown in absence registry
+#   cfg  — static config list (for paths, current active profile, and the
+#          afwezigheden list — see "Absence registry" below)
 #
 # Returns a reactiveValues list:
 #   $profile_activated — increments when "Activeer" succeeds
-#   $absence_changed   — increments on add/delete (future-proofing)
 # ─────────────────────────────────────────────────────────────────────────────
 
 #' Settings tab UI
 modSettingsUI <- function(id) {
   ns <- NS(id)
 
-  # JS bridge: absence delete button → namespaced Shiny input
-  # NOTE: .abs-del-btn class is scoped to this module's rendered table
-  abs_del_js <- tags$script(HTML(sprintf("
-    $(document).on('click', '.abs-del-btn', function() {
-      var row = $(this).data('row');
-      Shiny.setInputValue('%s', row, {priority: 'event'});
-    });
-  ", ns("abs_delete_row"))))
-
   tagList(
-    abs_del_js,
     layout_columns(
       col_widths = c(12),
 
@@ -136,7 +123,7 @@ modSettingsUI <- function(id) {
         )
       ),
 
-      # ── Absence registry ─────────────────────────────────────────────────────
+      # ── Absence registry (read-only) ──────────────────────────────────────────
       card(
         class = "shadow-sm",
         card_header(
@@ -145,31 +132,10 @@ modSettingsUI <- function(id) {
         ),
         card_body(
           p(class = "text-muted small",
-            "Registreer schooldagen waarop een leerling afwezig was.",
-            " De pipeline markeert die dag als 'absent' zodat schooluren niet meegeteld worden",
-            " in de analyse. Herstart de pipeline na elke wijziging."),
-          layout_columns(
-            col_widths = c(3, 2, 2, 3, 2),
-            selectInput(ns("abs_pupil"), "Leerling",
-                        choices = character(0), width = "100%"),
-            dateInput(ns("abs_date"), "Datum",
-                      value = Sys.Date(), language = "nl",
-                      format = "yyyy-mm-dd", width = "100%"),
-            selectInput(ns("abs_part"), "Dagdeel",
-                        choices = c("Hele dag" = "full",
-                                    "Voormiddag" = "morning",
-                                    "Namiddag" = "afternoon"),
-                        width = "100%"),
-            textInput(ns("abs_reason"), "Reden (optioneel)",
-                      placeholder = "bijv. ziek", width = "100%"),
-            div(
-              style = "display:flex; align-items:flex-end; padding-bottom:1px;",
-              actionButton(ns("abs_add"), "Toevoegen",
-                           icon  = icon("plus"),
-                           class = "btn-primary btn-sm w-100")
-            )
-          ),
-          uiOutput(ns("abs_status_msg")),
+            "Afwezigheden worden beheerd via de ", tags$code("afwezigheden"),
+            "-lijst in ", tags$code("config.yaml"), ", niet via dit dashboard.",
+            " Onderstaande tabel toont de huidige lijst (alleen-lezen).",
+            " Herstart de pipeline na een wijziging in config.yaml."),
           DTOutput(ns("abs_table"))
         )
       ),
@@ -181,19 +147,17 @@ modSettingsUI <- function(id) {
 
 #' Settings tab server
 #'
-#' @return reactiveValues with $profile_activated and $absence_changed counters
+#' @return reactiveValues with $profile_activated counter
 mod_settings_server <- function(id, shared) {
   moduleServer(id, function(input, output, session) {
     ns <- session$ns
 
     # Paths derived from config (unified here; global.R has profiles_dir too,
     # but this module uses its own local copy to be self-contained)
-    profiles_dir        <- resolve_cfg_path(shared$cfg$profiles$directory %||% "profiles/")
-    absences_path_server <- resolve_cfg_path(
-      shared$cfg$paths$absences %||% "../data/absences.csv")
+    profiles_dir <- resolve_cfg_path(shared$cfg$profiles$directory %||% "profiles/")
 
     # Return signals for server.R (future-proofing; not acted on currently)
-    out <- reactiveValues(profile_activated = 0L, absence_changed = 0L)
+    out <- reactiveValues(profile_activated = 0L)
 
     # ── Profile manager ──────────────────────────────────────────────────────
 
@@ -371,126 +335,29 @@ mod_settings_server <- function(id, shared) {
 
     output$settings_status_msg <- renderUI({ NULL })
 
-    # ── Absence registry ─────────────────────────────────────────────────────
-
-    empty_absences <- function() {
-      data.table(pupil_id = character(), date = character(),
-                 part_of_day = character(), reason = character())
-    }
-
-    read_absences <- function() {
-      if (!file.exists(absences_path_server)) return(empty_absences())
-      dt <- tryCatch(
-        fread(absences_path_server,
-              colClasses = c(pupil_id = "character", date = "character",
-                             reason   = "character")),
-        error = function(e) empty_absences()
-      )
-      # part_of_day was added after the original pupil_id/date/reason schema —
-      # older absences.csv files won't have it yet. Treat missing as "full"
-      # so pre-existing whole-day absences keep behaving the same way.
-      if (!"part_of_day" %in% names(dt)) dt[, part_of_day := "full"]
-      dt[!(part_of_day %in% c("full", "morning", "afternoon")), part_of_day := "full"]
-      dt[, .(pupil_id, date, part_of_day, reason)]
-    }
-
-    absences_rv <- reactiveVal(read_absences())
-
-    observe({
-      ids <- character(0)
-      if (!is.null(analysis_ready) && "ID" %in% names(analysis_ready))
-        ids <- sort(unique(tools::file_path_sans_ext(as.character(analysis_ready$ID))))
-      else if (nrow(part2) > 0 && "ID" %in% names(part2))
-        ids <- sort(unique(tools::file_path_sans_ext(as.character(part2$ID))))
-      updateSelectInput(session, "abs_pupil", choices = ids)
-    })
-
-    part_of_day_labels <- c(full = "Hele dag", morning = "Voormiddag", afternoon = "Namiddag")
+    # ── Absence registry (read-only, config.yaml-driven) ─────────────────────
+    # config.yaml's afwezigheden list is the sole source of truth (see
+    # docs/test/plan_absences_config.md) — read directly from shared$cfg
+    # (already loaded in memory by global.R), no CSV read/write, no add/
+    # delete UI. data/absences.csv, if present, is only a generated
+    # read-only mirror written by 02_label_segments.R and is never read here.
 
     output$abs_table <- renderDT({
-      dt <- absences_rv()
-      if (nrow(dt) == 0)
+      entries <- shared$cfg$afwezigheden
+      if (is.null(entries) || length(entries) == 0)
         return(datatable(data.frame(Bericht = "Geen afwezigheden geregistreerd."),
                          options = list(dom = "t"), rownames = FALSE))
-      dt <- copy(dt)
-      dt[, part_of_day := part_of_day_labels[part_of_day]]
-      dt[, Verwijderen := paste0(
-        '<button class="btn btn-outline-danger btn-sm abs-del-btn" ',
-        'data-row="', seq_len(.N), '">',
-        '<i class="fa fa-times"></i></button>'
-      )]
+      dt <- data.table(
+        pupil_id = vapply(entries, function(e) as.character(e$pupil_id), character(1)),
+        date     = vapply(entries, function(e) as.character(e$date), character(1))
+      )
       datatable(
         dt,
-        colnames  = c("Leerling", "Datum", "Dagdeel", "Reden", ""),
-        escape    = FALSE,
+        colnames  = c("Leerling", "Datum"),
         rownames  = FALSE,
         selection = "none",
-        options   = list(dom = "tp", pageLength = 10, ordering = TRUE,
-                         columnDefs = list(list(orderable = FALSE, targets = 4)))
+        options   = list(dom = "tp", pageLength = 10, ordering = TRUE)
       )
-    })
-
-    output$abs_status_msg <- renderUI({ NULL })
-
-    observeEvent(input$abs_add, {
-      pupil  <- trimws(input$abs_pupil)
-      date   <- as.character(input$abs_date)
-      part   <- input$abs_part
-      reason <- trimws(input$abs_reason)
-      if (!nzchar(pupil)) {
-        output$abs_status_msg <- renderUI(
-          div(class = "alert alert-danger small py-2 mt-2", "Selecteer een leerling."))
-        return()
-      }
-      dt <- absences_rv()
-      if (any(dt$pupil_id == pupil & dt$date == date & dt$part_of_day == part)) {
-        output$abs_status_msg <- renderUI(
-          div(class = "alert alert-warning small py-2 mt-2",
-              paste0("Leerling ", pupil, " is al afwezig (", part_of_day_labels[part],
-                     ") op ", date, ".")))
-        return()
-      }
-      new_row <- data.table(pupil_id = pupil, date = date, part_of_day = part, reason = reason)
-      dt <- rbindlist(list(dt, new_row))
-      tryCatch(
-        fwrite(dt, absences_path_server),
-        error = function(e) {
-          output$abs_status_msg <- renderUI(
-            div(class = "alert alert-danger small py-2 mt-2",
-                icon("triangle-exclamation"),
-                paste0(" Opslaan mislukt: ", conditionMessage(e))))
-          return()
-        }
-      )
-      absences_rv(dt)
-      out$absence_changed <- out$absence_changed + 1L
-      output$abs_status_msg <- renderUI(
-        div(class = "alert alert-success small py-2 mt-2",
-            icon("circle-check"),
-            " Afwezigheid opgeslagen. Herstart de pipeline om toe te passen."))
-      updateTextInput(session, "abs_reason", value = "")
-    })
-
-    observeEvent(input$abs_delete_row, {
-      row_idx <- as.integer(input$abs_delete_row)
-      dt <- absences_rv()
-      if (row_idx < 1 || row_idx > nrow(dt)) return()
-      dt <- dt[-row_idx]
-      tryCatch(
-        fwrite(dt, absences_path_server),
-        error = function(e) {
-          output$abs_status_msg <- renderUI(
-            div(class = "alert alert-danger small py-2 mt-2",
-                icon("triangle-exclamation"),
-                paste0(" Verwijderen mislukt: ", conditionMessage(e))))
-          return()
-        }
-      )
-      absences_rv(dt)
-      out$absence_changed <- out$absence_changed + 1L
-      output$abs_status_msg <- renderUI(
-        div(class = "alert alert-success small py-2 mt-2",
-            icon("circle-check"), " Afwezigheid verwijderd."))
     })
 
     return(out)

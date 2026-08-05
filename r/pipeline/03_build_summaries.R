@@ -17,8 +17,9 @@ library(data.table)
 
 Sys.setlocale("LC_TIME", "C")  # force English weekday names regardless of OS locale
 
-source("pipeline/utils_ggir.R",  local = TRUE)
-source("pipeline/utils_bouts.R", local = TRUE)
+source("pipeline/utils_ggir.R",     local = TRUE)
+source("pipeline/utils_schedule.R", local = TRUE)  # get_absence_entries()
+source("pipeline/utils_bouts.R",    local = TRUE)
 
 source("pipeline/validate_config.R", local = TRUE)
 
@@ -326,25 +327,16 @@ if (nrow(part4) > 0) {
 }
 
 # ── Segment averages (from segment_summary) ───────────────────────────────────
+# Absent days are no longer labeled "absent" in segment_summary — 02 drops
+# them entirely (plan_absences_config.md) — so no filter is needed here; the
+# averaging below already excludes those days by their absence from the data.
 if (!is.null(seg) && nrow(seg) > 0) {
-  # Absent days: count per participant before filtering
-  if ("absent" %in% seg$segment) {
-    absent_days <- seg[segment == "absent",
-                       .(n_absent_school_days = uniqueN(date)),
-                       by = .(ID, school, meting)]
-  } else {
-    absent_days <- NULL
-  }
-
-  # Exclude absent segments from activity averages
-  seg_active <- seg[segment != "absent"]
-
-  intensity_cols <- grep("^(SB|IN|LIG|MOD|VIG|MVPA)", names(seg_active),
+  intensity_cols <- grep("^(SB|IN|LIG|MOD|VIG|MVPA)", names(seg),
                          value = TRUE, ignore.case = TRUE)
 
   if (length(intensity_cols) > 0) {
     seg_wide <- dcast(
-      seg_active[, c("ID", "school", "meting", "segment", intensity_cols), with = FALSE][
+      seg[, c("ID", "school", "meting", "segment", intensity_cols), with = FALSE][
         , lapply(.SD, mean, na.rm = TRUE),
         by = .(ID, school, meting, segment),
         .SDcols = intensity_cols
@@ -357,7 +349,26 @@ if (!is.null(seg) && nrow(seg) > 0) {
     seg_wide <- NULL
   }
 } else {
-  seg_wide    <- NULL
+  seg_wide <- NULL
+}
+
+# ── Absent day counts (from config.yaml, matched to meting via part2) ─────────
+# n_absent_school_days can no longer be derived by scanning segment_summary
+# for segment == "absent" rows (02 drops them instead of labeling them).
+# Compute directly from cfg$afwezigheden, assigning each entry to the meting
+# where that pupil actually has a recorded day matching the entry's date —
+# an absence entry itself doesn't record which meting it belongs to.
+abs_entries <- get_absence_entries(cfg)
+if (nrow(abs_entries) > 0) {
+  part2_days <- unique(part2[, .(ID, school, meting, calendar_date)])
+  part2_days[, pupil_id := strip_pupil_id(ID)]
+  part2_days[, date := as.character(calendar_date)]
+
+  absent_days <- merge(
+    abs_entries, part2_days[, .(pupil_id, date, ID, school, meting)],
+    by = c("pupil_id", "date")
+  )[, .(n_absent_school_days = uniqueN(date)), by = .(ID, school, meting)]
+} else {
   absent_days <- NULL
 }
 

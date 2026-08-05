@@ -113,7 +113,7 @@ without opening RStudio.
 | `pipeline/utils_input.R` | Done | Format detection, pupil ID extraction, input manifest writer |
 | `pipeline/utils_ggir.R` | Done | Version-tolerant GGIR output readers (handles filename variations) |
 | `pipeline/utils_bouts.R` | Done | Context-aware sedentary bout detection via RLE on epoch data; epoch-length-aware (not hardcoded 1s) |
-| `pipeline/utils_schedule.R` | Done | Shared school-schedule/pupil-override/absence-overlay lookups (used by 02 and 02b) |
+| `pipeline/utils_schedule.R` | Done | Shared school-schedule/pupil-override lookups, plus `get_absence_entries()`/`apply_absence_drop()`/`strip_pupil_id()` for the config.yaml-driven absence registry (used by 02, 02b, and 03) |
 | `pipeline/utils_epoch_labeling.R` | Done | Per-participant epoch labeling: wear (from GGIR's `IMP$r5long`), intensity, context |
 | `pipeline/01_run_ggir.R` | Done | GGIR Parts 1–5 for both metingen; dev overrides wired up |
 | `pipeline/02_label_segments.R` | Done | Distributes GGIR output across 5 school-day segments per participant × day |
@@ -258,8 +258,74 @@ Applies school schedule context to GGIR Part 2 day summaries. For each participa
   distributed proportionally by time overlap. If qwindow columns are absent, falls back
   to proportional day-level approximation.
 - Schools with `fallback: true` in config are flagged in output and in QC 02.
+- Any (pupil, date) listed in `config.yaml`'s `afwezigheden` is dropped entirely —
+  see "Absence registry" below.
 
 Output: `../data/processed/summaries/segment_summary.csv` — one row per participant × day × segment.
+
+---
+
+### Absence registry
+
+Absences are entered directly in `config.yaml`'s `afwezigheden` list (a sparse
+`[{pupil_id, date}, ...]` array — presence means absent) — not through the dashboard,
+and not through a hand-edited CSV. This replaced an earlier design where the Shiny
+Instellingen tab wrote `data/absences.csv` directly; that path was suspected broken in
+the deployed Windows bundle (`docs/test/feature_log.md` #4) and, separately, only
+overlaid `absent` on school-hours segments rather than dropping the whole day. Full
+design history and the 8-step build order: `docs/test/plan_absences_config.md`.
+
+**Two questions kept deliberately separate:** "was the device worn enough that day"
+(drives participant inclusion — `n_valid_days`, `mean_wear_h`, `has_weekend`,
+`meets_sedentary_criteria`) and "was this a normal day of school-time movement"
+(drives what counts in the daytime activity numbers). An absence entry answers only
+the second. `part2`/`part4` (wear-validity and all sleep computation) are **never**
+filtered by absence — this is intentional, not an oversight; see the regression-guard
+tests in `test_utils_schedule.R` and the plan doc's "Decisions locked in".
+
+**Shared implementation** (`pipeline/utils_schedule.R`):
+- `get_absence_entries(cfg)` — parses `cfg$afwezigheden` into a `(pupil_id, date)`
+  data.table, stripping any `.cwa`/`.csv`-style suffix from `pupil_id`.
+- `strip_pupil_id(id)` — the same extension-stripping transform, centralized here
+  because two independent call sites (the day-level drop in `02` and the epoch-level
+  overlay in `utils_epoch_labeling.R`) each duplicated it inline and each had a real
+  bug from comparing a stripped ID against an unstripped one before this existed.
+  `extract_school_id()` and `resolve_schedule_key()` use it too now.
+- `apply_absence_drop(dt, abs_entries)` — drops matching rows from a
+  `segment_summary`-shaped data.table (matches on `strip_pupil_id(dt$ID)` + `date`),
+  returning the filtered table, a dropped-row count, and any absence entries that
+  matched no row at all (a likely typo — `02` warns on these before dropping).
+  Unit-tested directly in `test_utils_schedule.R`; `02_label_segments.R` calls it
+  rather than reimplementing the match.
+
+**Where exclusion is applied:**
+- **`02_label_segments.R`** — `apply_absence_drop()` removes the (ID, date) row
+  entirely from `segment_summary.csv`: all daytime segments (before_school, in_class,
+  recess, lunch, after_school), not just school hours. Also writes a read-only mirror
+  to `data/absences.csv` (columns `pupil_id, date`) purely for the researcher's own
+  ad-hoc use outside the app (e.g. Excel) — this file is never read back by any
+  pipeline step or by the dashboard.
+- **`utils_epoch_labeling.R`** (only relevant when `bouts.enable_epoch_labeling: true`)
+  — relabels *every* context value on an absent date to `"absent"`, not just
+  school-hours ones, so `before_school`/`after_school` epochs on an absent day don't
+  leak into real-context bout columns in `analysis_ready.csv` either.
+- **`03_build_summaries.R`** — no `part2`/`part4` filtering. The only change is
+  computing `n_absent_school_days`: `get_absence_entries(cfg)` joined against
+  `part2`'s own recorded `(ID, date)` pairs to resolve which `meting` each entry
+  belongs to (an absence entry itself doesn't record that), since an absence date
+  could in principle fall in either measurement wave for the same pupil.
+
+**Dashboard (`mod_settings.R`):** the Instellingen → Afwezigheden section is
+fully read-only — no add form, no delete button. It reads `shared$cfg$afwezigheden`
+directly (already loaded in memory by `global.R`) and renders a 2-column table
+(Leerling, Datum). To change absences, edit `config.yaml` and re-run the pipeline.
+
+**Known, unfixable limitation:** `part5_personsummary_*.csv` (source of
+`mvpa_min_day_avg`, `sb_min_day`, `lpa_min_day`, `bouts_30min_day`, `bouts_10min_day`)
+is computed by GGIR itself across the *entire* recording before this pipeline ever
+sees it — GGIR has no per-date exclusion parameter, so these five columns still
+include an excluded day's contribution. Fixing this would mean recomputing them from
+`part2`/epoch data ourselves — comparable in scope to the epoch-level bout work.
 
 ---
 
@@ -449,7 +515,7 @@ correct approach for a future async pipeline trigger would be `ExtendedTask` (Sh
 | `modules/mod_sleep.R` | `"sleep"` | Sleep duration/efficiency KPIs, violin plot, Bland-Altman M1 vs M2 | nothing |
 | `modules/mod_comparison.R` | `"comparison"` | Meting 1 vs 2 slopegraph, delta plot, Wilcoxon stats, correlation scatter | nothing |
 | `modules/mod_export.R` | `"export"` | 11 download handlers: GGIR parts 2 & 5, segment summary, analysis-ready, validity, filtered variants, manifests | nothing |
-| `modules/mod_settings.R` | `"settings"` | Profile manager, validity/cut-point/bout overrides, absence registry | `reactiveValues(profile_activated, absence_changed)` |
+| `modules/mod_settings.R` | `"settings"` | Profile manager, validity/cut-point/bout overrides; absence registry is read-only display only (edited via `config.yaml`, not the dashboard — see "Absence registry" below) | `reactiveValues(profile_activated)` |
 
 ### Shared list (server.R → modules)
 

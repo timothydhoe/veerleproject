@@ -1,5 +1,16 @@
 # test_utils_schedule.R
 # Run with: testthat::test_file("tests/testthat/test_utils_schedule.R")
+#
+# Absence-rework coverage (docs/test/plan_absences_config.md §11): config
+# parsing, ID-matching, and the whole-day drop are unit-tested below via
+# apply_absence_drop() — the same function 02_label_segments.R calls. Two
+# properties from §11 are architectural rather than unit-testable (03 and
+# 02b/utils_epoch_labeling.R are procedural scripts, not pure functions) and
+# were instead verified live against real pipeline output during build:
+# (1) an absence entry leaves n_valid_days/mean_wear_h/has_weekend/sleep
+# validity completely unchanged (03_build_summaries.R, build order step 4),
+# and (2) n_absent_school_days lands on the correct meting (same step, same
+# live run).
 
 library(testthat)
 library(data.table)
@@ -77,14 +88,90 @@ test_that("extract_school_id parses the school digit and handles bad input", {
   expect_equal(extract_school_id("not-a-code"), "school_NA")
 })
 
-test_that("read_absence_keys returns character(0) when the file doesn't exist", {
-  expect_equal(read_absence_keys(tempfile()), character(0))
+test_that("get_absence_entries/absence_keys return character(0) when afwezigheden is unset", {
+  expect_equal(nrow(get_absence_entries(list())), 0)
+  expect_equal(absence_keys(get_absence_entries(list())), character(0))
+  expect_equal(absence_keys(get_absence_entries(list(afwezigheden = list()))), character(0))
 })
 
-test_that("read_absence_keys reads pupil_id/date pairs", {
-  tmp <- tempfile(fileext = ".csv")
-  writeLines(c("pupil_id,date", "101,2026-02-25", "102,2026-02-26"), tmp)
-  keys <- read_absence_keys(tmp)
-  expect_equal(keys, c("101 2026-02-25", "102 2026-02-26"))
-  unlink(tmp)
+test_that("get_absence_entries/absence_keys read pupil_id/date pairs from config", {
+  cfg <- list(afwezigheden = list(
+    list(pupil_id = "101", date = "2026-02-25"),
+    list(pupil_id = "102", date = "2026-02-26")
+  ))
+  entries <- get_absence_entries(cfg)
+  expect_equal(entries$pupil_id, c("101", "102"))
+  expect_equal(entries$date, c("2026-02-25", "2026-02-26"))
+  expect_equal(absence_keys(entries), c("101 2026-02-25", "102 2026-02-26"))
+})
+
+test_that("get_absence_entries strips a .cwa-style suffix from pupil_id", {
+  cfg <- list(afwezigheden = list(list(pupil_id = "2063.cwa", date = "2026-03-01")))
+  expect_equal(get_absence_entries(cfg)$pupil_id, "2063")
+})
+
+test_that("strip_pupil_id removes extension suffixes and directory paths", {
+  expect_equal(strip_pupil_id("2063"), "2063")
+  expect_equal(strip_pupil_id("2063.csv"), "2063")
+  expect_equal(strip_pupil_id("2063.cwa"), "2063")
+  expect_equal(strip_pupil_id("some/dir/2063.bin"), "2063")
+})
+
+make_segment_summary <- function() {
+  data.table(
+    ID      = c(rep("1901.csv", 5), rep("1902.csv", 5)),
+    school  = "school_1",
+    meting  = "meting_1",
+    date    = "2026-02-22",  # both pupils recorded on the same date
+    segment = c("before_school", "in_class", "recess", "lunch", "after_school",
+                "before_school", "in_class", "recess", "lunch", "after_school")
+  )
+}
+
+test_that("apply_absence_drop removes the whole day (all daytime segments), not just school hours", {
+  seg <- make_segment_summary()
+  abs_entries <- get_absence_entries(list(afwezigheden = list(
+    list(pupil_id = "1901", date = "2026-02-22")
+  )))
+
+  result <- apply_absence_drop(seg, abs_entries)
+
+  # All 5 segments (before_school, in_class, recess, lunch, after_school)
+  # for pupil 1901 on the absent date are gone — not just school-hours ones.
+  expect_equal(nrow(result$dt[ID == "1901.csv"]), 0)
+  expect_equal(result$n_dropped, 5L)
+  # The other pupil, same date, is untouched.
+  expect_equal(nrow(result$dt[ID == "1902.csv"]), 5)
+  expect_equal(result$unmatched_keys, character(0))
+})
+
+test_that("apply_absence_drop matches despite a GGIR extension suffix on the ID column", {
+  seg <- data.table(ID = "1901.csv", school = "school_1", meting = "meting_1",
+                    date = "2026-02-22", segment = "in_class")
+  abs_entries <- get_absence_entries(list(afwezigheden = list(
+    list(pupil_id = "1901", date = "2026-02-22")  # bare, config-style pupil_id
+  )))
+  result <- apply_absence_drop(seg, abs_entries)
+  expect_equal(nrow(result$dt), 0)
+  expect_equal(result$n_dropped, 1L)
+})
+
+test_that("apply_absence_drop reports unmatched entries as likely typos without erroring", {
+  seg <- data.table(ID = "1901.csv", school = "school_1", meting = "meting_1",
+                    date = "2026-02-22", segment = "in_class")
+  abs_entries <- get_absence_entries(list(afwezigheden = list(
+    list(pupil_id = "1901", date = "2026-02-22"),   # matches
+    list(pupil_id = "9999", date = "2026-01-01")    # typo — no such pupil/date recorded
+  )))
+  result <- apply_absence_drop(seg, abs_entries)
+  expect_equal(result$n_dropped, 1L)
+  expect_equal(result$unmatched_keys, "9999 2026-01-01")
+})
+
+test_that("apply_absence_drop is a no-op when there are no absence entries", {
+  seg <- make_segment_summary()
+  result <- apply_absence_drop(seg, get_absence_entries(list()))
+  expect_equal(nrow(result$dt), nrow(seg))
+  expect_equal(result$n_dropped, 0L)
+  expect_equal(result$unmatched_keys, character(0))
 })

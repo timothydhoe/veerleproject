@@ -44,6 +44,8 @@ parameter. The config covers:
 - GGIR parameters (epoch length, cut-points, non-wear thresholds, sleep algorithm)
 - School schedules and day-segment definitions
 - Validity criteria (min wear hours, min valid days, weekend requirement)
+- Absence registry (`afwezigheden` — pupil/date pairs to drop from daytime
+  activity output, whole-day only; see the **Segment** row below)
 - Measurement metadata (school IDs, meting dates)
 - Developer/testing overrides (example_mode, relaxed thresholds for dummy data)
 
@@ -131,7 +133,7 @@ to_be_built/              # Backlog of unbuilt research features (RQ4, RQ5) — 
 |------|--------|--------------|------------|
 | **01** | `01_run_ggir.R` | GGIR Parts 1–5: load CSVs, ENMO, non-wear, cut-point classification, sleep detection, day summaries | `part2_daysummary.csv`, `part4_nightsummary_sleep_cleaned.csv`, `part5_daysummary_WW_*.csv` |
 | **QC 01** | `qc/qc_01_ggir.R` | Verify GGIR outputs: required files present, correct columns, participant counts | Console report |
-| **02** | `02_label_segments.R` | Apply school schedule labels to GGIR output: for each participant × day, distribute per-qwindow activity (read from `part5_daysummary_Segments_*.csv`, not `part2_daysummary.csv`) across school context segments (in_class / recess / lunch / before_school / after_school). Falls back to wear-time-only if that Part 5 Segments file is missing. | `segment_summary.csv` |
+| **02** | `02_label_segments.R` | Apply school schedule labels to GGIR output: for each participant × day, distribute per-qwindow activity (read from `part5_daysummary_Segments_*.csv`, not `part2_daysummary.csv`) across school context segments (in_class / recess / lunch / before_school / after_school). Falls back to wear-time-only if that Part 5 Segments file is missing. Any (pupil, date) listed in `config.yaml`'s `afwezigheden` is dropped entirely (all daytime segments for that day) — wear-validity and sleep are untouched by this. | `segment_summary.csv` |
 | **QC 02** | `qc/qc_02_segments.R` | Verify segment coverage: all pupils labeled, no missing school day windows, fallback school warnings | Console report |
 | **02b** (opt-in) | `02b_label_epochs.R` | Only runs when `bouts.enable_epoch_labeling: true`. Labels every GGIR epoch (5s resolution) with school context, wear/non-wear, and intensity, for context-aware bout detection (`utils_bouts.R`). Expensive at full study scale (~96M rows for 400 participants) — off by default. | `labeled_epochs.csv` |
 | **03** | `03_build_summaries.R` | Join all outputs into analysis-ready wide table; compute validity flags per participant; if `labeled_epochs.csv` exists, also computes context-aware sedentary bout columns (`bouts_30min_*`) | `analysis_ready.csv`, `validity_summary.csv` |
@@ -179,6 +181,7 @@ pre-converted CSV rather than raw `.bin`.
 | **GGIR** | R package for the canonical 6-part accelerometer pipeline. Parts 1–5 are in scope. |
 | **Meting** | Dutch for "measurement". Meting 1 and meting 2 are the two measurement waves per school. |
 | **Segment** | School day context label: `before_school`, `in_class`, `recess`, `lunch`, `after_school`, `weekend`. |
+| **Afwezigheid (absence)** | A `(pupil_id, date)` entry in `config.yaml`'s `afwezigheden` list, entered by the researcher directly (the dashboard's Instellingen tab shows this list read-only, per `docs/test/plan_absences_config.md`). Drops that day entirely from `segment_summary.csv` — all daytime segments, whole-day only, no partial/`part_of_day` granularity. Deliberately **does not** affect wear-validity (`n_valid_days`, `mean_wear_h`, `has_weekend`) or sleep — "was the device worn" and "was this a normal day of movement" are treated as separate questions. |
 
 ## Data Format
 

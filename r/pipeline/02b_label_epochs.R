@@ -38,7 +38,7 @@ if (!isTRUE(cfg$bouts$enable_epoch_labeling)) {
 
   schedule_cache     <- build_schedule_cache(cfg)
   pupil_override_map <- build_pupil_override_map(cfg)
-  abs_keys           <- read_absence_keys(cfg$paths$absences %||% "../data/absences.csv")
+  abs_keys           <- absence_keys(get_absence_entries(cfg))
 
   out_path <- file.path(base_out, "labeled_epochs.csv")
   tmp_path <- paste0(out_path, ".tmp")

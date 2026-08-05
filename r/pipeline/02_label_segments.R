@@ -35,9 +35,9 @@ tz          <- cfg$output$timezone
 source("pipeline/utils_ggir.R",    local = TRUE)
 source("pipeline/utils_schedule.R", local = TRUE)
 # get_schedule(), extract_school_id(), build_pupil_override_map(),
-# build_schedule_cache(), resolve_schedule_key(), read_absence_keys(),
-# ABSENCE_OVERLAY_SEGMENTS now come from utils_schedule.R (shared with
-# 02b_label_epochs.R, feature_log.md #2) instead of being defined inline here.
+# build_schedule_cache(), resolve_schedule_key(), get_absence_entries()
+# come from utils_schedule.R (shared with 02b_label_epochs.R,
+# feature_log.md #2) instead of being defined inline here.
 
 # ── Load GGIR part2 for both metingen ─────────────────────────────────────────
 all_data <- list()
@@ -337,81 +337,48 @@ for (i in seq_len(nrow(part2))) {
 
 segment_summary <- rbindlist(rows, fill = TRUE)
 
-# ── Apply absence overlay ─────────────────────────────────────────────────────
-# If data/absences.csv exists and has rows, mark school-context segments for
-# absent pupils on those dates as "absent" and NA out activity values.
-# Absence data is entered by the researcher via the Shiny dashboard.
-# `part_of_day` (full/morning/afternoon) narrows a whole-day absence to only
-# the segments before/after that day's lunch break — added after the original
-# whole-day-only schema, so a missing/unrecognized value falls back to "full"
-# and keeps pre-existing absences.csv rows behaving exactly as before.
-absences_path <- cfg$paths$absences %||% "../data/absences.csv"
-if (file.exists(absences_path)) {
-  abs_dt <- tryCatch(
-    fread(absences_path,
-          colClasses = c(pupil_id = "character", date = "character")),
-    error = function(e) { message("[absences] Could not read absences.csv: ", e$message); NULL }
-  )
-  if (!is.null(abs_dt) && nrow(abs_dt) > 0) {
-    if (!"part_of_day" %in% names(abs_dt)) abs_dt[, part_of_day := "full"]
-    abs_dt[!(part_of_day %in% c("full", "morning", "afternoon")), part_of_day := "full"]
+# ── Apply absence exclusion (full day) ────────────────────────────────────────
+# config.yaml's afwezigheden list is the source of truth (see
+# docs/test/plan_absences_config.md) — an absence entry drops that (pupil,
+# date) entirely from segment_summary: all daytime segments (before_school,
+# in_class, recess, lunch, after_school), not just school hours as the
+# previous part_of_day/lunch-split overlay did. Boolean, full-day only; no
+# NA-overlay, the row is gone.
+abs_entries <- get_absence_entries(cfg)
 
-    rows_before <- nrow(segment_summary[segment == "absent"])
+# apply_absence_drop() (utils_schedule.R) owns the ID-extension-stripped
+# match — shared with the test suite so this logic can't silently regress
+# the way it did before (build order step 3 found a real bug here).
+abs_result <- apply_absence_drop(segment_summary, abs_entries)
 
-    for (k in seq_len(nrow(abs_dt))) {
-      pid  <- abs_dt$pupil_id[k]
-      dt_k <- abs_dt$date[k]
-      part <- abs_dt$part_of_day[k]
-
-      match_idx <- which(!is.na(segment_summary$ID) & !is.na(segment_summary$date) &
-                          segment_summary$ID == pid & segment_summary$date == dt_k &
-                          segment_summary$segment %in% ABSENCE_OVERLAY_SEGMENTS)
-      if (length(match_idx) == 0) next
-
-      target_idx <- match_idx
-      if (part != "full") {
-        day_school  <- segment_summary$school[match_idx[1]]
-        day_weekday <- segment_summary$weekday[match_idx[1]]
-        sched <- tryCatch(get_schedule(day_school, day_weekday, cfg$schedules),
-                           error = function(e) NULL)
-        lunch_start <- if (!is.null(sched) && "lunch" %in% sched$segment)
-          sched$start_h[sched$segment == "lunch"][1] else NA_real_
-
-        # Positional alignment, not label matching: a school day has more than
-        # one "in_class"/"recess" block (before and after lunch), so matching
-        # by segment label alone would always resolve to the first one.
-        # segment_summary rows for this ID+date were appended in the same
-        # order sched's rows were built in, so filtering both to
-        # ABSENCE_OVERLAY_SEGMENTS keeps them aligned row-for-row.
-        sched_segs <- if (!is.null(sched)) sched[sched$segment %in% ABSENCE_OVERLAY_SEGMENTS] else NULL
-
-        if (is.na(lunch_start) || is.null(sched_segs) || nrow(sched_segs) != length(match_idx)) {
-          warning(sprintf(
-            paste0("[absences] Could not resolve lunch split for %s on %s (school %s) ",
-                   "-- applying '%s' absence as a full day instead."),
-            pid, dt_k, day_school, part))
-        } else {
-          seg_starts <- sched_segs$start_h
-          target_idx <- if (part == "morning") match_idx[seg_starts <  lunch_start]
-                        else                    match_idx[seg_starts >= lunch_start]
-        }
-      }
-
-      segment_summary[target_idx, `:=`(segment = "absent", n_valid_hours = NA_real_)]
-      for (col in intensity_cols) {
-        if (col %in% names(segment_summary))
-          segment_summary[target_idx, (col) := NA_real_]
-      }
-    }
-
-    n_marked <- nrow(segment_summary[segment == "absent"]) - rows_before
-    message(sprintf("[absences] %d absence records — %d segment rows marked as absent",
-                    nrow(abs_dt), n_marked))
-    if (n_marked == 0 && nrow(abs_dt) > 0)
-      warning("[absences] No rows were marked absent despite ", nrow(abs_dt),
-              " records in absences.csv — check that ID and date formats match.")
-  }
+# Typo detection: an absence entry that matches no recorded day at all
+# (wrong ID, date outside the recording window) looks identical to a
+# correctly-dropped entry after the fact — warn about it now, before
+# dropping anything, while the distinction is still visible.
+if (length(abs_result$unmatched_keys) > 0) {
+  warning(sprintf(
+    "[absences] %d afwezigheden entr%s matched no recorded day at all -- check pupil_id/date: %s",
+    length(abs_result$unmatched_keys), if (length(abs_result$unmatched_keys) == 1) "y" else "ies",
+    paste(abs_result$unmatched_keys, collapse = "; ")
+  ))
 }
+
+segment_summary <- abs_result$dt
+
+if (nrow(abs_entries) > 0) {
+  message(sprintf("[absences] %d afwezigheden entries (config.yaml) — %d segment_summary row(s) dropped",
+                  nrow(abs_entries), abs_result$n_dropped))
+} else {
+  message("[absences] No afwezigheden entries in config.yaml.")
+}
+
+# ── Write read-only mirror (data/absences.csv) ────────────────────────────────
+# Never read back by any pipeline step or the dashboard — purely so the
+# researcher can do her own ad-hoc processing (e.g. Excel) outside the app.
+mirror_path <- cfg$paths$absences %||% "../data/absences.csv"
+dir.create(dirname(mirror_path), recursive = TRUE, showWarnings = FALSE)
+backup_if_exists(mirror_path)
+fwrite(abs_entries[, .(pupil_id, date)], mirror_path)
 
 # ── Flag fallback schools ──────────────────────────────────────────────────────
 fallback_schools <- names(Filter(function(s) isTRUE(s$fallback), cfg$schedules))

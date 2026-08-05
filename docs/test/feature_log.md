@@ -375,3 +375,94 @@ in working order per `order_of_approach.md` — biggest scope, most cross-cuttin
 benefits from every other item above being settled first. Decide at investigation
 time whether the absence-recording gap is folded into this item or split out
 separately.
+
+### 6. Move absence entry from dashboard to config.yaml — status: `built-unverified`
+
+Requested by the project owner on 2026-08-04 — not part of the original
+`order_of_approach.md` batch (collected 2026-07-23), so it doesn't have a numbered
+slot in that ordering. Routes around item #4's absence-recording gap above (dashboard
+entry suspected broken in the deployed bundle) rather than fixing that dashboard path:
+the project owner wanted a mechanism that works today regardless of the bundle issue's
+root cause.
+
+**Plan**: `docs/test/plan_absences_config.md` — produced through a step-by-step design
+conversation with the project owner, then independently reviewed against the live
+codebase by a fresh agent (this log's workflow step 5), which changed several
+decisions from the first draft — most significantly, absences no longer affect
+wear-validity or sleep at all, only daytime activity numbers. 8-step build order, all
+verified live against real pipeline output as each step landed (not deferred to the
+end).
+
+**Applied** (see the plan doc's numbered "Build order" for the step sequence):
+- `config.yaml`: new `afwezigheden: []` list (sparse — presence means absent),
+  replacing dashboard/CSV entry. `validate_config.R` warns on malformed dates and
+  duplicate `(pupil_id, date)` entries.
+- `utils_schedule.R`: `get_absence_entries(cfg)` reads the config list directly (no
+  CSV intermediate — matches the existing `class_overrides.pupils` precedent).
+  `apply_absence_drop(dt, abs_entries)` and `strip_pupil_id(id)` were added during the
+  docs/tests pass (this item's step 8) to centralize an ID-extension-matching pattern
+  that had been independently duplicated at each call site and had caused two real
+  bugs (see below) — `02_label_segments.R` and `03_build_summaries.R` both call these
+  shared functions now instead of reimplementing the match.
+- `02_label_segments.R`: an absence entry now drops the **whole day** (all daytime
+  segments: before_school/in_class/recess/lunch/after_school) from
+  `segment_summary.csv`, replacing the old partial school-hours-only NA-overlay. Also
+  writes a read-only mirror to `data/absences.csv`, never read back by anything.
+- `03_build_summaries.R`: no `part2`/`part4` filtering added (the key reversal from
+  the plan's first draft) — `n_absent_school_days` is computed from
+  `cfg$afwezigheden` directly, matched to the correct `meting` via each pupil's
+  actually-recorded days in `part2`.
+- `qc/qc_02_segments.R`: the absence check now confirms every `afwezigheden` entry is
+  genuinely missing from `segment_summary.csv` (FAILs if one is still present — a
+  stale-data signal meaning `02` needs a re-run), replacing the old "was an `absent`
+  segment labeled" check that would have misfired on every clean run once `02` started
+  dropping rows instead of labeling them.
+- `mod_settings.R`: Instellingen → Afwezigheden is now fully read-only — the add form,
+  delete button, and all CSV read/write logic removed entirely (not just disabled).
+  Reads `shared$cfg$afwezigheden` directly.
+- `utils_epoch_labeling.R` (only exercised when `bouts.enable_epoch_labeling: true`):
+  absence overlay widened from school-hours-only to whole-day, matching `02`.
+  `ABSENCE_OVERLAY_SEGMENTS` deleted (its last caller).
+- Docs: `r/GEBRUIKERSGIDS.md` §7 rewritten (config.yaml instructions replace the old
+  dashboard-form / hand-edit-the-CSV instructions), `CLAUDE.md` and `r/DEVELOPER.md`
+  gained new absence-registry content (previously undocumented), `ARCHITECTURE.md`'s
+  data-flow table and mermaid diagram updated to show `config.yaml` as the source of
+  truth instead of `data/absences.csv`.
+- Tests: `test_utils_schedule.R` gained coverage for `apply_absence_drop()` (whole-day
+  drop, extension-suffix ID matching, typo/unmatched-entry detection, no-op on empty
+  config) — 5 new tests, suite at 37/37 passing. Two properties from the plan's test
+  list (absence leaves wear-validity/sleep completely unchanged; `n_absent_school_days`
+  lands on the correct `meting`) are architectural rather than unit-testable (`03` is a
+  procedural script, not a pure function) and were instead verified live against real
+  pipeline output.
+
+**Two real bugs found and fixed along the way** — both from the same root cause
+(comparing a `.cwa`/`.csv`-suffixed GGIR `ID` against an already-stripped `pupil_id`
+without stripping the other side first), each caught by live-testing against real
+pipeline output rather than by static review or the pre-existing test suite:
+1. `02_label_segments.R`'s absence match (step 3) — the *old* code (pre-rework) would
+   never have matched real IDs correctly at all, since real data has IDs like
+   `"1901.csv"`.
+2. `utils_epoch_labeling.R`'s absence overlay (step 7) — same mismatch meant the
+   overlay silently never fired, at any scope, not just the school-hours-only
+   limitation the plan had already flagged as a known gap.
+
+Both fixed by stripping consistently (now centralized in `strip_pupil_id()`), with
+live re-verification after each fix.
+
+**Verified live, repeatedly, at every build-order step** (RStudio/dev, real device
+data from `data/raw/veerle_testdata` already processed by the pipeline — not dummy
+data): each step was tested against actual `segment_summary.csv`/`analysis_ready.csv`/
+`validity_summary.csv`/`labeled_epochs.csv` output with a temporary absence entry
+added, confirmed correct, then `config.yaml` and all touched output files restored to
+their pre-test state byte-for-byte before moving to the next step. The Shiny dashboard
+was also launched live (`shiny::runApp`) to confirm the read-only Instellingen table
+renders correctly with both an empty and a populated `afwezigheden` config, and that
+none of the old add/delete form elements remain in the rendered HTML.
+
+**Remaining gap, honestly stated:** not yet run through the built Windows bundle
+(`scripts/bundle/build-bundle.ps1` output, launched via the real `.bat` files) — same
+gap as items #1 and #2 above, and directly relevant here since it's exactly the kind
+of gap that caused the *previous* absence-entry mechanism (item #4) to be unreachable
+in the deployed bundle despite working in dev. Recommend closing this opportunistically
+alongside the full bundle audit (item #4) rather than a separate one-off trip.

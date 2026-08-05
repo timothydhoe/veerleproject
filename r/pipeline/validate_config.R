@@ -229,7 +229,39 @@ validate_config <- function(cfg) {
     }
   }
 
-  # ── 5. Report ────────────────────────────────────────────────────────────────
+  # ── 5. Absence validation ─────────────────────────────────────────────────────
+  # Warn, not error: pupil existence can't be checked before step 01 has run, and
+  # a typo here shouldn't block the whole pipeline — just get flagged so it's not
+  # silently ignored either.
+  afw <- cfg$afwezigheden
+  if (!is.null(afw) && length(afw) > 0) {
+    seen_keys <- character(0)
+    for (i in seq_along(afw)) {
+      entry <- afw[[i]]
+      pid   <- entry$pupil_id
+      dt    <- entry$date
+
+      if (is.null(pid) || !nzchar(trimws(as.character(pid)))) {
+        add_warn(sprintf("afwezigheden[%d]: missing or empty pupil_id", i))
+        next
+      }
+      dt_chr <- if (is.null(dt)) "" else as.character(dt)
+      if (!grepl("^\\d{4}-\\d{2}-\\d{2}$", dt_chr) ||
+          is.na(as.Date(dt_chr, format = "%Y-%m-%d", tryFormats = "%Y-%m-%d"))) {
+        add_warn(sprintf("afwezigheden[%d]: '%s' is not a valid YYYY-MM-DD date (pupil_id: %s)",
+                         i, dt_chr, pid))
+        next
+      }
+
+      key <- paste(pid, dt_chr)
+      if (key %in% seen_keys) {
+        add_warn(sprintf("afwezigheden: duplicate entry for pupil_id %s on %s", pid, dt_chr))
+      }
+      seen_keys <- c(seen_keys, key)
+    }
+  }
+
+  # ── 6. Report ────────────────────────────────────────────────────────────────
   if (length(warnings) > 0) {
     for (w in warnings) message("[config] WARN: ", w)
   }

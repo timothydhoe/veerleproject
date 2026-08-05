@@ -15,7 +15,7 @@ paths:
                                           # (analysis_ready.csv, segment_summary.csv, validity_summary.csv)
                                           # landen in de submap summaries/ hieronder.
   data_example:   "../data/example"       # Fictieve testdata — veilig om te committen.
-  absences:       "../data/absences.csv"  # Afwezigheidsregister, beheerd via het dashboard.
+  absences:       "../data/absences.csv"  # Alleen-lezen kopie, gegenereerd uit afwezigheden hieronder.
 
 # ── GGIR-parameters ───────────────────────────────────────────────────────────
 ggir:
@@ -90,6 +90,12 @@ validity:
   # Criteria voor slaapanalyse
   min_valid_nights_sleep: 5    # minimum nachten met geldige slaap voor de slaapanalyse
   min_pct_night_valid: 50      # minimum slaapefficiëntie (%) om een nacht als geldig te tellen
+
+# ── Afwezigheden ──────────────────────────────────────────────────────────────
+# pupil_id = kale code (bv. "2063"), sluit die dag volledig uit.
+# afwezigheden:
+#   - { pupil_id: "2063", date: "2026-03-01" }
+afwezigheden: []
 
 # ── Meetperiodes ──────────────────────────────────────────────────────────────
 # Indicatieve data-inzameling per school en meting.

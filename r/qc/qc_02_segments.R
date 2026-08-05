@@ -108,22 +108,35 @@ if ("in_class" %in% seg$segment) {
 }
 
 # ── 8. Absence rows ───────────────────────────────────────────────────────────
-if ("absent" %in% seg$segment) {
-  absent_rows <- seg[segment == "absent"]
-  n_combos    <- uniqueN(paste(absent_rows$ID, absent_rows$date))
-  schools_abs <- paste(sort(unique(absent_rows$school)), collapse = ", ")
-  pass(sprintf("%d absent (pupil × date) combinations registered — schools: %s",
-               n_combos, schools_abs))
+# 02_label_segments.R drops absent (pupil, date) rows entirely rather than
+# labeling them "absent" (docs/test/plan_absences_config.md) — so this check
+# confirms the opposite: every entry in config.yaml's afwezigheden list is
+# genuinely missing from segment_summary.csv. An entry still present usually
+# means segment_summary.csv is stale (re-run pipeline/02_label_segments.R
+# after editing config.yaml). Typo detection (an absence entry matching no
+# recorded day at all) already happens in 02 itself, at drop-time.
+abs_entries <- cfg$afwezigheden
+if (is.null(abs_entries) || length(abs_entries) == 0) {
+  pass("No absences registered in config.yaml")
 } else {
-  abs_path <- file.path(cfg$paths$data_processed, "..", "..", "data", "absences.csv")
-  if (file.exists(abs_path)) {
-    abs_dt <- tryCatch(fread(abs_path), error = function(e) NULL)
-    if (!is.null(abs_dt) && nrow(abs_dt) > 0)
-      warn("absences.csv has rows but no 'absent' segments found — re-run step 02")
-    else
-      pass("No absences registered (absences.csv is empty)")
+  abs_dt <- data.table(
+    pupil_id = vapply(abs_entries, function(e)
+      sub("\\.[^.]+$", "", basename(as.character(e$pupil_id))), character(1)),
+    date     = vapply(abs_entries, function(e) as.character(e$date), character(1))
+  )
+  seg_keys <- paste(
+    sub("\\.[^.]+$", "", basename(as.character(seg$ID))), as.character(seg$date)
+  )
+  still_present <- abs_dt[paste(pupil_id, date) %in% seg_keys]
+  if (nrow(still_present) > 0) {
+    fail(sprintf(
+      "%d afwezigheden entr%s still present in segment_summary.csv — re-run pipeline/02_label_segments.R: %s",
+      nrow(still_present), if (nrow(still_present) == 1) "y" else "ies",
+      paste(paste(still_present$pupil_id, still_present$date), collapse = "; ")
+    ))
   } else {
-    pass("No absences registered")
+    pass(sprintf("%d afwezigheden entries (config.yaml) confirmed absent from segment_summary.csv",
+                 nrow(abs_dt)))
   }
 }
 

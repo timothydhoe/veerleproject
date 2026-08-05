@@ -6,8 +6,8 @@
 # and GGIR's own per-epoch wear/non-wear flag (meta/ms2.out/*.RData).
 #
 # Consumed by 02b_label_epochs.R. Depends on utils_ggir.R (hm_to_h) and
-# utils_schedule.R (get_schedule, resolve_schedule_key, ABSENCE_OVERLAY_SEGMENTS)
-# — callers must source both before this file.
+# utils_schedule.R (get_schedule, resolve_schedule_key) — callers must
+# source both before this file.
 # ─────────────────────────────────────────────────────────────────────────────
 
 if (!exists("%||%")) {
@@ -224,9 +224,21 @@ build_labeled_epochs_for_participant <- function(epoch_csv_path, ms2out_path,
     context[idx] <- sched$segment[seg_idx]
   }
 
-  # ── Absence overlay (same segments as 02_label_segments.R: school-time only) ──
+  # ── Absence overlay (whole day, same as 02_label_segments.R) ───────────────
+  # Full-day exclusion (docs/test/plan_absences_config.md §4) — relabels
+  # EVERY context on an absent date, not just school-hours segments, so
+  # before_school/after_school epochs on an absent day no longer leak into
+  # real-context bout columns either. Still only touches daytime context
+  # labels — sleep-related epoch data is a separate part of GGIR's output
+  # and is never touched.
+  #
+  # abs_keys is built from get_absence_entries()'s extension-stripped
+  # pupil_id (e.g. "1901"), but `id` here is the raw participant ID as GGIR
+  # records it (e.g. "1901.csv") — same mismatch Step 3 found and fixed in
+  # 02_label_segments.R. strip_pupil_id() (utils_schedule.R) centralizes
+  # this so it can't silently drift out of sync between call sites again.
   if (length(abs_keys) > 0) {
-    is_absent <- paste(id, date_val) %in% abs_keys & context %in% ABSENCE_OVERLAY_SEGMENTS
+    is_absent <- paste(strip_pupil_id(id), date_val) %in% abs_keys
     context[is_absent] <- "absent"
   }
 
