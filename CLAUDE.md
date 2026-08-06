@@ -91,7 +91,7 @@ r/
 
   shiny/
     global.R              # Load config + all processed data + shared helpers
-    ui.R                  # Dashboard layout (bslib, 7 tabs)
+    ui.R                  # Dashboard layout (bslib, 6 tabs)
     server.R              # Reactive logic
 
 config.yaml               # Researcher-facing config — all tunable parameters here
@@ -138,7 +138,7 @@ to_be_built/              # Backlog of unbuilt research features (RQ4, RQ5) — 
 | **02b** (opt-in) | `02b_label_epochs.R` | Only runs when `bouts.enable_epoch_labeling: true`. Labels every GGIR epoch (5s resolution) with school context, wear/non-wear, and intensity, for context-aware bout detection (`utils_bouts.R`). Expensive at full study scale (~96M rows for 400 participants) — off by default. | `labeled_epochs.csv` |
 | **03** | `03_build_summaries.R` | Join all outputs into analysis-ready wide table; compute validity flags per participant; if `labeled_epochs.csv` exists, also computes context-aware sedentary bout columns (`bouts_30min_*`) | `analysis_ready.csv`, `validity_summary.csv` |
 | **QC 03** | `qc/qc_03_summaries.R` | Verify inclusion/exclusion counts, check MVPA distributions, confirm cut-points match config | Console report |
-| **Shiny** | `shiny/` | Dashboard: Overzicht, Deelnemers, Schooldag, Slaap, Meting 1 vs 2, Export, Instellingen (7 tabs) | Interactive app |
+| **Shiny** | `shiny/` | Dashboard: Overzicht, Deelnemers, Schooldag, Slaap, Meting 1 vs 2, Export (6 tabs) | Interactive app |
 
 Run the full pipeline at once with `r/pipeline/run_all.R` (source in RStudio or
 `Rscript --vanilla r/pipeline/run_all.R` in terminal).
@@ -181,7 +181,7 @@ pre-converted CSV rather than raw `.bin`.
 | **GGIR** | R package for the canonical 6-part accelerometer pipeline. Parts 1–5 are in scope. |
 | **Meting** | Dutch for "measurement". Meting 1 and meting 2 are the two measurement waves per school. |
 | **Segment** | School day context label: `before_school`, `in_class`, `recess`, `lunch`, `after_school`, `weekend`. |
-| **Afwezigheid (absence)** | A `(pupil_id, date)` entry in `config.yaml`'s `afwezigheden` list, entered by the researcher directly (the dashboard's Instellingen tab shows this list read-only, per `docs/test/plan_absences_config.md`). Drops that day entirely from `segment_summary.csv` — all daytime segments, whole-day only, no partial/`part_of_day` granularity. Deliberately **does not** affect wear-validity (`n_valid_days`, `mean_wear_h`, `has_weekend`) or sleep — "was the device worn" and "was this a normal day of movement" are treated as separate questions. |
+| **Afwezigheid (absence)** | A `(pupil_id, date)` entry in `config.yaml`'s `afwezigheden` list, entered by the researcher directly (per `docs/test/plan_absences_config.md`) — not surfaced anywhere in the dashboard (the Instellingen tab that used to show this list read-only was removed). Drops that day entirely from `segment_summary.csv` — all daytime segments, whole-day only, no partial/`part_of_day` granularity. Deliberately **does not** affect wear-validity (`n_valid_days`, `mean_wear_h`, `has_weekend`) or sleep — "was the device worn" and "was this a normal day of movement" are treated as separate questions. |
 
 ## Data Format
 

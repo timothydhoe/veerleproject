@@ -4,7 +4,9 @@
 # ─────────────────────────────────────────────────────────────────────────────
 
 # ── Custom CSS ────────────────────────────────────────────────────────────────
-app_css <- tags$head(tags$style(HTML("
+app_css <- tags$head(
+  tags$link(rel = "icon", type = "image/svg+xml", href = "logo-ugent-en.svg"),
+  tags$style(HTML("
 
   /* ── UGent corporate typeface (styleguide.ugent.be/basisprincipes/typografie.html) ── */
   @font-face { font-family: 'PannoText'; font-weight: 300; font-style: normal; src: url('font/PannoText-Light.woff') format('woff'); }
@@ -95,7 +97,7 @@ app_css <- tags$head(tags$style(HTML("
 
   /* ── Dropdown arrows: browser/Bootstrap default is a dark-gray chevron —
      replace with a UGent-blue one everywhere a native <select> is used
-     (Instellingen forms, DataTables length picker). ── */
+     (sidebar forms, DataTables length picker). ── */
   .form-select {
     background-image: url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='none' stroke='%231E64C8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round' d='M2 5l6 6 6-6'/%3E%3C/svg%3E\") !important;
     background-repeat: no-repeat !important;
@@ -428,6 +430,16 @@ app_css <- tags$head(tags$style(HTML("
   .accordion-item { border: 1px solid #dce6f5 !important; border-radius: 8px !important; }
   .accordion-button { font-size: 0.88rem; font-weight: 600; }
   .accordion-button:not(.collapsed) { background-color: #f0f5fc !important; color: #202020 !important; }
+
+  /* ── Footer ── */
+  .app-footer {
+    background: #1E64C8;
+    color: #ffffff;
+    text-align: center;
+    padding: 6px 0;
+    font-size: 0.72rem;
+    letter-spacing: 0.02em;
+  }
 ")))
 
 # ── UI ────────────────────────────────────────────────────────────────────────
@@ -500,12 +512,6 @@ ui <- tagList(
       modExportUI("export")
     ),
 
-    nav_panel(
-      "Instellingen",
-      icon = icon("sliders"),
-      modSettingsUI("settings")
-    ),
-
     # ── Global persistent filters (right side of navbar) ──────────────────────
     nav_spacer(),
     nav_item(
@@ -521,5 +527,6 @@ ui <- tagList(
         )
       )
     )
-  )
+  ),
+  tags$footer(class = "app-footer", "Universiteit Gent")
 )

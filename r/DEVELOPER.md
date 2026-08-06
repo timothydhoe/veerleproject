@@ -124,7 +124,7 @@ without opening RStudio.
 | `qc/qc_02_segments.R` | Done | Verifies segment coverage, fallback schools, data-schedule match |
 | `qc/qc_03_summaries.R` | Done | Verifies inclusion counts, MVPA/sleep distributions, cut-points |
 | `shiny/global.R` | Done | Loads config, all processed data, profile system, shared helpers and theme |
-| `shiny/ui.R` | Done | 7 tabs: Overzicht, Deelnemers, Schooldag, Slaap, Vergelijking, Export, Instellingen |
+| `shiny/ui.R` | Done | 6 tabs: Overzicht, Deelnemers, Schooldag, Slaap, Vergelijking, Export |
 | `shiny/server.R` | Done | All tabs implemented: reactive filters, plots, downloads, report generation |
 | Hooks | Done | GDPR guard, config guard, R syntax check — all active |
 | Commands | Done | 6 slash commands available |
@@ -315,10 +315,10 @@ tests in `test_utils_schedule.R` and the plan doc's "Decisions locked in".
   belongs to (an absence entry itself doesn't record that), since an absence date
   could in principle fall in either measurement wave for the same pupil.
 
-**Dashboard (`mod_settings.R`):** the Instellingen → Afwezigheden section is
-fully read-only — no add form, no delete button. It reads `shared$cfg$afwezigheden`
-directly (already loaded in memory by `global.R`) and renders a 2-column table
-(Leerling, Datum). To change absences, edit `config.yaml` and re-run the pipeline.
+**Dashboard:** no display in the Shiny app — the Instellingen tab (which used to show a
+read-only `shared$cfg$afwezigheden` table, `mod_settings.R`) was removed. To view the
+current list, read `config.yaml` directly; to change absences, edit `config.yaml` and
+re-run the pipeline.
 
 **Known, unfixable limitation:** `part5_personsummary_*.csv` (source of
 `mvpa_min_day_avg`, `sb_min_day`, `lpa_min_day`, `bouts_30min_day`, `bouts_10min_day`)
@@ -461,7 +461,7 @@ sessions under a multi-worker server (e.g. shiny-server spawning several R proce
 could interleave unexpectedly. None of this needs solving now — flagging so a future
 server-deployment discussion starts from an accurate picture.
 
-### ui.R — 7 tabs
+### ui.R — 6 tabs
 
 | Tab | Purpose |
 |-----|---------|
@@ -471,7 +471,12 @@ server-deployment discussion starts from an accurate picture.
 | **Slaap** | Sleep KPIs, duration/efficiency violin, Bland-Altman M1 vs M2 agreement |
 | **Vergelijking** | Longitudinal slopegraph + Wilcoxon stats; correlation scatter + school/participant comparison tables |
 | **Export** | CSV download buttons for all processed outputs |
-| **Instellingen** | Profile manager; validity, cut-point, and bout-threshold overrides |
+
+An **Instellingen** tab (profile manager; validity, cut-point, and bout-threshold
+overrides) previously existed here and was removed — it wasn't going to be used, and
+its profile-management logic wasn't wired to anything else. Profiles are still managed
+by editing/adding YAML files in `r/profiles/` directly, or `config.yaml`'s own
+`active:` key — see "Absence registry" above for the analogous absence-viewing removal.
 
 Global navbar filters (school, meting) apply across all tabs; meting filter is hidden
 on the Vergelijking tab.
@@ -515,7 +520,6 @@ correct approach for a future async pipeline trigger would be `ExtendedTask` (Sh
 | `modules/mod_sleep.R` | `"sleep"` | Sleep duration/efficiency KPIs, violin plot, Bland-Altman M1 vs M2 | nothing |
 | `modules/mod_comparison.R` | `"comparison"` | Meting 1 vs 2 slopegraph, delta plot, Wilcoxon stats, correlation scatter | nothing |
 | `modules/mod_export.R` | `"export"` | 11 download handlers: GGIR parts 2 & 5, segment summary, analysis-ready, validity, filtered variants, manifests | nothing |
-| `modules/mod_settings.R` | `"settings"` | Profile manager, validity/cut-point/bout overrides; absence registry is read-only display only (edited via `config.yaml`, not the dashboard — see "Absence registry" below) | `reactiveValues(profile_activated)` |
 
 ### Shared list (server.R → modules)
 
@@ -528,7 +532,6 @@ All module server functions receive a `shared` list. Contents:
 | `shared$global_school_val()` | reactive | Current school filter value (`"all"` or a school label) |
 | `shared$safe_meting_val()` | reactive | Current meting filter; defaults to `"all"` on Vergelijking tab |
 | `shared$cfg` | list | Parsed `config.yaml` (static, loaded at startup) |
-| `shared$cfg_path` | character | Resolved path to `config.yaml` (used by mod_settings for profile activation) |
 | `shared$segment_summary` | data.table | From `02_label_segments.R` |
 | `shared$analysis_ready` | data.table | From `03_build_summaries.R` |
 | `shared$validity_summary` | data.table | From `03_build_summaries.R` |
@@ -705,8 +708,9 @@ dev:
 
 `profiles/*.yaml` files let you override validity and cut-point parameters without
 re-running the pipeline. The active profile is loaded by `shiny/global.R` at startup.
-Veerle can switch profiles in the Instellingen tab and save modified versions without
-touching `config.yaml` or any `.R` file.
+Switch profiles by editing `config.yaml`'s `profiles.active` key (or adding/editing a
+YAML file in `profiles/`) — there is no dashboard UI for this (the Instellingen tab
+that provided one was removed, see the "ui.R — 6 tabs" section above).
 
 ### Activity cut-points
 

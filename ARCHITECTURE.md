@@ -39,7 +39,7 @@ All pipeline state is held in files on disk. No R environment persists between p
 | Validity flags | `data/processed/summaries/validity_summary.csv` | `03_build_summaries.R` | `global.R` |
 | Absence registry | `config.yaml`'s `afwezigheden` list | Researcher (edits `config.yaml` directly) | `02_label_segments.R`, `02b_label_epochs.R`, `03_build_summaries.R` |
 | Absence registry mirror (read-only) | `data/absences.csv` | `02_label_segments.R` (regenerated every run) | Nobody — researcher's own ad-hoc use only, never read back |
-| Active config profile | `r/profiles/<name>.yaml` | `mod_settings.R` | `global.R` |
+| Active config profile | `r/profiles/<name>.yaml` | Researcher (edits/adds YAML files directly — no dashboard UI) | `global.R` |
 | Pipeline run log | `logs/pipeline_runs.csv` | `run_all.R` | `mod_export.R` (download) |
 | Input manifest | `logs/input_manifest.csv` | `run_all.R` | `mod_export.R` (download) |
 

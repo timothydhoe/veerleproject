@@ -24,6 +24,7 @@ modSchooldayUI <- function(id) {
     layout_sidebar(
       sidebar = sidebar(
         width = 230,
+        open  = list(desktop = "open", mobile = "always-above"),
         radioButtons(ns("seg_view"), "Hoofdgrafiek",
                      choices  = c("Één zone" = "single", "Alle zones" = "budget"),
                      selected = "single"),
@@ -70,7 +71,7 @@ modSchooldayUI <- function(id) {
         card_body(
           class = "p-3",
           p(class = "text-muted small mb-2",
-            "Gem. MVPA per dag per school · lijn = gem., band = 95% BI"),
+            "Gem. MVPA per dag per school · lijn = gem., band = 95% BI · toont steeds alle scholen (schoolfilter hierboven niet toegepast)"),
           plotOutput(ns("plot_weekday"), height = "320px")
         ),
         card_footer(
@@ -107,10 +108,15 @@ modSchooldayUI <- function(id) {
 mod_schoolday_server <- function(id, shared) {
   moduleServer(id, function(input, output, session) {
 
+    # School-day-only segments — this whole tab is scoped to the school day,
+    # so weekend/absence rows (also present in segment_summary) are excluded
+    # everywhere, including the detail table.
+    school_day_segs <- c("before_school","in_class","recess","lunch","after_school")
+
     # ── Filtered segment data ─────────────────────────────────────────────────
     seg_filtered <- reactive({
       if (is.null(segment_summary)) return(NULL)
-      shared$apply_filters(copy(segment_summary))
+      shared$apply_filters(copy(segment_summary[segment %in% school_day_segs]))
     })
 
     # ── Segment activity bar chart ────────────────────────────────────────────
@@ -134,7 +140,6 @@ mod_schoolday_server <- function(id, shared) {
       if (is.null(metric_col_name) || is.na(metric_col_name))
         return(no_data_plot("Activiteitskolom niet gevonden — voer de volledige pipeline opnieuw uit."))
 
-      school_day_segs <- c("before_school","in_class","recess","lunch","after_school")
       agg <- dt[segment %in% school_day_segs, {
         n    <- .N
         mu   <- mean(get(metric_col_name), na.rm = TRUE)
@@ -173,7 +178,6 @@ mod_schoolday_server <- function(id, shared) {
     # ── Activity budget stacked chart ─────────────────────────────────────────
     budget_plot <- reactive({
       if (is.null(segment_summary)) return(no_data_plot("Geen segmentdata."))
-      school_day_segs <- c("before_school","in_class","recess","lunch","after_school")
       dt <- shared$apply_filters(copy(segment_summary[segment %in% school_day_segs]))
       if (nrow(dt) == 0) return(no_data_plot())
 
@@ -383,10 +387,12 @@ mod_schoolday_server <- function(id, shared) {
     # ── Segment detail table ──────────────────────────────────────────────────
     output$table_segment_detail <- renderDT({
       dt <- seg_filtered()
-      if (is.null(dt) || nrow(dt) == 0) return(datatable(data.frame(Bericht = "Geen data")))
+      if (is.null(dt) || nrow(dt) == 0)
+        return(datatable(data.frame(Bericht = "Geen data"),
+                          rownames = FALSE, options = list(dom = "t", language = .dt_lang_nl)))
       intensity_cols <- grep("^(dur_IN|dur_LIG|dur_MOD|dur_VIG)", names(dt),
                              value = TRUE, ignore.case = TRUE)
-      agg <- dt[, c(list(n_dagen = .N),
+      agg <- dt[, c(list(`Aantal dagen` = .N),
                     lapply(.SD, function(x) round(mean(x, na.rm = TRUE), 1))),
                  by = .(School = school_label, Segment = segment_label,
                         Meting = METINGEN_LABELS[meting]), .SDcols = intensity_cols]
@@ -399,7 +405,8 @@ mod_schoolday_server <- function(id, shared) {
       for (raw in intersect(names(col_rename), names(agg)))
         setnames(agg, raw, col_rename[raw])
       datatable(agg, rownames = FALSE,
-                options = list(pageLength = 20, dom = "frtip", scrollX = TRUE),
+                options = list(pageLength = 20, dom = "frtip", scrollX = TRUE,
+                               language = .dt_lang_nl),
                 filter = "top")
     })
   })

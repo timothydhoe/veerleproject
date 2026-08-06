@@ -148,6 +148,4 @@ server <- function(input, output, session) {
     global_school_val = reactive(input$global_school),
     safe_meting_val   = reactive(safe_meting())
   ))
-
-  settings_out <- mod_settings_server("settings", shared = list(cfg = cfg))
 }

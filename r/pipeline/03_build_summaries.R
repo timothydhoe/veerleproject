@@ -153,9 +153,9 @@ participant_validity[,
 # Exclusion reason (first failing criterion wins)
 participant_validity[, exclusion_reason := fcase(
   n_valid_days < min_days,
-    sprintf("Only %d valid days (need %d)", n_valid_days, min_days),
+    sprintf("Slechts %d geldige dagen (nodig: %d)", n_valid_days, min_days),
   need_wknd & !has_weekend,
-    "No valid weekend day",
+    "Geen geldige weekenddag",
   default = NA_character_
 )]
 

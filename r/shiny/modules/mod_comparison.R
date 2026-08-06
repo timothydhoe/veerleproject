@@ -19,18 +19,8 @@
 #   about unknown aesthetics; we accept this trade-off.
 # ─────────────────────────────────────────────────────────────────────────────
 
-# DT falls back to English UI strings ("No data available in table", etc.)
-# unless a language list is supplied — the rest of the dashboard is Dutch.
-.dt_lang_nl <- list(
-  search       = "Zoeken:",
-  lengthMenu   = "Toon _MENU_ rijen",
-  info         = "_START_ tot _END_ van _TOTAL_ rijen",
-  infoEmpty    = "Geen rijen om te tonen",
-  infoFiltered = "(gefilterd uit _MAX_ rijen)",
-  zeroRecords  = "Geen resultaten gevonden",
-  emptyTable   = "Geen data beschikbaar",
-  paginate     = list(previous = "Vorige", `next` = "Volgende")
-)
+# .dt_lang_nl (Dutch DT language list) now lives in global.R so other
+# modules can reuse it — see global.R's UI helper functions section.
 
 #' Comparison tab UI
 modComparisonUI <- function(id) {
@@ -46,6 +36,7 @@ modComparisonUI <- function(id) {
         layout_sidebar(
           sidebar = sidebar(
             width = 230,
+            open  = list(desktop = "open", mobile = "always-above"),
             selectInput(ns("comp_metric"), "Maat",
                         choices = c(
                           "MVPA (min/dag)"             = "mvpa",
@@ -109,6 +100,7 @@ modComparisonUI <- function(id) {
         layout_sidebar(
           sidebar = sidebar(
             width = 230,
+            open  = list(desktop = "open", mobile = "always-above"),
             selectInput(ns("comp_corr_x"), "X-as",
                         choices = c(
                           "MVPA (min/dag)"        = "mvpa",
@@ -175,7 +167,8 @@ mod_comparison_server <- function(id, shared) {
     # ── Slopegraph ────────────────────────────────────────────────────────────
     slope_plot <- reactive({
       dt <- comp_data()
-      if (is.null(dt) || nrow(dt) == 0) return(no_data_plot())
+      if (is.null(dt) || nrow(dt) == 0)
+        return(no_data_plot("Geen geldige deelnemers voor huidige filter."))
 
       mc <- metric_col_pure(input$comp_metric, dt, shared$mvpa_col())
       if (is.null(mc) || !mc %in% names(dt))
@@ -233,9 +226,11 @@ mod_comparison_server <- function(id, shared) {
     # ── Delta chart ───────────────────────────────────────────────────────────
     delta_plot <- reactive({
       dt <- comp_data()
-      if (is.null(dt) || nrow(dt) == 0) return(no_data_plot())
+      if (is.null(dt) || nrow(dt) == 0)
+        return(no_data_plot("Geen geldige deelnemers voor huidige filter."))
       mc <- metric_col_pure(input$comp_metric, dt, shared$mvpa_col())
-      if (is.null(mc) || !mc %in% names(dt)) return(no_data_plot())
+      if (is.null(mc) || !mc %in% names(dt))
+        return(no_data_plot("Kolom niet beschikbaar voor geselecteerde maat."))
 
       wide <- dcast(dt[!is.na(get(mc))], ID + school_label ~ meting, value.var = mc)
       if (!all(c("meting_1","meting_2") %in% names(wide))) return(no_data_plot())
@@ -320,14 +315,16 @@ mod_comparison_server <- function(id, shared) {
     # ── Wilcoxon stats table ──────────────────────────────────────────────────
     output$table_stats <- renderDT({
       dt <- comp_data()
-      if (is.null(dt)) return(datatable(data.frame(Bericht = "Geen data"), options = list(language = .dt_lang_nl)))
+      empty_dt_opts <- list(rownames = FALSE, options = list(dom = "t", language = .dt_lang_nl))
+      if (is.null(dt))
+        return(do.call(datatable, c(list(data.frame(Bericht = "Geen data")), empty_dt_opts)))
       mc <- metric_col_pure(input$comp_metric, dt, shared$mvpa_col())
       if (is.null(mc) || !mc %in% names(dt))
-        return(datatable(data.frame(Bericht = "Kolom niet gevonden."), options = list(language = .dt_lang_nl)))
+        return(do.call(datatable, c(list(data.frame(Bericht = "Kolom niet gevonden.")), empty_dt_opts)))
 
       wide <- dcast(dt[!is.na(get(mc))], ID + school_label ~ meting, value.var = mc)
       if (!all(c("meting_1","meting_2") %in% names(wide)))
-        return(datatable(data.frame(Bericht = "Onvoldoende data."), options = list(language = .dt_lang_nl)))
+        return(do.call(datatable, c(list(data.frame(Bericht = "Onvoldoende data.")), empty_dt_opts)))
       wide <- wide[!is.na(meting_1) & !is.na(meting_2)]
 
       results <- wide[, {
@@ -374,7 +371,9 @@ mod_comparison_server <- function(id, shared) {
     # ── School comparison summary table ───────────────────────────────────────
     output$table_school_comparison <- renderDT({
       mc <- shared$mvpa_col()
-      if (is.null(analysis_ready) || is.null(mc)) return(datatable(data.frame(Bericht = "Geen data"), options = list(language = .dt_lang_nl)))
+      if (is.null(analysis_ready) || is.null(mc))
+        return(datatable(data.frame(Bericht = "Geen data"),
+                          rownames = FALSE, options = list(dom = "t", language = .dt_lang_nl)))
 
       dt <- copy(analysis_ready[meets_sedentary_criteria == TRUE])
       dt[, school_label := SCHOOL_LABELS[school]]
@@ -424,7 +423,8 @@ mod_comparison_server <- function(id, shared) {
     output$table_participant_comp <- renderDT({
       dt <- participant_comp_data()
       if (is.null(dt) || nrow(dt) == 0)
-        return(datatable(data.frame(Bericht = "Geen data beschikbaar."), options = list(language = .dt_lang_nl)))
+        return(datatable(data.frame(Bericht = "Geen data beschikbaar."),
+                          rownames = FALSE, options = list(dom = "t", language = .dt_lang_nl)))
       delta_col <- "Δ (M2−M1)"
       datatable(dt, rownames = FALSE, filter = "top",
                 options = list(pageLength = 20, dom = "frtip", scrollX = TRUE, language = .dt_lang_nl)) |>

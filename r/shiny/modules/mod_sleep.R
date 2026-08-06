@@ -38,9 +38,13 @@ modSleepUI <- function(id) {
         ns("sleep_pct_short"))
     ),
 
+    p(class = "text-muted small mb-2",
+      "KPI's tonen steeds de volledige cohort; grafieken volgen de filter hierboven."),
+
     layout_sidebar(
       sidebar = sidebar(
         width = 230,
+        open  = list(desktop = "open", mobile = "always-above"),
         selectInput(ns("sleep_metric"), "Maat",
                     choices = c(
                       "Slaapduur (h/nacht)"        = "duration",
@@ -108,6 +112,8 @@ mod_sleep_server <- function(id, shared) {
         "Analysedata niet geladen — voer stap 03 opnieuw uit."
       else if (!"sleep_duration_h" %in% names(analysis_ready))
         "Slaapkolommen ontbreken — voer stap 03 opnieuw uit."
+      else if (is.null(sleep_data()) || nrow(sleep_data()) == 0)
+        "Geen geldige deelnemers voor huidige filter."
       else
         NULL
     })

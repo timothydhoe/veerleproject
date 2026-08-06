@@ -22,7 +22,15 @@
       "Bash(git add *)",
       "Bash(git commit -m 'fix\\(shiny\\): Phase 2 UX fixes, fwrite guards, locale fix, module sources moved *)",
       "Bash(Rscript *)",
-      "mcp__playwright__browser_find"
+      "mcp__playwright__browser_find",
+      "mcp__playwright__browser_resize",
+      "Bash(pkill -f \"shiny::runApp\")",
+      "Bash(lsof -ti:7488)",
+      "Bash(xargs kill -9)",
+      "Bash(git *)",
+      "Bash(rm -rf \".playwright-mcp\")",
+      "Bash(rm -f \"docs/Info metingen.docx\")",
+      "Bash(rm -f \"plan_tracker.md\")"
     ]
   },
   "enableAllProjectMcpServers": true,

@@ -222,33 +222,31 @@ Downloadknoppen voor alle verwerkte uitvoerbestanden:
 - **Input manifest** — overzicht van verwerkte invoerbestanden (voor reproduceerbaarheid)
 - **Pipeline-run log** — tijdstempel, R-versie en GGIR-versie per run
 
-### Instellingen
-Beheer configuratieprofielen en pas parameters aan zonder `config.yaml` te bewerken. Drie secties:
-
-**Profielbeheer** — laad, sla op, en activeer benoemde parametersets (zie sectie 5).
-
-**Geldigheidsparameters** — pas aan wanneer een dag/nacht/meting als geldig telt:
-- Min. draaguren per dag (standaard: 16)
-- Min. geldige dagen per meting (standaard: 3)
-- Weekenddag vereist (aan/uit)
-- Min. geldige nachten voor slaapanalyse (standaard: 5)
-- Min. % geldige slaap per nacht (standaard: 50%)
-
-**Activiteitsdrempels (ENMO, mg)** — ENMO-grenswaarden voor SB/LPA/MPA/VPA en boutinstellingen. Pas alleen aan als je de wetenschappelijke referentie hebt gecontroleerd (standaard: Hildebrand et al. 2014/2017).
-
 ---
 
-## 5. Parameters aanpassen via Instellingen
+## 5. Parameters aanpassen
 
-Het tabblad **Instellingen** laat je de validiteitsdrempels, ENMO-grenswaarden en boutduur aanpassen zonder `config.yaml` handmatig te bewerken.
+Er is geen tabblad in het dashboard voor het aanpassen van validiteitsdrempels,
+ENMO-grenswaarden of boutduur — dit doe je rechtstreeks in een bestand.
 
 **Werkwijze:**
-1. Pas de velden aan naar wens
-2. Klik **Opslaan als…** en geef het een naam (bijv. `gevoeligheidsanalyse_1`)
-3. Selecteer het profiel in het dropdown-menu en klik **Activeer**
-4. Herstart de pipeline (`run_all.R`) om de nieuwe instellingen toe te passen
+1. Maak een kopie van `config.yaml` (of een bestaand bestand in `r/profiles/`) aan als
+   nieuw YAML-bestand in `r/profiles/`, bijv. `gevoeligheidsanalyse_1.yaml`, en pas
+   daarin de gewenste `validity`/`ggir.cut_points_mg`/`bouts`-waarden aan. Zie
+   `config.yaml` zelf voor de volledige lijst met parameters en hun betekenis:
+   - Min. draaguren per dag (`validity.min_wear_hours_per_day`, standaard: 16)
+   - Min. geldige dagen per meting (`validity.min_valid_days`, standaard: 3)
+   - Weekenddag vereist (`validity.require_weekend_day`, aan/uit)
+   - Min. geldige nachten voor slaapanalyse (`validity.min_valid_nights_sleep`, standaard: 5)
+   - Min. % geldige slaap per nacht (`validity.min_pct_night_valid`, standaard: 50%)
+   - ENMO-grenswaarden SB/LPA/MPA/VPA (`ggir.cut_points_mg`) — pas alleen aan als je de
+     wetenschappelijke referentie hebt gecontroleerd (standaard: Hildebrand et al. 2014/2017)
+2. Activeer het profiel door `config.yaml`'s `profiles.active` waarde op de bestandsnaam
+   (zonder `.yaml`) te zetten, bijv. `active: "gevoeligheidsanalyse_1"`
+3. Herstart de pipeline (`run_all.R`) om de nieuwe instellingen toe te passen
 
-Profielen worden opgeslagen in `r/profiles/`. Het actieve profiel wordt bij de volgende start van het dashboard automatisch geladen.
+Profielen staan in `r/profiles/`. Het actieve profiel wordt bij de volgende start van
+het dashboard en de pipeline automatisch geladen.
 
 ---
 
@@ -299,9 +297,9 @@ speeltijd, middagpauze, na school) — er is geen aparte optie meer voor een hal
 
 ### Huidige lijst bekijken
 
-Het tabblad **Instellingen** → sectie **Afwezigheden** toont de huidige lijst uit
-`config.yaml`, ter info. Je kunt hier niets toevoegen of verwijderen — dat doe je in
-`config.yaml` zelf.
+Er is geen overzicht van de afwezigheidslijst in het dashboard — open `config.yaml` en
+zoek de sectie **Afwezigheden** om de huidige lijst te bekijken. Toevoegen of
+verwijderen doe je ook daar, rechtstreeks in `config.yaml`.
 
 Bij elke pipeline-run (stap 2) wordt ook automatisch een alleen-lezen kopie
 weggeschreven naar `data/absences.csv`, puur voor je eigen gebruik buiten de app

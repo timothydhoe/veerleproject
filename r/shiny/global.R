@@ -45,10 +45,11 @@ cfg <- read_config_yaml("../../config.yaml")
 # Load the active configuration profile and merge it over the base config
 # *before* validating — validation must check the values actually in effect,
 # not the pre-merge base (otherwise an invalid active profile would ship to
-# the dashboard completely unchecked). Profiles live in r/profiles/ and are
-# managed via Tab 7 "Instellingen". Shared with the pipeline scripts via
-# apply_active_profile() in validate_config.R, so the dashboard and real runs
-# agree on effective values.
+# the dashboard completely unchecked). Profiles live in r/profiles/ as YAML
+# files and are managed by editing/adding files there directly (or config.yaml's
+# own `active:` key) — no dashboard UI for this. Shared with the pipeline
+# scripts via apply_active_profile() in validate_config.R, so the dashboard
+# and real runs agree on effective values.
 profiles_dir <- resolve_cfg_path(cfg$profiles$directory %||% "profiles/")
 cfg <- apply_active_profile(cfg, profiles_dir)
 
@@ -278,6 +279,34 @@ kpi_strip_card <- function(icon_nm, title_ui, value_id) {
   )
 }
 
+# DT falls back to English UI strings ("No data available in table", etc.)
+# unless a language list is supplied — the rest of the dashboard is Dutch.
+.dt_lang_nl <- list(
+  search       = "Zoeken:",
+  lengthMenu   = "Toon _MENU_ rijen",
+  info         = "_START_ tot _END_ van _TOTAL_ rijen",
+  infoEmpty    = "Geen rijen om te tonen",
+  infoFiltered = "(gefilterd uit _MAX_ rijen)",
+  zeroRecords  = "Geen resultaten gevonden",
+  emptyTable   = "Geen data beschikbaar",
+  paginate     = list(previous = "Vorige", `next` = "Volgende")
+)
+
+kpi_nav_card <- function(target_tab, ...) {
+  js_click <- sprintf("Shiny.setInputValue('kpi_click','%s',{priority:'event'})", target_tab)
+  tags$div(
+    class     = "kpi-nav-card",
+    tabindex  = "0",
+    role      = "button",
+    onclick   = js_click,
+    onkeydown = sprintf(
+      "if(event.key==='Enter'||event.key===' '){event.preventDefault();%s;}",
+      js_click
+    ),
+    ...
+  )
+}
+
 fallback_banner <- function() {
   if (length(FALLBACK_SCHOOLS) == 0) return(NULL)
   school_names <- paste(SCHOOL_LABELS[FALLBACK_SCHOOLS], collapse = ", ")
@@ -303,4 +332,3 @@ source("modules/mod_schoolday.R",     local = FALSE)
 source("modules/mod_sleep.R",         local = FALSE)
 source("modules/mod_comparison.R",    local = FALSE)
 source("modules/mod_export.R",        local = FALSE)
-source("modules/mod_settings.R",      local = FALSE)

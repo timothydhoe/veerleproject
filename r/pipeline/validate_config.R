@@ -49,7 +49,7 @@ read_config_yaml <- function(path) {
 #' Merge the active configuration profile over cfg
 #'
 #' Profiles let a researcher save named parameter presets (validity, bouts,
-#' cut-points) via the Shiny "Instellingen" tab and apply them without
+#' cut-points) as YAML files in the profiles directory and apply them without
 #' editing config.yaml directly. Only overrides keys the profile actually
 #' specifies (via modifyList) — config.yaml's own values remain the base for
 #' anything a profile omits, so partial profiles (e.g. saved profiles that

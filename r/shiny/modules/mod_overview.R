@@ -29,37 +29,35 @@ modOverviewUI <- function(id) {
       fill = FALSE,
       col_widths = c(2, 2, 3, 2, 3),
       gap = "0.75rem",
-      tags$div(class = "kpi-nav-card",
-        onclick = "Shiny.setInputValue('kpi_click','Deelnemers',{priority:'event'})",
+      kpi_nav_card("Deelnemers",
         kpi_strip_card("users", "Deelnemers", ns("n_participants"))
       ),
-      tags$div(class = "kpi-nav-card",
-        onclick = "Shiny.setInputValue('kpi_click','Deelnemers',{priority:'event'})",
+      kpi_nav_card("Deelnemers",
         kpi_strip_card("circle-check",
           tip("Geldig voor analyse",
               "Voldoet aan draagduurcriteria (minimaal geldige dagen incl. 1 weekend)"),
           ns("pct_valid"))
       ),
-      tags$div(class = "kpi-nav-card",
-        onclick = "Shiny.setInputValue('kpi_click','Schooldag',{priority:'event'})",
+      kpi_nav_card("Schooldag",
         kpi_strip_card("person-running",
           tip("Gem. MVPA",
               "Matig-tot-intensieve beweging per dag · enkel geldige deelnemers"),
           ns("avg_mvpa"))
       ),
-      tags$div(class = "kpi-nav-card",
-        onclick = "Shiny.setInputValue('kpi_click','Vergelijking',{priority:'event'})",
+      kpi_nav_card("Vergelijking",
         kpi_strip_card("award",
           tip("WHO-richtlijn gehaald", "% deelnemers met ≥60 min MVPA/dag"),
           ns("pct_who"))
       ),
-      tags$div(class = "kpi-nav-card",
-        onclick = "Shiny.setInputValue('kpi_click','Slaap',{priority:'event'})",
+      kpi_nav_card("Slaap",
         kpi_strip_card("moon",
           tip("Gem. slaap", "Geschatte slaapduur per nacht (SPT)"),
           ns("avg_sleep"))
       )
     ),
+
+    p(class = "text-muted small mb-2",
+      "KPI's tonen steeds de volledige cohort; grafiek en tabel volgen de filter hierboven."),
 
     layout_columns(
       col_widths = c(8, 4),
@@ -235,10 +233,10 @@ mod_overview_server <- function(id, shared) {
       mc <- shared$mvpa_col()
       if (is.null(analysis_ready)) return(no_data_plot())
       if (is.null(mc) || !mc %in% names(analysis_ready))
-        return(no_data_plot("MVPA-kolom niet gevonden — herrun stap 03."))
+        return(no_data_plot("MVPA-kolom ontbreekt in de analysetabel — herbouw de samenvattingen."))
 
       dt <- analysis_ready[meets_sedentary_criteria == TRUE & !is.na(get(mc))]
-      if (nrow(dt) == 0) return(no_data_plot())
+      if (nrow(dt) == 0) return(no_data_plot("Geen geldige deelnemers voor huidige filter."))
       dt[, school_label := SCHOOL_LABELS[school]]
       dt[, mvpa_val     := get(mc)]
 
@@ -337,11 +335,14 @@ mod_overview_server <- function(id, shared) {
     # ── School overview table ─────────────────────────────────────────────────
     output$table_school_overview <- renderDT({
       mc <- shared$mvpa_col()
-      if (is.null(analysis_ready)) return(datatable(data.frame(Bericht = "Geen data")))
+      if (is.null(analysis_ready))
+        return(datatable(data.frame(Bericht = "Geen data"),
+                          rownames = FALSE, options = list(dom = "t")))
       dt <- shared$apply_filters(copy(analysis_ready[meets_sedentary_criteria == TRUE]))
       if (nrow(dt) == 0)
         return(datatable(data.frame(
-          Bericht = "Geen geldige deelnemers voor huidige filter.")))
+          Bericht = "Geen geldige deelnemers voor huidige filter."),
+          rownames = FALSE, options = list(dom = "t")))
       dt[, school_label := SCHOOL_LABELS[school]]
       has_mvpa  <- !is.null(mc) && mc %in% names(dt)
       has_sleep <- "sleep_duration_h" %in% names(dt)

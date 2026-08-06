@@ -36,14 +36,26 @@ UGENT_FACULTY_COLORS <- c(
   PS_green         = "#71A860"
 )
 
-#' Pick n faculty colors spread across hue for maximum distinctness, skipping
-#' WE_aqua/EA_sky_blue (too close to UGENT_BLUE to use as a separate category).
-#' Order below is hand-picked (hue-spaced ~40-100 degrees apart, verified via
-#' rgb2hsv) rather than derived at runtime, since n is always small (<=6).
+#' Colorblind-safe categorical palette for schools (Okabe & Ito, 2008) —
+#' verified distinguishable under protanopia, deuteranopia, and tritanopia.
+#' Replaces an earlier hand-picked set of 6 UGent faculty colors that looked
+#' fine to unimpaired vision but had two real confusable pairs: the two
+#' greens (EB_light_green/PS_green) both drift toward yellow-brown under
+#' deuteranopia and converge with RE_warm_red, and the two purples
+#' (DI_purple/FW_light_purple) are close in hue even without any deficiency.
+#' Uses 6 of Okabe-Ito's 8 colors — dropping black (already used for chart
+#' text/gridlines) and yellow (#F0E442, poor contrast on this app's white
+#' chart backgrounds) — since n is always small (<=6, one per school).
 ugent_categorical_palette <- function(n) {
-  ordered <- c("RE_warm_red", "EB_light_green", "PS_green",
-               "BW_turquoise", "DI_purple", "FW_light_purple")
-  unname(UGENT_FACULTY_COLORS[ordered[seq_len(n)]])
+  okabe_ito <- c(
+    "#E69F00",  # orange
+    "#56B4E9",  # sky blue
+    "#009E73",  # bluish green
+    "#0072B2",  # blue
+    "#D55E00",  # vermillion
+    "#CC79A7"   # reddish purple
+  )
+  unname(okabe_ito[seq_len(n)])
 }
 
 # ── Semantic chart colors ────────────────────────────────────────────────────

@@ -22,6 +22,7 @@ modParticipantsUI <- function(id) {
   layout_sidebar(
     sidebar = sidebar(
       width = 240,
+      open  = list(desktop = "open", mobile = "always-above"),
       p(class = "text-muted small fw-semibold mb-1", "Deelnemer bekijken"),
       selectInput(ns("explorer_id"), NULL,
                   choices = c("Kies een deelnemer..." = ""),
@@ -141,7 +142,7 @@ mod_participants_server <- function(id, shared) {
           ) +
           facet_wrap(~ meting, scales = "free_x", labeller = as_labeller(METINGEN_LABELS)) +
           labs(x = "Datum", y = NULL,
-               title = paste("Draagduur —", SCHOOL_LABELS[school_val]),
+               title = paste("Draagduur —", unique(dt$school_label)[1]),
                subtitle = paste0("Blauw = geldige dag (≥", MIN_WEAR_H, "h waaktijd)")) +
           theme_schoolmove() +
           theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 8),
@@ -165,7 +166,7 @@ mod_participants_server <- function(id, shared) {
 
     # ── Individual explorer ───────────────────────────────────────────────────
     explorer_day_data <- reactive({
-      req(input$explorer_id, nchar(input$explorer_id) > 0)
+      if (is.null(input$explorer_id) || nchar(input$explorer_id) == 0) return(NULL)
       if (is.null(segment_summary)) return(NULL)
       dt <- segment_summary[as.character(ID) == input$explorer_id]
       if (nrow(dt) == 0) return(NULL)
@@ -237,7 +238,9 @@ mod_participants_server <- function(id, shared) {
 
     # ── Inclusion table ───────────────────────────────────────────────────────
     output$table_inclusion <- renderDT({
-      if (is.null(validity_summary)) return(datatable(data.frame(Bericht = "Geen data")))
+      if (is.null(validity_summary))
+        return(datatable(data.frame(Bericht = "Geen data"),
+                          rownames = FALSE, options = list(dom = "t", language = .dt_lang_nl)))
       dt <- shared$apply_filters(copy(validity_summary))
       dt[, school_label := SCHOOL_LABELS[school]]
       dt[, meting_label := METINGEN_LABELS[meting]]
@@ -286,7 +289,8 @@ mod_participants_server <- function(id, shared) {
       datatable(dt[, ..all_cols], rownames = FALSE,
                 caption   = caption_txt,
                 selection = "single",
-                options   = list(pageLength = 15, dom = "frtip", scrollX = TRUE),
+                options   = list(pageLength = 15, dom = "frtip", scrollX = TRUE,
+                                 language = .dt_lang_nl),
                 filter    = "top") |>
         formatStyle("Status",
           backgroundColor = styleEqual(c("Inbegrepen","Uitgesloten"),
