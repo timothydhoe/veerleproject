@@ -34,6 +34,9 @@ data/validity_summary.csv
 data/*.csv.bak.*
 r/_examples
 
+# Distributed build artifact (portable Windows bundle, downloaded from CI)
+SchoolMove/
+
 # OS
 .DS_Store
 
@@ -41,4 +44,5 @@ r/_examples
 .vscode
 
 # Claude Code / Playwright MCP (auto-generated browser artifacts)
+.playwright-mcp/
 r/.playwright-mcp
