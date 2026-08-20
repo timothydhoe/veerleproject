@@ -206,6 +206,89 @@ test_that("timestamps spanning a DST transition are parsed without dropped/NA ro
   expect_true(all(result$date == as.Date("2026-03-29")))
 })
 
+# ── waking flag (Part 4 sleep-period-time) ──────────────────────────────────
+
+test_that("epochs during the night's SPT window are marked waking = FALSE", {
+  tmp_csv <- tempfile(fileext = ".csv")
+  tmp_rdata <- tempfile(fileext = ".RData")
+  on.exit(unlink(c(tmp_csv, tmp_rdata)))
+
+  # Monday: epochs at 02:00 (asleep) and 06:00 (asleep, strictly before the
+  # 07:00 wakeup) and 08:00 (awake, before_school) -- sleeponset 22.0 the
+  # PREVIOUS night (Sunday, hence date - 1), wakeup 31.0 (= 07:00 Monday).
+  # wakeup itself is the half-open boundary (hour < wake_h => asleep, same
+  # convention as classify_intensity()'s right = FALSE cut-points), so the
+  # exact wakeup minute is intentionally NOT used as a test point here.
+  ts <- c("2026-02-23T02:00:00+0100", "2026-02-23T06:00:00+0100",
+          "2026-02-23T08:00:00+0100")
+  fwrite(data.table(timestamp = ts, anglez = 0, ENMO = 0.01), tmp_csv)
+  write_ms2out(tmp_rdata, r5long = rep(0, length(ts)))
+
+  cfg <- make_test_cfg()
+  schedule_cache     <- build_schedule_cache(cfg)
+  pupil_override_map <- build_pupil_override_map(cfg)
+
+  part4_nights <- data.table(
+    calendar_date = as.Date("2026-02-22"),  # Sunday night
+    sleeponset    = 22.0,                   # 22:00 Sunday
+    wakeup        = 31.0                    # 07:00 Monday
+  )
+
+  result <- suppressWarnings(build_labeled_epochs_for_participant(
+    epoch_csv_path = tmp_csv, ms2out_path = tmp_rdata,
+    id = "1001", meting = "meting_1", school = "school_1", cfg = cfg,
+    schedule_cache = schedule_cache, pupil_override_map = pupil_override_map,
+    part4_nights = part4_nights
+  ))
+  expect_equal(result$waking, c(FALSE, FALSE, TRUE))
+})
+
+test_that("waking is NA (not TRUE) for a calendar date with no matching Part 4 night record", {
+  tmp_csv <- tempfile(fileext = ".csv")
+  tmp_rdata <- tempfile(fileext = ".RData")
+  on.exit(unlink(c(tmp_csv, tmp_rdata)))
+
+  write_epoch_csv(tmp_csv, n = 5, start = "2026-02-23T08:00:00+0100")
+  write_ms2out(tmp_rdata, r5long = rep(0, 5))
+
+  cfg <- make_test_cfg()
+  schedule_cache     <- build_schedule_cache(cfg)
+  pupil_override_map <- build_pupil_override_map(cfg)
+
+  # part4_nights covers a completely different date -> no coverage for 2026-02-23
+  part4_nights <- data.table(
+    calendar_date = as.Date("2026-01-01"), sleeponset = 22.0, wakeup = 30.0
+  )
+
+  result <- build_labeled_epochs_for_participant(
+    epoch_csv_path = tmp_csv, ms2out_path = tmp_rdata,
+    id = "1001", meting = "meting_1", school = "school_1", cfg = cfg,
+    schedule_cache = schedule_cache, pupil_override_map = pupil_override_map,
+    part4_nights = part4_nights
+  )
+  expect_true(all(is.na(result$waking)))
+})
+
+test_that("waking defaults to NA for every epoch when part4_nights is NULL", {
+  tmp_csv <- tempfile(fileext = ".csv")
+  tmp_rdata <- tempfile(fileext = ".RData")
+  on.exit(unlink(c(tmp_csv, tmp_rdata)))
+
+  write_epoch_csv(tmp_csv, n = 5, start = "2026-02-23T08:00:00+0100")
+  write_ms2out(tmp_rdata, r5long = rep(0, 5))
+
+  cfg <- make_test_cfg()
+  schedule_cache     <- build_schedule_cache(cfg)
+  pupil_override_map <- build_pupil_override_map(cfg)
+
+  result <- build_labeled_epochs_for_participant(
+    epoch_csv_path = tmp_csv, ms2out_path = tmp_rdata,
+    id = "1001", meting = "meting_1", school = "school_1", cfg = cfg,
+    schedule_cache = schedule_cache, pupil_override_map = pupil_override_map
+  )
+  expect_true(all(is.na(result$waking)))
+})
+
 test_that("absence overlay marks in_class/recess/lunch as 'absent' but not before/after school", {
   tmp_csv <- tempfile(fileext = ".csv")
   tmp_rdata <- tempfile(fileext = ".RData")

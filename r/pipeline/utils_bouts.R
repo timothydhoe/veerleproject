@@ -5,7 +5,10 @@
 # Ported and adapted from project_1/R/analysis/sedentary_bouts.R.
 #
 # KEY REQUIREMENT: These functions operate on epoch-level data — one row per
-# 1-second epoch with columns: ID, date, context, intensity, wear.
+# epoch (5 seconds for this study's GGIR export) with columns: ID, date,
+# context, intensity, wear. compute_wear_waking_sedentary_pct() additionally
+# requires a `waking` column (TRUE outside that night's detected sleep
+# period, NA if unknown — see utils_epoch_labeling.R).
 #
 # Epoch-level data is available when GGIR is run with epochvalues2csv = TRUE
 # AND 02_label_segments.R has applied school context labels to each epoch.
@@ -235,6 +238,69 @@ compute_context_bout_summaries <- function(epochs, bout_cfg) {
   }
 
   result
+}
+
+#' Compute sedentary % of MEASURED wear time during waking hours only
+#'
+#' Unlike GGIR's own day-summary intensity columns (`dur_day_total_IN_min`
+#' etc., surfaced in analysis_ready.csv as `sb_min_day`), which are computed
+#' on GGIR's IMPUTED time series — non-wear epochs filled in with an
+#' averaged estimate from the same time of day on other recording days (see
+#' GGIR's "How GGIR Deals with Invalid Data" documentation) — this restricts
+#' strictly to epochs that were both:
+#'   (a) actually worn (`wear == TRUE`, i.e. NOT one of GGIR's imputed epochs), and
+#'   (b) during waking hours (`waking == TRUE`, i.e. outside that night's
+#'       detected sleep-period-time — see the `waking` column built in
+#'       `build_labeled_epochs_for_participant()`, utils_epoch_labeling.R).
+#' Epochs with `waking == NA` (no matching Part 4 night record for that
+#' calendar date) are excluded from both numerator and denominator, not
+#' assumed awake.
+#'
+#' @param epochs Epoch-level data.frame/data.table — `labeled_epochs.csv`'s
+#'   schema: ID, intensity, wear, waking required; meting, epoch_length_s
+#'   used if present.
+#' @return data.table: one row per ID (× meting, if present), with
+#'   n_wear_waking_epochs, wear_waking_min, sb_min_wear_waking,
+#'   sb_pct_wear_waking. NULL if epoch data is unavailable, missing required
+#'   columns (e.g. `labeled_epochs.csv` built before the `waking` column
+#'   existed), or has no epochs with a resolved (non-NA) `waking` value.
+compute_wear_waking_sedentary_pct <- function(epochs) {
+  if (is.null(epochs) || nrow(epochs) == 0) return(NULL)
+  dt <- data.table::as.data.table(epochs)
+
+  required <- c("ID", "intensity", "wear", "waking")
+  missing  <- setdiff(required, names(dt))
+  if (length(missing) > 0) {
+    message("[wear_waking_sedentary] epoch data missing column(s): ",
+            paste(missing, collapse = ", "), " — skipping.")
+    return(NULL)
+  }
+
+  # Same simplification detect_activity_bouts() already makes: one
+  # epoch_length_s value for the whole input rather than per-participant,
+  # since this study's GGIR export is a constant 5s for every participant.
+  epoch_length_s <- if ("epoch_length_s" %in% names(dt) && nrow(dt) > 0) {
+    dt$epoch_length_s[1]
+  } else {
+    1
+  }
+
+  valid <- dt[wear == TRUE & !is.na(waking) & waking == TRUE]
+  if (nrow(valid) == 0) return(NULL)
+
+  group_cols <- intersect(c("ID", "meting"), names(valid))
+
+  result <- valid[, .(
+    n_wear_waking_epochs = .N,
+    n_sedentary_epochs   = sum(intensity == "sedentary", na.rm = TRUE)
+  ), by = group_cols]
+
+  result[, wear_waking_min    := n_wear_waking_epochs * epoch_length_s / 60]
+  result[, sb_min_wear_waking := n_sedentary_epochs   * epoch_length_s / 60]
+  result[, sb_pct_wear_waking := round(100 * sb_min_wear_waking / wear_waking_min, 2)]
+  result[, n_sedentary_epochs := NULL]
+
+  result[]
 }
 
 # Allow %||% to be used here if not already defined in the calling environment

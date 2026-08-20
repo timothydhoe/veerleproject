@@ -1,8 +1,10 @@
 # 02b_label_epochs.R
 # ─────────────────────────────────────────────────────────────────────────────
 # Builds data/processed/labeled_epochs.csv: one row per 5-second GGIR epoch,
-# labeled with school context and wear/non-wear, for context-aware bout
-# detection (utils_bouts.R). See docs/test/feature_log.md #2.
+# labeled with school context, wear/non-wear, and waking/sleep (from Part 4
+# sleep timing), for context-aware bout detection (utils_bouts.R) and
+# wear-time-only sedentary % (compute_wear_waking_sedentary_pct() in
+# utils_bouts.R). See docs/test/feature_log.md #2.
 #
 # Opt-in: only runs when config.yaml's bouts.enable_epoch_labeling is true
 # (expensive at full study scale — ~96M rows for 400 participants). Requires
@@ -65,6 +67,26 @@ if (!isTRUE(cfg$bouts$enable_epoch_labeling)) {
     date_col <- intersect(c("calendar_date", "Date", "date"), names(part2))
     date_col <- if (length(date_col) > 0) date_col[1] else NA_character_
 
+    # Part 4 sleep timing (unfiltered — every attempted night, not just nights
+    # that individually pass the sleep-validity criterion), used to derive
+    # each epoch's `waking` flag below. Same call as 03_build_summaries.R's
+    # part4_full loading (see add_waking_valid_hours()'s docstring in
+    # utils_ggir.R for why "unfiltered" matters here).
+    part4_results_dir <- find_ggir_results_dir(file.path(base_out, meting))
+    part4_full <- if (!is.null(part4_results_dir)) {
+      df <- read_part4_sleep(part4_results_dir, prefer_full = TRUE)
+      if (!is.null(df)) as.data.table(df) else NULL
+    } else {
+      NULL
+    }
+    if (is.null(part4_full) || nrow(part4_full) == 0 ||
+          !all(c("ID", "calendar_date", "sleeponset", "wakeup") %in% names(part4_full))) {
+      message("  [", meting, "] No usable Part 4 sleep data found — epoch-level 'waking' ",
+              "flag will be NA for all epochs this meting (sb_pct_wear_waking will be ",
+              "unavailable for these participants in step 03).")
+      part4_full <- NULL
+    }
+
     ggir_subdir <- find_ggir_output_subdir(file.path(base_out, meting))
     if (is.null(ggir_subdir)) {
       message("Skipping ", meting, " — no GGIR output_* subdirectory found.")
@@ -99,12 +121,18 @@ if (!isTRUE(cfg$bouts$enable_epoch_labeling)) {
         NULL
       }
 
+      part4_nights <- if (!is.null(part4_full)) {
+        part4_full[ID == id, .(calendar_date = as.Date(calendar_date), sleeponset, wakeup)]
+      } else {
+        NULL
+      }
+
       labeled <- tryCatch(
         build_labeled_epochs_for_participant(
           epoch_csv_path = epoch_csv_path, ms2out_path = ms2out_path,
           id = id, meting = meting, school = school, cfg = cfg,
           schedule_cache = schedule_cache, pupil_override_map = pupil_override_map,
-          part2_days = part2_days, abs_keys = abs_keys
+          part2_days = part2_days, abs_keys = abs_keys, part4_nights = part4_nights
         ),
         error = function(e) {
           message("  [", id, "] Error building labeled epochs: ", e$message, " — skipping.")

@@ -117,7 +117,7 @@ without opening RStudio.
 | `pipeline/utils_epoch_labeling.R` | Done | Per-participant epoch labeling: wear (from GGIR's `IMP$r5long`), intensity, context |
 | `pipeline/01_run_ggir.R` | Done | GGIR Parts 1–5 for both metingen; dev overrides wired up |
 | `pipeline/02_label_segments.R` | Done | Distributes GGIR output across 5 school-day segments per participant × day |
-| `pipeline/02b_label_epochs.R` | Done (opt-in) | Builds `labeled_epochs.csv` for context-aware bouts; only runs when `bouts.enable_epoch_labeling: true` |
+| `pipeline/02b_label_epochs.R` | Done (opt-in) | Builds `labeled_epochs.csv` for context-aware bouts and wear-time-only sedentary % (`sb_pct_wear_waking`); only runs when `bouts.enable_epoch_labeling: true` |
 | `pipeline/03_build_summaries.R` | Done | Joins parts 2/4/5 + segments; computes validity flags; writes analysis-ready tables |
 | `pipeline/run_all.R` | Done | Orchestrates 01→02→(02b)→03 with config validation, manifest, and run log |
 | `qc/qc_01_ggir.R` | Done | Verifies GGIR output structure, columns, participant counts, cut-points |
@@ -350,6 +350,18 @@ across versions via `utils_ggir.R`.
 if `labeled_epochs.csv` exists (epoch-level data). Otherwise uses GGIR-native
 day-level bout columns.
 
+**Wear-time-only sedentary %:** Calls `compute_wear_waking_sedentary_pct()` from
+`utils_bouts.R` (same epoch-data availability gate as context-aware bouts) to add
+`sb_pct_wear_waking` (+ `sb_min_wear_waking`, `wear_waking_min`,
+`n_wear_waking_epochs`). Unlike `sb_min_day` — which is GGIR's `dur_day_total_IN_min`,
+computed on GGIR's *imputed* time series (non-wear epochs filled in with an averaged
+estimate, see GGIR's "How GGIR Deals with Invalid Data" docs) — `sb_pct_wear_waking`
+is restricted to epochs that are both actually worn (`wear == TRUE`) and outside that
+night's detected sleep period (`waking == TRUE`, from `labeled_epochs.csv`'s `waking`
+column, itself derived from Part 4 sleep timing in `utils_epoch_labeling.R`). NA for a
+participant if `labeled_epochs.csv` lacks a `waking` column (e.g. built before this
+feature existed) or Part 4 had no sleep data for them.
+
 Outputs:
 - `../data/processed/summaries/analysis_ready.csv` — one row per participant × meting
 - `../data/processed/summaries/validity_summary.csv` — inclusion/exclusion subset
@@ -369,10 +381,15 @@ Context-aware sedentary bout detection using run-length encoding on epoch-level 
   callers/tests that carry no real epoch-length information.
 - `compute_context_bout_summaries()`: Aggregates to wide format with columns like
   `bouts_30min_in_class_n`, `bouts_30min_in_class_total_min`
+- `compute_wear_waking_sedentary_pct()`: Restricts to `wear == TRUE & waking == TRUE`
+  epochs and computes `sb_pct_wear_waking` per participant (× meting) — see "Wear-time-only
+  sedentary %" above. Epochs with `waking == NA` (no matching Part 4 night) are excluded
+  from both numerator and denominator, not assumed awake.
 
 Requires one row per epoch (5 seconds for this study's GGIR export — see
-`utils_epoch_labeling.R`) with `ID`, `date`, `context`, `intensity`, `wear` columns. When
-epoch data isn't available, step 03 falls back to GGIR-native columns.
+`utils_epoch_labeling.R`) with `ID`, `date`, `context`, `intensity`, `wear` columns
+(`compute_wear_waking_sedentary_pct()` additionally requires `waking`). When epoch data
+isn't available, step 03 falls back to GGIR-native columns and `sb_pct_wear_waking` stays NA.
 
 ---
 
@@ -384,6 +401,17 @@ participants). Reads GGIR's raw per-epoch export
 (`meta/csv/<file>.RData.csv` — produced only when `epochvalues2csv` is on, itself gated
 on the same config flag) and joins it against school-schedule context
 (`utils_schedule.R`, shared with `02_label_segments.R`).
+
+**`waking` column:** derived from Part 4 sleep timing (`sleeponset`/`wakeup`, loaded
+per meting via `read_part4_sleep(..., prefer_full = TRUE)`, same call as
+`03_build_summaries.R`'s `part4_full`). This is NOT redundant with `context` —
+`before_school` spans `00:00–school_start` and `after_school` spans `school_end–24:00`
+(`utils_schedule.R:get_schedule()`), i.e. together they cover the entire rest of the
+calendar day including the whole night. Without `waking`, any epoch-level aggregation
+that only filters on `wear` would silently count a full night's sleep as "before/after
+school sedentary time". `waking` is `NA` (not assumed `TRUE`) for any calendar date with
+no matching Part 4 night record, mirroring `add_waking_valid_hours()`'s "unknown sleep
+timing is excluded, not assumed awake" rule.
 
 **Known fragility, documented rather than hidden:** wear/non-wear per epoch comes from
 `IMP$r5long` inside GGIR's `meta/ms2.out/<file>.RData` milestone file — an internal GGIR

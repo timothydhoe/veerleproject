@@ -234,8 +234,9 @@ ENMO-grenswaarden of boutduur — dit doe je rechtstreeks in een bestand.
    nieuw YAML-bestand in `r/profiles/`, bijv. `gevoeligheidsanalyse_1.yaml`, en pas
    daarin de gewenste `validity`/`ggir.cut_points_mg`/`bouts`-waarden aan. Zie
    `config.yaml` zelf voor de volledige lijst met parameters en hun betekenis:
-   - Min. draaguren per dag (`validity.min_wear_hours_per_day`, standaard: 16)
-   - Min. geldige dagen per meting (`validity.min_valid_days`, standaard: 3)
+   - Min. draaguren per dag (`validity.min_wear_hours_per_day`, standaard: 9 — tijdens
+     waaktijd, dus 24u min de slaaptijd van die nacht, niet de volledige kalenderdag)
+   - Min. geldige dagen per meting (`validity.min_valid_days`, standaard: 4)
    - Weekenddag vereist (`validity.require_weekend_day`, aan/uit)
    - Min. geldige nachten voor slaapanalyse (`validity.min_valid_nights_sleep`, standaard: 5)
    - Min. % geldige slaap per nacht (`validity.min_pct_night_valid`, standaard: 50%)

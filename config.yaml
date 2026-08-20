@@ -71,14 +71,16 @@ bouts:
   split_at_context_boundary: true  # nu actief gelezen door utils_bouts.R
 
   # true = bouw data/processed/labeled_epochs.csv (02b_label_epochs.R), nodig
-  # voor de context-gevoelige bout-kolommen hierboven. Standaard uit: dit is
-  # duur op volledige studieschaal (~96 miljoen epoch-rijen bij 400
-  # deelnemers) en vereist dat 01_run_ggir.R met deze instelling AAN is
-  # gedraaid (bepaalt ook of GGIR's epochvalues2csv-export wordt aangemaakt —
-  # zie 01_run_ggir.R). Na het aanzetten: 01_run_ggir.R opnieuw draaien
-  # (met ggir.overwrite: true als de GGIR-output al bestond, anders wordt de
-  # epoch-export door GGIR's eigen caching mogelijk overgeslagen), dan
-  # 02b_label_epochs.R.
+  # voor (a) de context-gevoelige bout-kolommen hierboven, en (b)
+  # sb_pct_wear_waking in analysis_ready.csv — % sedentair gedrag t.o.v.
+  # effectief gemeten (niet-ingevulde) draagtijd, enkel tijdens waakuren.
+  # Standaard uit: dit is duur op volledige studieschaal (~96 miljoen
+  # epoch-rijen bij 400 deelnemers) en vereist dat 01_run_ggir.R met deze
+  # instelling AAN is gedraaid (bepaalt ook of GGIR's epochvalues2csv-export
+  # wordt aangemaakt — zie 01_run_ggir.R). Na het aanzetten: 01_run_ggir.R
+  # opnieuw draaien (met ggir.overwrite: true als de GGIR-output al bestond,
+  # anders wordt de epoch-export door GGIR's eigen caching mogelijk
+  # overgeslagen), dan 02b_label_epochs.R.
   enable_epoch_labeling: false
 
 # ── Geldigheidsdrempels ───────────────────────────────────────────────────────

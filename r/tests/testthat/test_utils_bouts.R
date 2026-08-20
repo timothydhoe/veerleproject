@@ -155,3 +155,69 @@ test_that("split_at_context_boundary = TRUE (default) still splits at the bounda
                                   valid_only = FALSE)
   expect_equal(nrow(result), 2)
 })
+
+# ── compute_wear_waking_sedentary_pct ────────────────────────────────────────
+
+test_that("computes sedentary % restricted to wear == TRUE & waking == TRUE epochs", {
+  epochs <- data.frame(
+    ID        = "P001",
+    meting    = "meting_1",
+    intensity = c("sedentary", "sedentary", "light", "sedentary", "moderate"),
+    # 4th/5th rows must be excluded: non-wear and asleep respectively.
+    wear      = c(TRUE, TRUE, TRUE, FALSE, TRUE),
+    waking    = c(TRUE, TRUE, TRUE, TRUE, FALSE),
+    epoch_length_s = 5,
+    stringsAsFactors = FALSE
+  )
+  result <- compute_wear_waking_sedentary_pct(epochs)
+  expect_equal(nrow(result), 1)
+  expect_equal(result$n_wear_waking_epochs, 3)      # rows 1-3 only
+  expect_equal(result$sb_min_wear_waking, 2 * 5 / 60)  # 2 sedentary epochs
+  expect_equal(result$wear_waking_min, 3 * 5 / 60)
+  expect_equal(result$sb_pct_wear_waking, round(100 * (2 / 3), 2))
+})
+
+test_that("NA waking epochs are excluded from both numerator and denominator", {
+  epochs <- data.frame(
+    ID        = "P001",
+    intensity = c("sedentary", "sedentary"),
+    wear      = c(TRUE, TRUE),
+    waking    = c(TRUE, NA),
+    epoch_length_s = 5,
+    stringsAsFactors = FALSE
+  )
+  result <- compute_wear_waking_sedentary_pct(epochs)
+  expect_equal(result$n_wear_waking_epochs, 1)
+  expect_equal(result$sb_pct_wear_waking, 100)
+})
+
+test_that("returns NULL when the epoch data has no `waking` column", {
+  epochs <- data.frame(
+    ID = "P001", intensity = "sedentary", wear = TRUE,
+    stringsAsFactors = FALSE
+  )
+  expect_null(compute_wear_waking_sedentary_pct(epochs))
+})
+
+test_that("returns NULL when no epoch is both wear == TRUE and waking == TRUE", {
+  epochs <- data.frame(
+    ID = "P001", intensity = "sedentary", wear = c(TRUE, FALSE),
+    waking = c(FALSE, TRUE), stringsAsFactors = FALSE
+  )
+  expect_null(compute_wear_waking_sedentary_pct(epochs))
+})
+
+test_that("groups by ID x meting when meting is present", {
+  epochs <- data.frame(
+    ID        = c("P001", "P001", "P002"),
+    meting    = c("meting_1", "meting_2", "meting_1"),
+    intensity = c("sedentary", "light", "sedentary"),
+    wear      = TRUE,
+    waking    = TRUE,
+    epoch_length_s = 5,
+    stringsAsFactors = FALSE
+  )
+  result <- compute_wear_waking_sedentary_pct(epochs)
+  expect_equal(nrow(result), 3)
+  expect_setequal(result$meting, c("meting_1", "meting_2", "meting_1"))
+})

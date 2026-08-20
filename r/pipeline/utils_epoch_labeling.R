@@ -87,13 +87,23 @@ classify_intensity <- function(enmo_g, cut_points_mg) {
 #'   wear-polarity sanity check below. NULL skips the check (a missing part2
 #'   day just means the check can't run for that day, not that wear is wrong).
 #' @param abs_keys Character vector from read_absence_keys(), or character(0).
+#' @param part4_nights data.table with (at least) calendar_date, sleeponset,
+#'   wakeup for THIS participant only (same convention as
+#'   `add_waking_valid_hours()`'s `part4_full` in utils_ggir.R — decimal hours
+#'   from that night's calendar_date's own midnight, wakeup > 24 meaning the
+#'   wake time falls on the next calendar day). Used to derive the `waking`
+#'   column below. NULL (default) leaves `waking` as NA for every epoch — a
+#'   missing sleep record means "unknown", not "awake" (see the `waking`
+#'   block for why that matters).
 #' @return data.table with columns ID, meting, school, date, context,
-#'   intensity, wear, epoch_length_s — or NULL if the epoch CSV is empty/unreadable.
+#'   intensity, wear, waking, epoch_length_s — or NULL if the epoch CSV is
+#'   empty/unreadable.
 build_labeled_epochs_for_participant <- function(epoch_csv_path, ms2out_path,
                                                   id, meting, school, cfg,
                                                   schedule_cache, pupil_override_map,
                                                   part2_days = NULL,
-                                                  abs_keys = character(0)) {
+                                                  abs_keys = character(0),
+                                                  part4_nights = NULL) {
   if (!file.exists(epoch_csv_path)) {
     warning("[epoch_labeling] Epoch CSV not found for ", id, ": ", epoch_csv_path)
     return(NULL)
@@ -224,6 +234,53 @@ build_labeled_epochs_for_participant <- function(epoch_csv_path, ms2out_path,
     context[idx] <- sched$segment[seg_idx]
   }
 
+  # ── Waking-hours flag from Part 4 sleep-period-time (SPT) ──────────────────
+  # "Waking hours" = 24h minus that night's GGIR-detected sleep period — same
+  # definition add_waking_valid_hours() (utils_ggir.R) uses at the day level,
+  # applied here per epoch via each night's actual clock-time onset/wakeup
+  # instead of a duration subtraction. This matters because before_school and
+  # after_school are NOT "early morning" / "evening" windows — by
+  # construction (utils_schedule.R:get_schedule()) before_school spans
+  # 00:00-school_start and after_school spans school_end-24:00, i.e. together
+  # they cover the ENTIRE rest of the calendar day. Without this flag, a
+  # full night's sleep would silently count as "before/after school
+  # sedentary time" in any epoch-level aggregation that only filters on wear.
+  #
+  # NA (not TRUE/FALSE) when no Part 4 night record covers a given calendar
+  # date — mirrors add_waking_valid_hours()'s "unknown sleep timing is
+  # excluded, not assumed awake" rule.
+  waking <- rep(NA, nrow(raw))
+  if (!is.null(part4_nights) && nrow(part4_nights) > 0) {
+    p4 <- part4_nights[!is.na(calendar_date) & !is.na(sleeponset) & !is.na(wakeup)]
+    p4[, calendar_date := as.Date(calendar_date)]
+    if (nrow(p4) > 0) {
+      onset_dt <- unique(data.table::data.table(
+        calendar_date = p4$calendar_date,
+        onset_h       = pmin(p4$sleeponset, 24)
+      ), by = "calendar_date")
+      wake_dt <- unique(data.table::data.table(
+        calendar_date = p4$calendar_date + 1,
+        wake_h        = pmax(0, p4$wakeup - 24)
+      )[wake_h > 0], by = "calendar_date")
+
+      epoch_dt <- data.table::data.table(
+        row_i         = seq_len(nrow(raw)),
+        calendar_date = date_val,
+        hour_of_day   = hour_of_day
+      )
+      epoch_dt <- merge(epoch_dt, onset_dt, by = "calendar_date", all.x = TRUE)
+      epoch_dt <- merge(epoch_dt, wake_dt,  by = "calendar_date", all.x = TRUE)
+      data.table::setorder(epoch_dt, row_i)
+
+      covered <- !is.na(epoch_dt$onset_h) | !is.na(epoch_dt$wake_h)
+      is_asleep <-
+        (!is.na(epoch_dt$onset_h) & epoch_dt$hour_of_day >= epoch_dt$onset_h) |
+        (!is.na(epoch_dt$wake_h)  & epoch_dt$hour_of_day <  epoch_dt$wake_h)
+
+      waking[covered] <- !is_asleep[covered]
+    }
+  }
+
   # ── Absence overlay (whole day, same as 02_label_segments.R) ───────────────
   # Full-day exclusion (docs/test/plan_absences_config.md §4) — relabels
   # EVERY context on an absent date, not just school-hours segments, so
@@ -250,6 +307,7 @@ build_labeled_epochs_for_participant <- function(epoch_csv_path, ms2out_path,
     context        = context,
     intensity      = intensity,
     wear           = wear,
+    waking         = waking,
     epoch_length_s = epoch_length_s
   )
 }

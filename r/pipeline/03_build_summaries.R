@@ -384,6 +384,8 @@ if (nrow(abs_entries) > 0) {
 # is absent (feature disabled, or 02b hasn't been run yet), we skip this
 # block and emit a warning; all bouts_30min_*_n columns stay NA.
 context_bouts_wide <- NULL
+wear_waking_wide    <- NULL
+epoch_dt            <- NULL
 labeled_epochs_path <- file.path(base_out, "labeled_epochs.csv")
 
 if (file.exists(labeled_epochs_path)) {
@@ -403,9 +405,27 @@ if (file.exists(labeled_epochs_path)) {
       message("  Context-aware bout columns (key: ", paste(key_cols, collapse = "+"), "): ",
               paste(setdiff(names(context_bouts_wide), key_cols), collapse = ", "))
     }
+
+    # Sedentary % of MEASURED wear time during waking hours only. Unlike
+    # sb_min_day (GGIR's dur_day_total_IN_min, computed on GGIR's imputed
+    # time series — see compute_wear_waking_sedentary_pct()'s docstring in
+    # utils_bouts.R), this excludes both non-wear AND sleep-period epochs
+    # entirely rather than relying on GGIR's averaged fill-in. Requires
+    # labeled_epochs.csv's `waking` column (built from Part 4 sleep timing);
+    # NULL if that wasn't available when labeled_epochs.csv was built.
+    wear_waking_wide <- compute_wear_waking_sedentary_pct(epoch_dt)
+    if (!is.null(wear_waking_wide)) {
+      message("  Wear-time sedentary % (waking hours only): sb_pct_wear_waking added for ",
+              nrow(wear_waking_wide), " participant(s)")
+    } else {
+      message("  sb_pct_wear_waking not available — labeled_epochs.csv has no usable ",
+              "'waking' data (rerun pipeline/02b_label_epochs.R after a run where Part 4 ",
+              "sleep data was present).")
+    }
   }
 } else {
-  message("[WARN] labeled_epochs.csv not found — context-aware bout columns will be NA.")
+  message("[WARN] labeled_epochs.csv not found — context-aware bout columns and ",
+          "sb_pct_wear_waking will be NA.")
   message("  Enable bouts.enable_epoch_labeling in config.yaml and run ",
           "pipeline/02b_label_epochs.R to populate them.")
 }
@@ -484,6 +504,14 @@ if (!is.null(absent_days) && nrow(absent_days) > 0) {
 if (!is.null(context_bouts_wide) && nrow(context_bouts_wide) > 0) {
   by_cols <- intersect(c("ID", "meting"), names(context_bouts_wide))
   analysis_ready <- merge(analysis_ready, context_bouts_wide,
+                           by = by_cols, all.x = TRUE)
+}
+
+# Join wear-time-only sedentary % (only when epoch data + Part 4 sleep
+# timing were both available — see sb_pct_wear_waking comment above)
+if (!is.null(wear_waking_wide) && nrow(wear_waking_wide) > 0) {
+  by_cols <- intersect(c("ID", "meting"), names(wear_waking_wide))
+  analysis_ready <- merge(analysis_ready, wear_waking_wide,
                            by = by_cols, all.x = TRUE)
 }
 
